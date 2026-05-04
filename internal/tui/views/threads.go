@@ -140,7 +140,8 @@ func (v *ThreadsView) View() string {
 		if v.expanded[th.ID] {
 			for _, msg := range th.Messages {
 				author := lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(msg.Author)
-				sb.WriteString(fmt.Sprintf("    %s: %s\n", author, msg.Text))
+				msgWrap := v.width - 6 - len([]rune(msg.Author))
+				sb.WriteString(fmt.Sprintf("    %s: %s\n", author, wrapText(msg.Text, msgWrap)))
 			}
 			sb.WriteString("\n")
 		}

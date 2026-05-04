@@ -133,14 +133,15 @@ func (v *TicketDetailView) renderContent() string {
 	}
 	sb.WriteString("\n")
 
+	wrapWidth := v.width - 2
 	if t.Description != "" {
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Description") + "\n")
-		sb.WriteString(indent(t.Description, "  ") + "\n\n")
+		sb.WriteString(indent(wrapText(t.Description, wrapWidth), "  ") + "\n\n")
 	}
 
 	if t.VerifiableResult != "" {
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Verifiable Result") + "\n")
-		sb.WriteString(indent(t.VerifiableResult, "  ") + "\n\n")
+		sb.WriteString(indent(wrapText(t.VerifiableResult, wrapWidth), "  ") + "\n\n")
 	}
 
 	if len(v.blockers) > 0 {
@@ -182,9 +183,9 @@ func (v *TicketDetailView) renderContent() string {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  no notes") + "\n")
 	} else {
 		for _, n := range v.notes {
-			sb.WriteString(fmt.Sprintf("  [%s] %s\n",
-				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(n.Author),
-				n.Text))
+			authorStr := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(n.Author)
+			noteWrap := v.width - 4 - len([]rune(n.Author))
+			sb.WriteString(fmt.Sprintf("  [%s] %s\n", authorStr, wrapText(n.Text, noteWrap)))
 		}
 	}
 
@@ -197,4 +198,38 @@ func indent(s, prefix string) string {
 		lines[i] = prefix + l
 	}
 	return strings.Join(lines, "\n")
+}
+
+// wrapText hard-wraps s at width columns, preserving existing newlines.
+func wrapText(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	var out []string
+	for _, line := range strings.Split(s, "\n") {
+		out = append(out, wrapLine(line, width))
+	}
+	return strings.Join(out, "\n")
+}
+
+func wrapLine(s string, width int) string {
+	runes := []rune(s)
+	if len(runes) <= width {
+		return s
+	}
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		return s
+	}
+	var lines []string
+	line := words[0]
+	for _, word := range words[1:] {
+		if len([]rune(line))+1+len([]rune(word)) <= width {
+			line += " " + word
+		} else {
+			lines = append(lines, line)
+			line = word
+		}
+	}
+	return strings.Join(append(lines, line), "\n")
 }

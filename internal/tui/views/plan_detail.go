@@ -81,7 +81,7 @@ func (v *PlanDetailView) View() string {
 
 	if t.Description != "" {
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Description") + "\n")
-		sb.WriteString(indent(t.Description, "  ") + "\n\n")
+		sb.WriteString(indent(wrapText(t.Description, v.width-2), "  ") + "\n\n")
 	}
 
 	// Progress bar
