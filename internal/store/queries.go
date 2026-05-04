@@ -6,6 +6,63 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 )
 
+// DraftPlan groups a plan with all its children (used by DraftQueue).
+type DraftPlan struct {
+	Plan     *model.Ticket
+	Children []*model.Ticket // all children, not just drafts
+}
+
+// DraftQueue holds draft tickets grouped by plan plus standalone drafts.
+type DraftQueue struct {
+	Plans      []DraftPlan
+	Standalone []*model.Ticket // draft tickets not under any plan
+}
+
+// DraftQueue returns draft tickets grouped under their parent plans, plus standalone drafts.
+func (s *Store) DraftQueue() (*DraftQueue, error) {
+	all, err := s.ListTickets()
+	if err != nil {
+		return nil, err
+	}
+
+	ticketMap := make(map[string]*model.Ticket, len(all))
+	for _, t := range all {
+		ticketMap[t.ID] = t
+	}
+
+	childSet := make(map[string]bool)
+	var plans []DraftPlan
+	for _, t := range all {
+		if !t.IsPlan() {
+			continue
+		}
+		var children []*model.Ticket
+		hasDraft := false
+		for _, childID := range t.BlockedBy {
+			if child, ok := ticketMap[childID]; ok {
+				children = append(children, child)
+				if child.Status == model.StatusDraft {
+					hasDraft = true
+					childSet[childID] = true
+				}
+			}
+		}
+		if hasDraft {
+			plans = append(plans, DraftPlan{Plan: t, Children: children})
+		}
+	}
+
+	var standalone []*model.Ticket
+	for _, t := range all {
+		if t.IsPlan() || childSet[t.ID] || t.Status != model.StatusDraft {
+			continue
+		}
+		standalone = append(standalone, t)
+	}
+
+	return &DraftQueue{Plans: plans, Standalone: standalone}, nil
+}
+
 // AvailableWork returns ready tickets (not plans) whose blockers are all completed.
 func (s *Store) AvailableWork() ([]*model.Ticket, error) {
 	rows, err := s.db.Query(`

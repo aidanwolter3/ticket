@@ -81,6 +81,33 @@ func (s *Store) TransitionTicket(id string, to model.Status, author string) erro
 	return err
 }
 
+// PromoteDraftChildren transitions all draft direct children of a plan to ready.
+func (s *Store) PromoteDraftChildren(planID, author string) ([]*model.Ticket, error) {
+	plan, err := s.GetTicket(planID)
+	if err != nil {
+		return nil, err
+	}
+	if !plan.IsPlan() {
+		return nil, fmt.Errorf("%s is not a plan", planID)
+	}
+	var promoted []*model.Ticket
+	for _, childID := range plan.BlockedBy {
+		child, err := s.GetTicket(childID)
+		if err != nil {
+			continue
+		}
+		if child.Status != model.StatusDraft {
+			continue
+		}
+		if err := s.TransitionTicket(childID, model.StatusReady, author); err != nil {
+			return nil, fmt.Errorf("failed to promote %s: %w", childID, err)
+		}
+		child.Status = model.StatusReady
+		promoted = append(promoted, child)
+	}
+	return promoted, nil
+}
+
 func (s *Store) DeleteTicket(id string) error {
 	_, err := s.db.Exec(`DELETE FROM tickets WHERE id=?`, id)
 	return err

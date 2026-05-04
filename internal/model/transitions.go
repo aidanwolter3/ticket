@@ -1,11 +1,14 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ValidateTicketTransition returns an error if the status transition is not allowed.
-// Pass author="human" or "agent:*" to enforce actor rules.
+// Pass author="human" or "human:<name>" for humans; "agent:<name>" for agents.
 func ValidateTicketTransition(from, to Status, author string) error {
-	isHuman := author == "human"
+	isHuman := author == "human" || strings.HasPrefix(author, "human:")
 
 	allowed := map[Status]map[Status]bool{
 		StatusDraft:      {StatusReady: true},                         // human
@@ -40,7 +43,7 @@ func ValidateTicketTransition(from, to Status, author string) error {
 
 // ValidateThreadTransition returns an error if the thread status transition is not allowed.
 func ValidateThreadTransition(from, to ThreadStatus, author string) error {
-	isHuman := author == "human"
+	isHuman := author == "human" || strings.HasPrefix(author, "human:")
 
 	switch from {
 	case ThreadActive:

@@ -31,6 +31,9 @@ func main() {
 		case "transition":
 			runTransition(os.Args[2:], defaultDB)
 			return
+		case "promote":
+			runPromote(os.Args[2:], defaultDB)
+			return
 		case "delete":
 			runDelete(os.Args[2:], defaultDB)
 			return
@@ -89,6 +92,8 @@ Usage:
   ticket get [--db path] <id>          get a single ticket as JSON
   ticket transition [--db path] <id> <status> <author>
                                        transition a ticket's status
+  ticket promote [--db path] <plan-id> <author>
+                                       promote all draft children of a plan to ready
   ticket delete [--db path] <id>       delete a ticket
   ticket purge [--db path] --yes       delete the database file
 

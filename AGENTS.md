@@ -18,13 +18,13 @@ Only humans resolve threads and mark tickets completed. Agents claim work (`read
 ## Finding available work
 
 ```bash
-ticket ls --status ready
+ticket ls --status ready --json
 ```
 
 Returns a JSON array. Filter to actionable tickets (not plans, all blockers completed):
 
 ```bash
-ticket ls --status ready | jq '[.[] | select(.type == "ticket")]'
+ticket ls --status ready --json | jq '[.[] | select(.type == "ticket")]'
 ```
 
 To check blockers are all completed, inspect each ticket's `blocked_by` IDs using `ticket get`.
@@ -32,6 +32,18 @@ To check blockers are all completed, inspect each ticket's `blocked_by` IDs usin
 ## Creating tickets (batch JSON import)
 
 The primary way for agents to create tickets is `ticket import`. It accepts JSON on stdin or from a file.
+
+### Planning workflow
+
+Planning agents **must** file all tickets as `draft`. Only a human promotes tickets to `ready`.
+
+1. Planning agent runs `ticket import` with all tickets set to `"status": "draft"`.
+2. Human reviews the drafts in the TUI (Draft Review tab) or via `ticket ls --status draft --json`.
+3. Human approves individual tickets (TUI `a` key) or bulk-promotes a whole plan:
+   ```bash
+   ticket promote <plan-id> human:<name>
+   ```
+4. Only `ready` tickets are picked up by implementation agents.
 
 ### JSON format
 
@@ -42,7 +54,7 @@ The primary way for agents to create tickets is `ticket import`. It accepts JSON
       "ref": "jwt",
       "title": "Add JWT validation",
       "type": "ticket",
-      "status": "ready",
+      "status": "draft",
       "description": "Implement JWT validation middleware for all API routes.",
       "feature_branch": "feat/auth-argon2",
       "stack_id": "auth-1",
@@ -56,7 +68,7 @@ The primary way for agents to create tickets is `ticket import`. It accepts JSON
       "ref": "bcrypt",
       "title": "Replace bcrypt with argon2",
       "type": "ticket",
-      "status": "ready",
+      "status": "draft",
       "feature_branch": "feat/auth-argon2",
       "stack_id": "auth-1",
       "blocked_by": ["jwt"],
@@ -80,7 +92,7 @@ The primary way for agents to create tickets is `ticket import`. It accepts JSON
 | `ref` | no | Local name for cross-referencing `blocked_by` within this document. Not stored. |
 | `title` | **yes** | |
 | `type` | no | `"ticket"` (default) or `"plan"` |
-| `status` | no | Defaults to `"draft"`. Use `"ready"` to make immediately claimable. |
+| `status` | no | Defaults to `"draft"`. Leave as `"draft"` — a human promotes to `"ready"` after review. |
 | `description` | no | Markdown. Explain the work clearly — agents pick this up cold. |
 | `feature_branch` | no | Git branch the work lives on. |
 | `stack_id` | no | Tickets sharing a `stack_id` form a stack and are reviewed together. |
@@ -120,16 +132,19 @@ The map keys are `ref` values (or `title` when no `ref` was given). Save these I
 ## Reading tickets
 
 ```bash
-# All tickets
-ticket ls
+# All tickets as JSON
+ticket ls --json
 
-# Filter by status
-ticket ls --status ready
-ticket ls --status in_review
+# Filter by status (JSON output)
+ticket ls --status ready --json
+ticket ls --status draft --json
+ticket ls --status in_review --json
 
-# Single ticket with full detail (threads, notes, blocked_by)
+# Single ticket with full detail (threads, notes, blocked_by) — always JSON
 ticket get T-042
 ```
+
+Without `--json`, `ticket ls` prints a human-readable table. Always pass `--json` in agent scripts so output is machine-parseable.
 
 ## Transitioning status
 

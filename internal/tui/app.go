@@ -15,6 +15,7 @@ type appTab int
 const (
 	tabTickets appTab = iota
 	tabReview
+	tabDraft
 )
 
 type appScreen int
@@ -47,6 +48,7 @@ type App struct {
 	// views
 	ticketsView    *views.TicketsView
 	reviewView     *views.ReviewQueueView
+	draftView      *views.DraftReviewView
 	ticketDetail   *views.TicketDetailView
 	planDetail     *views.PlanDetailView
 	threadsView    *views.ThreadsView
@@ -71,6 +73,7 @@ func New(s *store.Store) *App {
 		screen:      screenList,
 		ticketsView: views.NewTicketsView(s),
 		reviewView:  views.NewReviewQueueView(s),
+		draftView:   views.NewDraftReviewView(s),
 	}
 }
 
@@ -85,6 +88,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.height = msg.Height
 		a.ticketsView.SetSize(msg.Width, msg.Height)
 		a.reviewView.SetSize(msg.Width, msg.Height)
+		a.draftView.SetSize(msg.Width, msg.Height)
 		if a.ticketDetail != nil {
 			a.ticketDetail.SetSize(msg.Width, msg.Height)
 		}
@@ -120,20 +124,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "tab":
 				if a.screen == screenList {
-					if a.tab == tabTickets {
-						a.tab = tabReview
-					} else {
-						a.tab = tabTickets
-					}
+					a.tab = (a.tab + 1) % 3
 					return a, nil
 				}
 			case "shift+tab":
 				if a.screen == screenList {
-					if a.tab == tabReview {
-						a.tab = tabTickets
-					} else {
-						a.tab = tabReview
-					}
+					a.tab = (a.tab + 2) % 3
 					return a, nil
 				}
 			case "1":
@@ -144,6 +140,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "2":
 				if a.screen == screenList {
 					a.tab = tabReview
+					return a, nil
+				}
+			case "3":
+				if a.screen == screenList {
+					a.tab = tabDraft
 					return a, nil
 				}
 			}
@@ -228,8 +229,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Delegate remaining keys to tickets view
 			_, cmd := a.ticketsView.Update(msg)
 			return a, cmd
-		} else {
-			// Review tab
+		} else if a.tab == tabReview {
 			switch km.String() {
 			case "enter":
 				id := a.reviewView.FirstTicketID()
@@ -246,14 +246,48 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			_, cmd := a.reviewView.Update(msg)
 			return a, cmd
+		} else {
+			// Draft review tab
+			switch km.String() {
+			case "enter":
+				t := a.draftView.SelectedTicket()
+				if t != nil {
+					return a.openTicket(t.ID)
+				}
+			case "a":
+				t := a.draftView.SelectedTicket()
+				if t != nil {
+					if err := a.store.TransitionTicket(t.ID, "ready", "human"); err != nil {
+						a.setErr(err)
+					} else {
+						a.statusMsg = fmt.Sprintf("%s → ready", t.ID)
+						a.statusErr = false
+						a.draftView.Refresh()
+						a.ticketsView.Refresh()
+					}
+				}
+				return a, nil
+			case "d":
+				t := a.draftView.SelectedTicket()
+				if t != nil {
+					a.pendingDeleteID = t.ID
+					a.screen = screenConfirmDelete
+				}
+				return a, nil
+			}
+			_, cmd := a.draftView.Update(msg)
+			return a, cmd
 		}
 	}
 	// Pass non-key messages
 	if a.tab == tabTickets {
 		_, cmd := a.ticketsView.Update(msg)
 		return a, cmd
+	} else if a.tab == tabReview {
+		_, cmd := a.reviewView.Update(msg)
+		return a, cmd
 	}
-	_, cmd := a.reviewView.Update(msg)
+	_, cmd := a.draftView.Update(msg)
 	return a, cmd
 }
 
@@ -294,6 +328,7 @@ func (a *App) updateTicketDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.screen = screenList
 			a.ticketsView.Refresh()
 			a.reviewView.Refresh()
+			a.draftView.Refresh()
 			return a, nil
 		case "e":
 			t := a.ticketDetail.Ticket()
@@ -355,6 +390,7 @@ func (a *App) updatePlanDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.screen = screenList
 			a.ticketsView.Refresh()
 			a.reviewView.Refresh()
+			a.draftView.Refresh()
 			return a, nil
 		case "e":
 			t := a.planDetail.Ticket()
@@ -547,6 +583,7 @@ func (a *App) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.statusMsg = fmt.Sprintf("Deleted %s", a.pendingDeleteID)
 				a.statusErr = false
 				a.ticketsView.Refresh()
+				a.draftView.Refresh()
 			}
 			a.pendingDeleteID = ""
 			a.screen = screenList
@@ -700,8 +737,10 @@ func (a *App) View() string {
 	case screenList:
 		if a.tab == tabTickets {
 			sb.WriteString(a.ticketsView.View())
-		} else {
+		} else if a.tab == tabReview {
 			sb.WriteString(a.reviewView.View())
+		} else {
+			sb.WriteString(a.draftView.View())
 		}
 	case screenTicketDetail:
 		if a.ticketDetail != nil {
@@ -760,7 +799,7 @@ func (a *App) View() string {
 }
 
 func (a *App) renderTabBar() string {
-	tabs := []string{"1 Tickets", "2 Review Queue"}
+	tabs := []string{"1 Tickets", "2 Review Queue", "3 Draft Review"}
 	var parts []string
 	for i, label := range tabs {
 		if appTab(i) == a.tab {
@@ -820,6 +859,12 @@ func (a *App) renderHelp() string {
 			"↑↓                navigate",
 			"enter             open first ticket",
 			"r                 review stack (walk all)",
+		}},
+		{"Draft Review", []string{
+			"↑↓                navigate",
+			"enter             open ticket",
+			"a                 approve → ready",
+			"d                 delete ticket",
 		}},
 		{"Forms / Modals", []string{
 			"tab               next field",
