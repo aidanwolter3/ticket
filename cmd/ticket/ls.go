@@ -8,6 +8,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	xterm "github.com/charmbracelet/x/term"
+
 	"github.com/aidanwolter/ticket/internal/model"
 )
 
@@ -88,15 +90,56 @@ func runList(args []string, defaultDB string) {
 		return
 	}
 
+	termW := termWidth()
+	maxIDLen, maxTypeLen, maxStatusLen := 0, 0, 0
+	for _, t := range tickets {
+		if l := len(t.ID); l > maxIDLen {
+			maxIDLen = l
+		}
+		if !t.IsPlan() {
+			// blank for regular tickets
+		} else if l := len(string(t.Type)); l > maxTypeLen {
+			maxTypeLen = l
+		}
+		if l := len(string(t.Status)); l > maxStatusLen {
+			maxStatusLen = l
+		}
+	}
+	// 3 padding groups of 2 spaces (between 4 columns)
+	maxTitleLen := termW - maxIDLen - maxTypeLen - maxStatusLen - 6
+	if maxTitleLen < 10 {
+		maxTitleLen = 10
+	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, t := range tickets {
 		typeStr := ""
 		if t.IsPlan() {
 			typeStr = string(t.Type)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID, t.Title, typeStr, t.Status)
+		title := truncateRunes(t.Title, maxTitleLen)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID, title, typeStr, t.Status)
 	}
 	w.Flush()
+}
+
+func termWidth() int {
+	w, _, err := xterm.GetSize(os.Stdout.Fd())
+	if err != nil || w <= 0 {
+		return 80
+	}
+	return w
+}
+
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max-1]) + "…"
 }
 
 func toTicketJSON(t *model.Ticket) ticketJSON {
