@@ -23,37 +23,27 @@ var Keys = GlobalKeys{
 type ListKeys struct {
 	Up     key.Binding
 	Down   key.Binding
-	Enter  key.Binding
-	New    key.Binding
-	Edit   key.Binding
 	Delete key.Binding
-	Search key.Binding
-	Filter key.Binding
-	Stack  key.Binding
 	Back   key.Binding
-	Space  key.Binding
 	Status key.Binding
 	Thread key.Binding
 	Note   key.Binding
+	Edit   key.Binding
 	Review key.Binding
+	Stack  key.Binding
 }
 
 var ListBindings = ListKeys{
 	Up:     key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 	Down:   key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-	Enter:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
-	New:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new")),
-	Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 	Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
-	Search: key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
-	Filter: key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "filter")),
-	Stack:  key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "stack view")),
 	Back:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-	Space:  key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "expand/collapse")),
 	Status: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "change status")),
 	Thread: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "threads")),
 	Note:   key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "add note")),
+	Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 	Review: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "review")),
+	Stack:  key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "stack view")),
 }
 
 type ThreadKeys struct {
