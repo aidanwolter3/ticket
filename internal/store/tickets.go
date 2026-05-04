@@ -65,19 +65,80 @@ func (s *Store) UpdateTicket(t *model.Ticket) error {
 }
 
 func (s *Store) TransitionTicket(id string, to model.Status, author string) error {
-	var fromStr string
-	err := s.db.QueryRow(`SELECT status FROM tickets WHERE id=?`, id).Scan(&fromStr)
+	var fromStr, typeStr string
+	err := s.db.QueryRow(`SELECT status, type FROM tickets WHERE id=?`, id).Scan(&fromStr, &typeStr)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("ticket %s not found", id)
 	}
 	if err != nil {
 		return err
 	}
+	if model.TicketType(typeStr) == model.TypePlan {
+		return fmt.Errorf("plan status is auto-derived from child tickets and cannot be set directly")
+	}
 	if err := model.ValidateTicketTransition(model.Status(fromStr), to, author); err != nil {
 		return err
 	}
 	now := time.Now().UnixMilli()
-	_, err = s.db.Exec(`UPDATE tickets SET status=?, updated=? WHERE id=?`, string(to), now, id)
+	if _, err = s.db.Exec(`UPDATE tickets SET status=?, updated=? WHERE id=?`, string(to), now, id); err != nil {
+		return err
+	}
+	return s.updateParentPlanStatus(id)
+}
+
+// updateParentPlanStatus recalculates and persists the status for any plan that has id as a child.
+func (s *Store) updateParentPlanStatus(childID string) error {
+	rows, err := s.db.Query(`
+		SELECT t.id FROM tickets t
+		JOIN blocked_by b ON b.ticket_id = t.id
+		WHERE b.blocker_id = ? AND t.type = 'plan'`, childID)
+	if err != nil {
+		return err
+	}
+	var planIDs []string
+	for rows.Next() {
+		var pid string
+		if err := rows.Scan(&pid); err != nil {
+			rows.Close()
+			return err
+		}
+		planIDs = append(planIDs, pid)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, planID := range planIDs {
+		if err := s.recalcPlanStatus(planID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) recalcPlanStatus(planID string) error {
+	rows, err := s.db.Query(`
+		SELECT t.status FROM tickets t
+		JOIN blocked_by b ON b.ticket_id = ? AND b.blocker_id = t.id`, planID)
+	if err != nil {
+		return err
+	}
+	var statuses []model.Status
+	for rows.Next() {
+		var st string
+		if err := rows.Scan(&st); err != nil {
+			rows.Close()
+			return err
+		}
+		statuses = append(statuses, model.Status(st))
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	derived := model.DerivePlanStatus(statuses)
+	now := time.Now().UnixMilli()
+	_, err = s.db.Exec(`UPDATE tickets SET status=?, updated=? WHERE id=?`, string(derived), now, planID)
 	return err
 }
 
