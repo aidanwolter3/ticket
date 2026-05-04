@@ -87,9 +87,14 @@ func runList(args []string, defaultDB string) {
 		fmt.Println("no tickets")
 		return
 	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, t := range tickets {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID, t.Title, t.Type, t.Status)
+		typeStr := ""
+		if t.IsPlan() {
+			typeStr = string(t.Type)
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID, t.Title, typeStr, t.Status)
 	}
 	w.Flush()
 }
