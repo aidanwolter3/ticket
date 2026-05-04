@@ -3,12 +3,19 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/views"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+type dbTickMsg struct{}
+
+func tickDB() tea.Cmd {
+	return tea.Tick(time.Second, func(time.Time) tea.Msg { return dbTickMsg{} })
+}
 
 type appTab int
 
@@ -78,11 +85,29 @@ func New(s *store.Store) *App {
 }
 
 func (a *App) Init() tea.Cmd {
-	return nil
+	return tickDB()
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case dbTickMsg:
+		a.ticketsView.Refresh()
+		a.reviewView.Refresh()
+		a.draftView.Refresh()
+		if a.ticketDetail != nil {
+			_ = a.ticketDetail.Reload()
+		}
+		if a.planDetail != nil {
+			_ = a.planDetail.Reload()
+		}
+		if a.threadsView != nil {
+			_ = a.threadsView.Reload()
+		}
+		if a.stackView != nil {
+			_ = a.stackView.Reload()
+		}
+		return a, tickDB()
+
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
@@ -416,13 +441,6 @@ func (a *App) updatePlanDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "n":
 			a.noteModal = views.NewNoteModal()
 			a.screen = screenNoteModal
-			return a, nil
-		case "s":
-			t := a.planDetail.Ticket()
-			if t != nil {
-				a.statusModal = views.NewStatusModal(t.Status)
-				a.screen = screenStatusModal
-			}
 			return a, nil
 		case "a":
 			// Create child ticket linked to this plan

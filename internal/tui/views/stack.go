@@ -48,6 +48,7 @@ func (v *StackView) load() error {
 	return nil
 }
 
+func (v *StackView) Reload() error       { return v.load() }
 func (v *StackView) SetSize(w, h int) { v.width = w; v.height = h }
 func (v *StackView) Init() tea.Cmd    { return nil }
 
