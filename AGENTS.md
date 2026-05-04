@@ -176,7 +176,7 @@ ticket transition T-043 in_progress agent:claude
 # 3. Read full context
 ticket get T-043
 
-# 4. Do the work — implement, commit, etc.
+# 4. Do the work — implement changes, then commit
 
 # 5. Add a note summarising any non-obvious decisions
 echo '{"tickets":[]}' # (notes are added via import; see below for direct DB access)
@@ -184,6 +184,17 @@ echo '{"tickets":[]}' # (notes are added via import; see below for direct DB acc
 # 6. Hand off for review
 ticket transition T-043 in_review agent:claude
 ```
+
+#### Committing work
+
+Agents **must** commit all changes before transitioning a ticket to `in_review`.
+
+- **Branch**: if the ticket has a `feature_branch`, commit on that branch. If no branch is set, commit on the current branch.
+- **Commit message**: reference the ticket ID in the subject line, e.g.:
+  ```
+  T-043: add JWT validation middleware
+  ```
+- **Stacks**: if a `stack_id` is set, all tickets in the stack share the same `feature_branch`. Commits from each ticket land on that branch and are reviewed together as a unit. Do not merge or rebase the branch between tickets in the same stack.
 
 ### Handling amendment requests (in_review → ready tickets with ready threads)
 
