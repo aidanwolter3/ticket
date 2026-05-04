@@ -1,0 +1,118 @@
+package store
+
+import (
+	"database/sql"
+	"fmt"
+	"time"
+
+	"github.com/aidanwolter/ticket/internal/ids"
+	"github.com/aidanwolter/ticket/internal/model"
+)
+
+func (s *Store) CreateThread(ticketID string) (*model.Thread, error) {
+	id := ids.NewUUID()
+	now := time.Now().UnixMilli()
+	_, err := s.db.Exec(`INSERT INTO comment_threads (id, ticket_id, status, created) VALUES (?, ?, 'active', ?)`,
+		id, ticketID, now)
+	if err != nil {
+		return nil, fmt.Errorf("create thread: %w", err)
+	}
+	return &model.Thread{
+		ID:       id,
+		TicketID: ticketID,
+		Status:   model.ThreadActive,
+		Created:  time.UnixMilli(now),
+	}, nil
+}
+
+func (s *Store) TransitionThread(id string, to model.ThreadStatus, author string) error {
+	var fromStr string
+	err := s.db.QueryRow(`SELECT status FROM comment_threads WHERE id=?`, id).Scan(&fromStr)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("thread %s not found", id)
+	}
+	if err != nil {
+		return err
+	}
+	if err := model.ValidateThreadTransition(model.ThreadStatus(fromStr), to, author); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE comment_threads SET status=? WHERE id=?`, string(to), id)
+	return err
+}
+
+func (s *Store) AddMessage(threadID, author, text string) (*model.Message, error) {
+	id := ids.NewUUID()
+	now := time.Now().UnixMilli()
+	_, err := s.db.Exec(`INSERT INTO thread_messages (id, thread_id, author, text, created) VALUES (?, ?, ?, ?, ?)`,
+		id, threadID, author, text, now)
+	if err != nil {
+		return nil, fmt.Errorf("add message: %w", err)
+	}
+	return &model.Message{
+		ID:       id,
+		ThreadID: threadID,
+		Author:   author,
+		Text:     text,
+		Created:  time.UnixMilli(now),
+	}, nil
+}
+
+func (s *Store) GetThreadsForTicket(ticketID string) ([]*model.Thread, error) {
+	rows, err := s.db.Query(`SELECT id, ticket_id, status, created FROM comment_threads WHERE ticket_id=? ORDER BY created`, ticketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var threads []*model.Thread
+	for rows.Next() {
+		t, err := scanThread(rows)
+		if err != nil {
+			return nil, err
+		}
+		threads = append(threads, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, t := range threads {
+		if err := s.loadMessages(t); err != nil {
+			return nil, err
+		}
+	}
+	return threads, nil
+}
+
+func (s *Store) loadMessages(t *model.Thread) error {
+	rows, err := s.db.Query(`SELECT id, thread_id, author, text, created FROM thread_messages WHERE thread_id=? ORDER BY created`, t.ID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			m         model.Message
+			createdMs int64
+		)
+		if err := rows.Scan(&m.ID, &m.ThreadID, &m.Author, &m.Text, &createdMs); err != nil {
+			return err
+		}
+		m.Created = time.UnixMilli(createdMs)
+		t.Messages = append(t.Messages, m)
+	}
+	return rows.Err()
+}
+
+func scanThread(r scanner) (*model.Thread, error) {
+	var (
+		t         model.Thread
+		statusStr string
+		createdMs int64
+	)
+	if err := r.Scan(&t.ID, &t.TicketID, &statusStr, &createdMs); err != nil {
+		return nil, err
+	}
+	t.Status = model.ThreadStatus(statusStr)
+	t.Created = time.UnixMilli(createdMs)
+	return &t, nil
+}

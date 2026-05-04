@@ -1,0 +1,81 @@
+package tui
+
+import "github.com/charmbracelet/bubbles/key"
+
+type GlobalKeys struct {
+	Quit     key.Binding
+	Tab      key.Binding
+	ShiftTab key.Binding
+	Tab1     key.Binding
+	Tab2     key.Binding
+	Help     key.Binding
+}
+
+var Keys = GlobalKeys{
+	Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+	Tab:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next tab")),
+	ShiftTab: key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "prev tab")),
+	Tab1:     key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "tickets")),
+	Tab2:     key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "review queue")),
+	Help:     key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+}
+
+type ListKeys struct {
+	Up     key.Binding
+	Down   key.Binding
+	Enter  key.Binding
+	New    key.Binding
+	Edit   key.Binding
+	Delete key.Binding
+	Search key.Binding
+	Filter key.Binding
+	Stack  key.Binding
+	Back   key.Binding
+	Space  key.Binding
+	Status key.Binding
+	Thread key.Binding
+	Note   key.Binding
+	Review key.Binding
+}
+
+var ListBindings = ListKeys{
+	Up:     key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+	Down:   key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+	Enter:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
+	New:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new")),
+	Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
+	Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
+	Search: key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
+	Filter: key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "filter")),
+	Stack:  key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "stack view")),
+	Back:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+	Space:  key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "expand/collapse")),
+	Status: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "change status")),
+	Thread: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "threads")),
+	Note:   key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "add note")),
+	Review: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "review")),
+}
+
+type ThreadKeys struct {
+	Up      key.Binding
+	Down    key.Binding
+	Enter   key.Binding
+	Reply   key.Binding
+	Toggle  key.Binding
+	Resolve key.Binding
+	Reopen  key.Binding
+	New     key.Binding
+	Back    key.Binding
+}
+
+var ThreadBindings = ThreadKeys{
+	Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+	Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+	Enter:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand/collapse")),
+	Reply:   key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
+	Toggle:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "toggle active/ready")),
+	Resolve: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "resolve")),
+	Reopen:  key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "reopen")),
+	New:     key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new thread")),
+	Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+}

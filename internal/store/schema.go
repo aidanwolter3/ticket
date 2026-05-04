@@ -1,0 +1,71 @@
+package store
+
+const schema = `
+PRAGMA journal_mode=WAL;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version  INTEGER PRIMARY KEY,
+  applied  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tickets (
+  id                TEXT PRIMARY KEY,
+  title             TEXT NOT NULL,
+  description       TEXT NOT NULL DEFAULT '',
+  type              TEXT NOT NULL DEFAULT 'ticket'
+                    CHECK(type IN ('ticket', 'plan')),
+  status            TEXT NOT NULL DEFAULT 'draft'
+                    CHECK(status IN ('draft','ready','in_progress','in_review','completed')),
+  feature_branch    TEXT NOT NULL DEFAULT '',
+  stack_id          TEXT,
+  commit_hash       TEXT,
+  verifiable_result TEXT NOT NULL DEFAULT '',
+  created           INTEGER NOT NULL,
+  updated           INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS blocked_by (
+  ticket_id   TEXT NOT NULL,
+  blocker_id  TEXT NOT NULL,
+  PRIMARY KEY (ticket_id, blocker_id),
+  FOREIGN KEY (ticket_id)  REFERENCES tickets(id) ON DELETE CASCADE,
+  FOREIGN KEY (blocker_id) REFERENCES tickets(id) ON DELETE CASCADE,
+  CHECK (ticket_id != blocker_id)
+);
+
+CREATE TABLE IF NOT EXISTS comment_threads (
+  id        TEXT PRIMARY KEY,
+  ticket_id TEXT NOT NULL,
+  status    TEXT NOT NULL DEFAULT 'active'
+            CHECK(status IN ('active','ready','resolved')),
+  created   INTEGER NOT NULL,
+  FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS thread_messages (
+  id        TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  author    TEXT NOT NULL,
+  text      TEXT NOT NULL,
+  created   INTEGER NOT NULL,
+  FOREIGN KEY (thread_id) REFERENCES comment_threads(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id        TEXT PRIMARY KEY,
+  ticket_id TEXT NOT NULL,
+  author    TEXT NOT NULL,
+  text      TEXT NOT NULL,
+  created   INTEGER NOT NULL,
+  FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_status         ON tickets(status);
+CREATE INDEX IF NOT EXISTS idx_tickets_type           ON tickets(type);
+CREATE INDEX IF NOT EXISTS idx_tickets_stack          ON tickets(stack_id);
+CREATE INDEX IF NOT EXISTS idx_blocked_by_blocker     ON blocked_by(blocker_id);
+CREATE INDEX IF NOT EXISTS idx_threads_ticket         ON comment_threads(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_thread_messages_thread ON thread_messages(thread_id);
+CREATE INDEX IF NOT EXISTS idx_notes_ticket           ON notes(ticket_id);
+`
