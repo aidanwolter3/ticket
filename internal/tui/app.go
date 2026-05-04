@@ -30,17 +30,19 @@ const (
 	screenNoteModal
 	screenReplyModal
 	screenNewThreadModal
+	screenConfirmDelete
 	screenHelp
 )
 
 type App struct {
-	store     *store.Store
-	tab       appTab
-	screen    appScreen
-	width     int
-	height    int
-	statusMsg string
-	statusErr bool
+	store           *store.Store
+	tab             appTab
+	screen          appScreen
+	width           int
+	height          int
+	statusMsg       string
+	statusErr       bool
+	pendingDeleteID string
 
 	// views
 	ticketsView    *views.TicketsView
@@ -161,6 +163,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateStack(msg)
 	case screenForm:
 		return a.updateForm(msg)
+	case screenConfirmDelete:
+		return a.updateConfirmDelete(msg)
 	case screenStatusModal:
 		return a.updateStatusModal(msg)
 	case screenNoteModal:
@@ -216,13 +220,8 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "d":
 				t := a.ticketsView.SelectedTicket()
 				if t != nil {
-					if err := a.store.DeleteTicket(t.ID); err != nil {
-						a.setErr(err)
-					} else {
-						a.statusMsg = fmt.Sprintf("Deleted %s", t.ID)
-						a.statusErr = false
-						a.ticketsView.Refresh()
-					}
+					a.pendingDeleteID = t.ID
+					a.screen = screenConfirmDelete
 				}
 				return a, nil
 			}
@@ -536,6 +535,29 @@ func (a *App) prevDetailScreen() appScreen {
 	return screenList
 }
 
+// --- Confirm delete ---
+
+func (a *App) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch km.String() {
+		case "y", "Y":
+			if err := a.store.DeleteTicket(a.pendingDeleteID); err != nil {
+				a.setErr(err)
+			} else {
+				a.statusMsg = fmt.Sprintf("Deleted %s", a.pendingDeleteID)
+				a.statusErr = false
+				a.ticketsView.Refresh()
+			}
+			a.pendingDeleteID = ""
+			a.screen = screenList
+		default:
+			a.pendingDeleteID = ""
+			a.screen = screenList
+		}
+	}
+	return a, nil
+}
+
 // --- Status modal ---
 
 func (a *App) updateStatusModal(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -717,6 +739,9 @@ func (a *App) View() string {
 		if a.newThreadModal != nil {
 			sb.WriteString(a.newThreadModal.View())
 		}
+	case screenConfirmDelete:
+		prompt := fmt.Sprintf("Delete ticket %s? (y/N) ", a.pendingDeleteID)
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("1")).Render(prompt))
 	}
 
 	// Status bar
