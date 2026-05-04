@@ -57,6 +57,7 @@ func runList(args []string, defaultDB string) {
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	statusFilter := fs.String("status", "", "filter by status (draft|ready|in_progress|in_review|completed)")
 	jsonOut := fs.Bool("json", false, "output full ticket data as JSON")
+	actionable := fs.Bool("actionable", false, "show only ready tickets with all blockers completed")
 	fs.Parse(args)
 
 	s := openStore(*dbPath)
@@ -64,7 +65,9 @@ func runList(args []string, defaultDB string) {
 
 	var tickets []*model.Ticket
 	var err error
-	if *statusFilter != "" {
+	if *actionable {
+		tickets, err = s.AvailableWork()
+	} else if *statusFilter != "" {
 		tickets, err = s.ListTickets(model.Status(*statusFilter))
 	} else {
 		tickets, err = s.ListTickets()

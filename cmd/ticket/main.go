@@ -40,6 +40,12 @@ func main() {
 		case "purge":
 			runPurge(os.Args[2:], defaultDB)
 			return
+		case "note":
+			runNote(os.Args[2:], defaultDB)
+			return
+		case "thread":
+			runThread(os.Args[2:], defaultDB)
+			return
 		case "help", "--help", "-h":
 			printUsage()
 			return
@@ -86,16 +92,23 @@ func printUsage() {
 	fmt.Print(`ticket — local-first ticket tracker
 
 Usage:
-  ticket [--db path]                   launch TUI
-  ticket import [--db path] [file]     batch-create tickets from JSON (stdin if no file)
-  ticket ls [--db path] [--status s]   list tickets as JSON
-  ticket get [--db path] <id>          get a single ticket as JSON
+  ticket [--db path]                          launch TUI
+  ticket import [--db path] [file]            batch-create tickets from JSON (stdin if no file)
+  ticket ls [--db path] [--status s] [--json] list tickets
+  ticket ls [--db path] --actionable          list ready tickets with all blockers completed
+  ticket get [--db path] <id>                 get a single ticket as JSON
   ticket transition [--db path] <id> <status> <author>
-                                       transition a ticket's status
+                                              transition a ticket's status
+  ticket note add [--db path] <ticket-id> <author> <text>
+                                              add a note to a ticket
+  ticket thread reply [--db path] <thread-id> <author> <text>
+                                              add a reply to a thread
+  ticket thread transition [--db path] <thread-id> <new-status> <author>
+                                              transition a thread's status (agents: ready→active only)
   ticket promote [--db path] <plan-id> <author>
-                                       promote all draft children of a plan to ready
-  ticket delete [--db path] <id>       delete a ticket
-  ticket purge [--db path] --yes       delete the database file
+                                              promote all draft children of a plan to ready
+  ticket delete [--db path] <id>              delete a ticket
+  ticket purge [--db path] --yes              delete the database file
 
 For agent usage, see AGENTS.md.
 `)
