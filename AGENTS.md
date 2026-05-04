@@ -18,16 +18,17 @@ Only humans resolve threads and mark tickets completed. Agents claim work (`read
 ## Finding available work
 
 ```bash
-ticket ls --status ready --json
+ticket ls --actionable --json
 ```
 
-Returns a JSON array. Filter to actionable tickets (not plans, all blockers completed):
+Returns a JSON array of ready tickets (not plans) whose blockers are all completed. This is the primary command for finding work.
+
+As a fallback, you can filter manually:
 
 ```bash
 ticket ls --status ready --json | jq '[.[] | select(.type == "ticket")]'
+# then per-ticket get to check blockers
 ```
-
-To check blockers are all completed, inspect each ticket's `blocked_by` IDs using `ticket get`.
 
 ## Creating tickets (batch JSON import)
 
@@ -183,7 +184,7 @@ Valid transitions for agents:
 
 ```bash
 # 1. Find available work
-ticket ls --status ready | jq '[.[] | select(.type == "ticket")]'
+ticket ls --actionable --json
 
 # 2. Claim it
 ticket transition T-043 in_progress agent:claude
@@ -194,7 +195,7 @@ ticket get T-043
 # 4. Do the work — implement changes, then commit
 
 # 5. Add a note summarising any non-obvious decisions
-echo '{"tickets":[]}' # (notes are added via import; see below for direct DB access)
+ticket note add T-043 agent:claude 'Explain any non-obvious decisions here.'
 
 # 6. Hand off for review
 ticket transition T-043 in_review agent:claude
@@ -222,54 +223,11 @@ ticket transition T-043 in_progress agent:claude
 
 # 3. Read the ready threads and make the changes
 
-# 4. For each amended thread, flip it back to active via direct DB write (see below)
+# 4. For each amended thread, post a reply and flip it back to active
+ticket thread reply <thread-id> agent:claude 'Fixed in commit abc123.'
+ticket thread transition <thread-id> active agent:claude
 # then mark ticket in_review again
 ticket transition T-043 in_review agent:claude
-```
-
-## Direct database access
-
-For operations not yet covered by the CLI (thread status transitions, adding messages to existing threads, adding notes to existing tickets), agents may write directly to the SQLite database.
-
-Default DB path: `~/.local/share/ticket/tickets.db`
-
-Enable WAL mode on every connection:
-```sql
-PRAGMA journal_mode=WAL;
-PRAGMA foreign_keys=ON;
-```
-
-### Add a note to an existing ticket
-
-```sql
-INSERT INTO notes (id, ticket_id, author, text, created)
-VALUES (lower(hex(randomblob(16))), 'T-043', 'agent:claude', 'Used HS256 algorithm.', unixepoch()*1000);
-```
-
-### Add a reply to a thread and flip it back to active
-
-```sql
--- Add message
-INSERT INTO thread_messages (id, thread_id, author, text, created)
-VALUES (lower(hex(randomblob(16))), '<thread-id>', 'agent:claude', 'Fixed in commit abc123.', unixepoch()*1000);
-
--- Flip thread active (signals amendment is addressed)
-UPDATE comment_threads SET status='active' WHERE id='<thread-id>';
-```
-
-### Query available work directly
-
-```sql
-SELECT t.*
-FROM tickets t
-WHERE t.status = 'ready'
-  AND t.type = 'ticket'
-  AND NOT EXISTS (
-    SELECT 1 FROM blocked_by b
-    JOIN tickets bt ON bt.id = b.blocker_id
-    WHERE b.ticket_id = t.id AND bt.status != 'completed'
-  )
-ORDER BY t.created ASC;
 ```
 
 ## Tips for writing good tickets
