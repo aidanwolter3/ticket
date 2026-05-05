@@ -111,6 +111,8 @@ Usage:
                                               add a reply to a thread
   ticket thread transition [--db path] <thread-id> <new-status> <author>
                                               transition a thread's status (agents: ready→active only)
+  ticket task ls [--db path] [--json] <ticket-id>
+                                              list tasks for a ticket
   ticket task complete [--db path] <task-id>  mark a task complete
   ticket task uncomplete [--db path] <task-id>
                                               mark a task incomplete
