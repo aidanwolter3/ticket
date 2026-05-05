@@ -15,7 +15,8 @@ var allStatuses = []model.Status{
 	model.StatusReady,
 	model.StatusInProgress,
 	model.StatusInReview,
-	model.StatusCompleted,
+	model.StatusApproved,
+	model.StatusMerged,
 }
 
 type StatusModal struct {

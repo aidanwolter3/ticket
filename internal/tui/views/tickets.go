@@ -127,17 +127,22 @@ func (v *TicketsView) View() string {
 			title = string([]rune(title)[:maxTitle-1]) + "…"
 		}
 
+		merged := t.Status == "merged"
+		idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		titleStyle := lipgloss.NewStyle()
+		if merged {
+			titleStyle = titleStyle.Foreground(lipgloss.Color("8"))
+		}
+
 		line := fmt.Sprintf("%s %s %s%s",
 			icon,
-			lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(t.ID),
-			title,
+			idStyle.Render(t.ID),
+			titleStyle.Render(title),
 			taskTag,
 		)
 
 		if i == v.cursor {
 			line = lipgloss.NewStyle().Reverse(true).Render(line)
-		} else if t.Status == "merged" {
-			line = lipgloss.NewStyle().Faint(true).Render(line)
 		}
 		sb.WriteString(line + "\n")
 	}
