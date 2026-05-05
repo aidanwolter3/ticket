@@ -31,6 +31,12 @@ func main() {
 		case "find-work":
 			runFindWork(os.Args[2:], defaultDB)
 			return
+		case "claim-work":
+			runClaimWork(os.Args[2:], defaultDB)
+			return
+		case "peek-work":
+			runPeekWork(os.Args[2:], defaultDB)
+			return
 		case "transition":
 			runTransition(os.Args[2:], defaultDB)
 			return
@@ -111,7 +117,9 @@ Usage:
   ticket import [--db path] [file]            batch-create tickets from JSON (stdin if no file)
   ticket ls [--db path] [--status s] [--json] list tickets
   ticket get [--db path] <id>                 get a single ticket as JSON (includes tasks and threads)
-  ticket find-work [--db path]                find actionable work for agents (JSON)
+  ticket find-work [--db path]                find actionable work for agents (deprecated, use claim-work)
+  ticket claim-work [--db path] [--json]      atomically claim the next available work item
+  ticket peek-work [--db path] [--json]       view claimable work without claiming
   ticket transition [--db path] <id> <status> <author>
                                               transition a ticket's status
   ticket note add [--db path] <ticket-id> <author> <text>
