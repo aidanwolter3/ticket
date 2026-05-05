@@ -23,6 +23,24 @@ func (s *Store) ConfigGet(key string) (string, bool, error) {
 	return value, true, nil
 }
 
+// ConfigList returns all key/value pairs from the config table.
+func (s *Store) ConfigList() (map[string]string, error) {
+	rows, err := s.db.Query(`SELECT key, value FROM config`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]string)
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		result[k] = v
+	}
+	return result, rows.Err()
+}
+
 // ConfigGetDefault returns the value for key, or defaultVal if not set.
 func (s *Store) ConfigGetDefault(key, defaultVal string) (string, error) {
 	v, ok, err := s.ConfigGet(key)

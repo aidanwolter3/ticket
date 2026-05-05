@@ -368,6 +368,22 @@ func TestRemoveBlocker(t *testing.T) {
 	assert.NotContains(t, got.BlockedBy, a.ID)
 }
 
+func TestConfigList(t *testing.T) {
+	s := newTestStore(t)
+
+	// Empty store returns empty map.
+	m, err := s.ConfigList()
+	require.NoError(t, err)
+	assert.Empty(t, m)
+
+	require.NoError(t, s.ConfigSet("worktrees", "false"))
+	require.NoError(t, s.ConfigSet("other", "val"))
+
+	m, err = s.ConfigList()
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"worktrees": "false", "other": "val"}, m)
+}
+
 func ticketIDs(tickets []*model.Ticket) []string {
 	ids := make([]string, len(tickets))
 	for i, t := range tickets {
