@@ -138,7 +138,7 @@ func (v *ReviewQueueView) View() string {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("✗ "+v.inlineErr) + "\n")
 	}
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑↓ navigate · enter open · A approve · q quit"))
+		"↑↓ navigate · enter open · a approve · q quit"))
 
 	return sb.String()
 }

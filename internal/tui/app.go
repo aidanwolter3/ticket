@@ -312,7 +312,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tabReview:
 			switch km.String() {
-			case "A":
+			case "a":
 				t := a.reviewView.SelectedTicket()
 				if t != nil {
 					// Check for open threads before approving.
