@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -314,7 +315,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == "draft" {
 				id := a.currentTicketID()
-				if err := workflow.Promote(a.store, id); err != nil {
+				if err := workflow.Promote(a.store, id, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready", id)
@@ -364,7 +365,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if a.ticketDetail.Ticket().Status != "approved" {
 					a.statusMsg = fmt.Sprintf("%s is not approved", id)
 					a.statusErr = true
-				} else if err := workflow.Merge(a.store, id); err != nil {
+				} else if err := workflow.Merge(a.store, id, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → merged", id)
@@ -694,16 +695,16 @@ func (a *App) View() string {
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("1")).Render(prompt))
 	}
 
-	// Status bar
-	statusLine := a.statusMsg
+	// Status bar — always rendered to keep View() height constant.
+	// Flatten newlines so a multi-line git error never overflows the reserved line.
+	statusText := strings.ReplaceAll(strings.TrimSpace(a.statusMsg), "\n", " · ")
+	var statusLine string
 	if a.statusErr {
-		statusLine = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("✗ " + statusLine)
-	} else if statusLine != "" {
-		statusLine = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render("✓ " + statusLine)
+		statusLine = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("✗ " + statusText)
+	} else if statusText != "" {
+		statusLine = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render("✓ " + statusText)
 	}
-	if statusLine != "" {
-		sb.WriteString("\n" + statusLine)
-	}
+	sb.WriteString("\n" + statusLine)
 
 	return sb.String()
 }

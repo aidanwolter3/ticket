@@ -1,7 +1,9 @@
 package workflow
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,8 +13,9 @@ import (
 )
 
 // Promote transitions a draft ticket to ready and creates a git worktree for it
-// if worktrees are enabled in config.
-func Promote(s *store.Store, ticketID string) error {
+// if worktrees are enabled in config. stdout and stderr control where git output
+// goes; pass io.Discard to suppress (e.g. from a TUI).
+func Promote(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 	ticket, err := s.PromoteTicket(ticketID, "human")
 	if err != nil {
 		return fmt.Errorf("promote: %w", err)
@@ -36,6 +39,8 @@ func Promote(s *store.Store, ticketID string) error {
 	worktreeAbs := filepath.Join(repoPath, ".worktrees", ticketID)
 
 	checkBranch := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", featureBranch)
+	checkBranch.Stdout = io.Discard
+	checkBranch.Stderr = io.Discard
 	branchExists := checkBranch.Run() == nil
 
 	var wtCmd *exec.Cmd
@@ -44,10 +49,14 @@ func Promote(s *store.Store, ticketID string) error {
 	} else {
 		wtCmd = exec.Command("git", "-C", repoPath, "worktree", "add", "-b", featureBranch, worktreeAbs)
 	}
-	wtCmd.Stdout = os.Stderr
-	wtCmd.Stderr = os.Stderr
+	var wtStderr bytes.Buffer
+	wtCmd.Stdout = stdout
+	wtCmd.Stderr = io.MultiWriter(stderr, &wtStderr)
 
 	if err := wtCmd.Run(); err != nil {
+		if msg := strings.TrimSpace(wtStderr.String()); msg != "" {
+			return fmt.Errorf("promote: worktree creation failed: %s", msg)
+		}
 		return fmt.Errorf("promote: worktree creation failed: %w", err)
 	}
 
@@ -59,8 +68,9 @@ func Promote(s *store.Store, ticketID string) error {
 }
 
 // Merge ff-merges the feature branch into main, removes the worktree, deletes
-// the branch, and transitions the ticket to merged.
-func Merge(s *store.Store, ticketID string) error {
+// the branch, and transitions the ticket to merged. stdout and stderr control
+// where git output goes; pass io.Discard to suppress (e.g. from a TUI).
+func Merge(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 	ticket, err := s.GetTicket(ticketID)
 	if err != nil {
 		return fmt.Errorf("merge: %w", err)
@@ -101,27 +111,31 @@ func Merge(s *store.Store, ticketID string) error {
 	}
 	featureBranch := ticket.FeatureBranch
 
+	var mergeStderr bytes.Buffer
 	mergeCmd := exec.Command("git", "-C", repoPath, "merge", "--ff-only", featureBranch)
-	mergeCmd.Stdout = os.Stdout
-	mergeCmd.Stderr = os.Stderr
+	mergeCmd.Stdout = stdout
+	mergeCmd.Stderr = io.MultiWriter(stderr, &mergeStderr)
 	if err := mergeCmd.Run(); err != nil {
+		if msg := strings.TrimSpace(mergeStderr.String()); msg != "" {
+			return fmt.Errorf("merge: %s", msg)
+		}
 		return fmt.Errorf("merge: branch has diverged from main — rebase manually then retry")
 	}
 
 	if ticket.WorktreePath != "" {
 		wtCmd := exec.Command("git", "-C", repoPath, "worktree", "remove", "--force", ticket.WorktreePath)
-		wtCmd.Stdout = os.Stdout
-		wtCmd.Stderr = os.Stderr
+		wtCmd.Stdout = stdout
+		wtCmd.Stderr = stderr
 		if err := wtCmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "merge: warning: could not remove worktree: %v\n", err)
+			fmt.Fprintf(stderr, "merge: warning: could not remove worktree: %v\n", err)
 		}
 	}
 
 	delCmd := exec.Command("git", "-C", repoPath, "branch", "-d", featureBranch)
-	delCmd.Stdout = os.Stdout
-	delCmd.Stderr = os.Stderr
+	delCmd.Stdout = stdout
+	delCmd.Stderr = stderr
 	if err := delCmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "merge: warning: could not delete branch %s: %v\n", featureBranch, err)
+		fmt.Fprintf(stderr, "merge: warning: could not delete branch %s: %v\n", featureBranch, err)
 	}
 
 	ticket.WorktreePath = ""

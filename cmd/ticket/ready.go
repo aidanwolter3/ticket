@@ -23,7 +23,7 @@ func runReady(args []string, defaultDB string) {
 	s := openStore(*dbPath)
 	defer s.Close()
 
-	if err := workflow.Promote(s, ticketID); err != nil {
+	if err := workflow.Promote(s, ticketID, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
