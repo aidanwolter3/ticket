@@ -6,17 +6,22 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+
+	"github.com/aidanwolter/ticket/internal/model"
 )
 
 func runTask(args []string, defaultDB string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket task <subcommand>")
+		fmt.Fprintln(os.Stderr, "  add        <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>]")
 		fmt.Fprintln(os.Stderr, "  ls         <ticket-id>")
 		fmt.Fprintln(os.Stderr, "  complete   <task-id> <author>")
 		fmt.Fprintln(os.Stderr, "  uncomplete <task-id> <author>")
 		os.Exit(1)
 	}
 	switch args[0] {
+	case "add":
+		runTaskAdd(args[1:], defaultDB)
 	case "ls":
 		runTaskList(args[1:], defaultDB)
 	case "complete":
@@ -27,6 +32,52 @@ func runTask(args []string, defaultDB string) {
 		fmt.Fprintf(os.Stderr, "unknown task subcommand: %s\n", args[0])
 		os.Exit(1)
 	}
+}
+
+func runTaskAdd(args []string, defaultDB string) {
+	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
+		fmt.Fprintln(os.Stderr, "usage: ticket task add [--db path] <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>]")
+		os.Exit(1)
+	}
+	ticketID := args[0]
+
+	fs := flag.NewFlagSet("task add", flag.ExitOnError)
+	dbPath := fs.String("db", defaultDB, "path to SQLite database")
+	title := fs.String("title", "", "task title (required)")
+	description := fs.String("description", "", "task description")
+	verifiableResult := fs.String("verifiable-result", "", "verifiable result")
+	fs.Parse(args[1:])
+
+	if *title == "" {
+		fmt.Fprintln(os.Stderr, "error: --title is required")
+		os.Exit(1)
+	}
+
+	s := openStore(*dbPath)
+	defer s.Close()
+
+	position := 1
+	last, err := s.LastTaskForTicket(ticketID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "get last task: %v\n", err)
+		os.Exit(1)
+	}
+	if last != nil {
+		position = last.Position + 1
+	}
+
+	task := &model.Task{
+		TicketID:         ticketID,
+		Title:            *title,
+		Description:      *description,
+		VerifiableResult: *verifiableResult,
+		Position:         position,
+	}
+	if err := s.CreateTask(task); err != nil {
+		fmt.Fprintf(os.Stderr, "create task: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(task.ID)
 }
 
 func runTaskList(args []string, defaultDB string) {
