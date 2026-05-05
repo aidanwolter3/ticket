@@ -76,10 +76,13 @@ func main() {
 		case "help", "--help", "-h":
 			printUsage()
 			return
+		default:
+			fmt.Fprintf(os.Stderr, "unknown command: %s\nRun 'ticket help' for usage.\n", os.Args[1])
+			os.Exit(1)
 		}
 	}
 
-	// Default: launch TUI
+	// Launch TUI when no arguments are provided
 	fs := flag.NewFlagSet("ticket", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(os.Args[1:])
