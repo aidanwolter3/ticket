@@ -728,6 +728,7 @@ func (a *App) renderHelp() string {
 		}},
 		{"Threads", []string{
 			"↑↓                navigate",
+			"c                 complete/uncomplete task",
 			"enter             expand/collapse",
 			"r                 reply",
 			"→                 toggle active/ready",

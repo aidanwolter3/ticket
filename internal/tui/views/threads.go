@@ -139,6 +139,16 @@ func (v *ThreadsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					v.load()
 				}
 			}
+		case "c":
+			if v.cursor < len(v.items) && v.items[v.cursor].kind == itemTask {
+				task := v.items[v.cursor].task
+				if task.CompletedAt != nil {
+					v.err = v.store.UncompleteTask(task.ID)
+				} else {
+					v.err = v.store.CompleteTask(task.ID)
+				}
+				v.load()
+			}
 		}
 	case tea.WindowSizeMsg:
 		v.width = msg.Width
@@ -167,7 +177,14 @@ func (v *ThreadsView) View() string {
 			if i > 0 {
 				sb.WriteString("\n")
 			}
-			taskLine := fmt.Sprintf("%s  %d. %s",
+			completionIcon := "○"
+			completionCol := lipgloss.Color("8")
+			if item.task.CompletedAt != nil {
+				completionIcon = "●"
+				completionCol = lipgloss.Color("2")
+			}
+			taskLine := fmt.Sprintf("%s %s  %d. %s",
+				lipgloss.NewStyle().Foreground(completionCol).Render(completionIcon),
 				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(item.task.ID),
 				item.task.Position,
 				item.task.Title,
@@ -213,7 +230,7 @@ func (v *ThreadsView) View() string {
 
 	sb.WriteString("\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑↓ navigate · enter expand · r reply · → toggle ready · x resolve · ← reopen · n new thread · esc back"))
+		"↑↓ navigate · c complete task · enter expand · r reply · → toggle ready · x resolve · ← reopen · n new thread · esc back"))
 
 	return sb.String()
 }
