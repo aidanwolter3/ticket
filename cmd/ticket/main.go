@@ -155,6 +155,5 @@ Usage:
   ticket delete [--db path] <id>              delete a ticket
   ticket purge [--db path] --yes              delete the database file
 
-For agent usage, see AGENTS.md.
 `)
 }
