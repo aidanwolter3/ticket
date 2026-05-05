@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"text/tabwriter"
 	"time"
 
 	"github.com/aidanwolter/ticket/internal/store"
@@ -62,6 +63,7 @@ When all ready threads across all tasks have been addressed, transition the tick
 func runFindWork(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("find-work", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
+	jsonOut := fs.Bool("json", false, "output raw JSON")
 	fs.Parse(args)
 
 	s := openStore(*dbPath)
@@ -74,7 +76,11 @@ func runFindWork(args []string, defaultDB string) {
 	}
 
 	if len(items) == 0 {
-		fmt.Println("[]")
+		if *jsonOut {
+			fmt.Println("[]")
+		} else {
+			fmt.Println("no work available")
+		}
 		return
 	}
 
@@ -141,7 +147,16 @@ func runFindWork(args []string, defaultDB string) {
 		})
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	enc.Encode(out)
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(out)
+		return
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	for _, item := range out {
+		fmt.Fprintf(w, "%s\t%s\t%s\n", item.Ticket.ID, item.Type, item.Ticket.Title)
+	}
+	w.Flush()
 }
