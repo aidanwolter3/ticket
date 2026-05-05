@@ -49,6 +49,9 @@ func main() {
 		case "thread":
 			runThread(os.Args[2:], defaultDB)
 			return
+		case "task":
+			runTask(os.Args[2:], defaultDB)
+			return
 		case "help", "--help", "-h":
 			printUsage()
 			return
@@ -108,6 +111,9 @@ Usage:
                                               add a reply to a thread
   ticket thread transition [--db path] <thread-id> <new-status> <author>
                                               transition a thread's status (agents: ready→active only)
+  ticket task complete [--db path] <task-id>  mark a task complete
+  ticket task uncomplete [--db path] <task-id>
+                                              mark a task incomplete
   ticket promote [--db path] <ticket-id> <author>
                                               promote a draft ticket to ready
   ticket delete [--db path] <id>              delete a ticket
