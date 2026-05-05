@@ -42,7 +42,8 @@ func runPromote(args []string, defaultDB string) {
 	// Determine repo_path.
 	repoPath := ticket.RepoPath
 	if repoPath == "" {
-		repoPath = filepath.Dir(*dbPath)
+		fmt.Fprintf(os.Stderr, "promote: ticket %s has no repo_path set — re-import or re-draft with repo_path pointing to the git repo\n", ticketID)
+		os.Exit(1)
 	}
 
 	// Determine feature branch.
@@ -55,10 +56,8 @@ func runPromote(args []string, defaultDB string) {
 	worktreeRel := filepath.Join(".worktrees", ticketID)
 	worktreeAbs := filepath.Join(repoPath, worktreeRel)
 
-	// Check whether the branch exists.
+	// Check whether the branch exists (suppress output — non-zero exit just means it doesn't).
 	checkBranch := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", featureBranch)
-	checkBranch.Stdout = os.Stderr
-	checkBranch.Stderr = os.Stderr
 	branchExists := checkBranch.Run() == nil
 
 	var wtCmd *exec.Cmd
@@ -75,7 +74,7 @@ func runPromote(args []string, defaultDB string) {
 		return
 	}
 
-	if err := s.SetWorktreePath(ticketID, worktreeAbs, featureBranch); err != nil {
+	if err := s.SetWorktreePath(ticketID, worktreeAbs, repoPath, featureBranch); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not save worktree_path: %v\n", err)
 		return
 	}

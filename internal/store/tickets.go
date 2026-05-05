@@ -88,13 +88,13 @@ func (s *Store) PromoteTicket(ticketID, author string) (*model.Ticket, error) {
 	return s.GetTicket(ticketID)
 }
 
-// SetWorktreePath updates the worktree_path (and optionally feature_branch) on a ticket.
-func (s *Store) SetWorktreePath(ticketID, worktreePath, featureBranch string) error {
+// SetWorktreePath updates the worktree_path, repo_path, and feature_branch on a ticket.
+func (s *Store) SetWorktreePath(ticketID, worktreePath, repoPath, featureBranch string) error {
 	now := time.Now().UnixMilli()
 	_, err := s.db.Exec(`
-		UPDATE tickets SET worktree_path=?, feature_branch=?, updated=?
+		UPDATE tickets SET worktree_path=?, repo_path=?, feature_branch=?, updated=?
 		WHERE id=?`,
-		nullStr(worktreePath), featureBranch, now, ticketID)
+		nullStr(worktreePath), nullStr(repoPath), featureBranch, now, ticketID)
 	return err
 }
 

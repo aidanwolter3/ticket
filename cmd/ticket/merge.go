@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -69,7 +68,8 @@ func runMerge(args []string, defaultDB string) {
 	// Precondition: repo_path must be set.
 	repoPath := ticket.RepoPath
 	if repoPath == "" {
-		repoPath = filepath.Dir(*dbPath)
+		fmt.Fprintf(os.Stderr, "merge: ticket %s has no repo_path set\n", ticketID)
+		os.Exit(1)
 	}
 	if _, err := os.Stat(repoPath); err != nil {
 		fmt.Fprintf(os.Stderr, "merge: repo_path %q does not exist: %v\n", repoPath, err)
