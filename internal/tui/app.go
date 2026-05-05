@@ -7,6 +7,7 @@ import (
 
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/views"
+	"github.com/aidanwolter/ticket/internal/workflow"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -25,7 +26,6 @@ const (
 	screenList appScreen = iota // split-pane: list left, detail right
 	screenThreads
 	screenForm
-	screenStatusModal
 	screenNoteModal
 	screenReplyModal
 	screenNewThreadModal
@@ -62,7 +62,6 @@ type App struct {
 	// overlay screens
 	threadsView    *views.ThreadsView
 	formView       *views.FormView
-	statusModal    *views.StatusModal
 	noteModal      *views.NoteModal
 	replyModal     *views.ReplyModal
 	newThreadModal *views.NewThreadModal
@@ -242,8 +241,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateForm(msg)
 	case screenConfirmDelete:
 		return a.updateConfirmDelete(msg)
-	case screenStatusModal:
-		return a.updateStatusModal(msg)
 	case screenNoteModal:
 		return a.updateNoteModal(msg)
 	case screenReplyModal:
@@ -288,13 +285,6 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.currentTicketID() != "" {
 				a.noteModal = views.NewNoteModal()
 				a.screen = screenNoteModal
-			}
-			return a, nil
-		case "s":
-			id := a.currentTicketID()
-			if id != "" && a.ticketDetail != nil {
-				a.statusModal = views.NewStatusModal(a.ticketDetail.Ticket().Status)
-				a.screen = screenStatusModal
 			}
 			return a, nil
 		case "[":
@@ -356,10 +346,10 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tabDraft:
 			switch km.String() {
-			case "a":
+			case "r":
 				t := a.draftView.SelectedTicket()
 				if t != nil {
-					if err := a.store.TransitionTicket(t.ID, "ready", "human"); err != nil {
+					if err := workflow.Promote(a.store, t.ID); err != nil {
 						a.setErr(err)
 					} else {
 						a.statusMsg = fmt.Sprintf("%s → ready", t.ID)
@@ -501,36 +491,6 @@ func (a *App) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return a, nil
-}
-
-// --- Status modal ---
-
-func (a *App) updateStatusModal(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if km, ok := msg.(tea.KeyMsg); ok {
-		switch km.String() {
-		case "esc":
-			a.screen = screenList
-			return a, nil
-		case "enter":
-			to := a.statusModal.Selected()
-			id := a.currentTicketID()
-			if id != "" {
-				if err := a.store.TransitionTicket(id, to, "human"); err != nil {
-					a.setErr(err)
-				} else {
-					a.statusMsg = fmt.Sprintf("Status → %s", to)
-					a.statusErr = false
-					a.reloadCurrentDetail()
-					a.ticketsView.Refresh()
-					a.reviewView.Refresh()
-				}
-			}
-			a.screen = screenList
-			return a, nil
-		}
-	}
-	_, cmd := a.statusModal.Update(msg)
-	return a, cmd
 }
 
 // --- Note modal ---
@@ -686,10 +646,6 @@ func (a *App) View() string {
 		if a.formView != nil {
 			sb.WriteString(a.formView.View())
 		}
-	case screenStatusModal:
-		if a.statusModal != nil {
-			sb.WriteString(a.statusModal.View())
-		}
 	case screenNoteModal:
 		if a.noteModal != nil {
 			sb.WriteString(a.noteModal.View())
@@ -757,7 +713,6 @@ func (a *App) renderHelp() string {
 			"e                 edit",
 			"t                 threads",
 			"n                 add note",
-			"s                 change status",
 			"[ / ]             scroll up / down",
 		}},
 		{"Threads", []string{
@@ -773,7 +728,7 @@ func (a *App) renderHelp() string {
 		}},
 		{"Draft Review", []string{
 			"↑↓                navigate",
-			"a                 approve → ready",
+			"r                 promote → ready",
 			"d                 delete ticket",
 		}},
 		{"Forms / Modals", []string{
