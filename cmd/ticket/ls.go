@@ -22,6 +22,7 @@ type ticketJSON struct {
 	Description   string       `json:"description,omitempty"`
 	FeatureBranch string       `json:"feature_branch,omitempty"`
 	WorktreePath  string       `json:"worktree_path,omitempty"`
+	RepoPath      string       `json:"repo_path,omitempty"`
 	BlockedBy     []string     `json:"blocked_by,omitempty"`
 	Tasks         []taskJSON   `json:"tasks,omitempty"`
 	Threads       []threadJSON `json:"threads,omitempty"`
@@ -154,6 +155,7 @@ func toTicketJSON(t *model.Ticket) ticketJSON {
 		Description:   t.Description,
 		FeatureBranch: t.FeatureBranch,
 		WorktreePath:  t.WorktreePath,
+		RepoPath:      t.RepoPath,
 		BlockedBy:     t.BlockedBy,
 		Created:       t.Created,
 		Updated:       t.Updated,
