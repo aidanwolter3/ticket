@@ -96,14 +96,14 @@ func (s *Store) GetTasksForTicket(ticketID string) ([]model.Task, error) {
 	return tasks, rows.Err()
 }
 
-// CompleteTask sets completed_at to now.
+// CompleteTask sets completed_at to now. Called by the TUI threads view ("c" keybinding on a task row).
 func (s *Store) CompleteTask(id string) error {
 	now := time.Now().UnixMilli()
 	_, err := s.db.Exec(`UPDATE tasks SET completed_at=?, updated=? WHERE id=?`, now, now, id)
 	return err
 }
 
-// UncompleteTask clears completed_at.
+// UncompleteTask clears completed_at. Called by the TUI threads view ("c" keybinding on a task row).
 func (s *Store) UncompleteTask(id string) error {
 	now := time.Now().UnixMilli()
 	_, err := s.db.Exec(`UPDATE tasks SET completed_at=NULL, updated=? WHERE id=?`, now, id)
