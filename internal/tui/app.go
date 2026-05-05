@@ -309,6 +309,23 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.screen = screenConfirmDelete
 				}
 				return a, nil
+			case "m":
+				if t := a.ticketsView.SelectedTicket(); t != nil {
+					if t.Status != "approved" {
+						a.statusMsg = fmt.Sprintf("%s is not approved", t.ID)
+						a.statusErr = true
+					} else if err := workflow.Merge(a.store, t.ID); err != nil {
+						a.setErr(err)
+					} else {
+						a.statusMsg = fmt.Sprintf("%s → merged", t.ID)
+						a.statusErr = false
+						a.ticketsView.Refresh()
+						a.reviewView.Refresh()
+						a.draftView.Refresh()
+						a.loadCurrentDetail()
+					}
+				}
+				return a, nil
 			}
 		case tabReview:
 			switch km.String() {
@@ -708,6 +725,7 @@ func (a *App) renderHelp() string {
 		{"List Panel (left)", []string{
 			"↑↓ / j/k          navigate",
 			"d                 delete ticket",
+			"m                 merge approved ticket",
 		}},
 		{"Detail Panel (right)", []string{
 			"e                 edit",

@@ -149,7 +149,7 @@ func (v *TicketsView) View() string {
 
 	sb.WriteString("\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑↓/jk · d delete · tab tabs · q quit"))
+		"↑↓/jk · d delete · m merge · tab tabs · q quit"))
 
 	return sb.String()
 }
