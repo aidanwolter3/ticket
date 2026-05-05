@@ -11,12 +11,13 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	comp "github.com/aidanwolter/ticket/internal/tui/components"
 )
 
 type TicketDetailView struct {
 	store    *store.Store
 	ticket   *model.Ticket
-	threads  []*model.Thread
 	notes    []*model.Note
 	blockers []*model.Ticket
 	vp       viewport.Model
@@ -40,11 +41,17 @@ func (v *TicketDetailView) loadTicket(id string) error {
 	}
 	v.ticket = t
 
-	threads, err := v.store.GetThreadsForTicket(id)
-	if err != nil {
-		return err
+	// Populate per-task threads so the detail view can show counts.
+	for i := range v.ticket.Tasks {
+		threads, err := v.store.GetThreadsForTask(v.ticket.Tasks[i].ID)
+		if err != nil {
+			return err
+		}
+		v.ticket.Tasks[i].Threads = nil
+		for _, th := range threads {
+			v.ticket.Tasks[i].Threads = append(v.ticket.Tasks[i].Threads, *th)
+		}
 	}
-	v.threads = threads
 
 	notes, err := v.store.GetNotesForTicket(id)
 	if err != nil {
@@ -112,16 +119,10 @@ func (v *TicketDetailView) renderContent() string {
 	t := v.ticket
 	var sb strings.Builder
 
-	typeColor := lipgloss.Color("15")
-	if t.IsPlan() {
-		typeColor = lipgloss.Color("6")
-	}
-
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(typeColor).Render(
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6")).Render(
 		fmt.Sprintf("%s  %s", t.ID, t.Title)) + "\n")
 
-	sb.WriteString(fmt.Sprintf("  Type: %s  Status: %s  %s\n",
-		string(t.Type),
+	sb.WriteString(fmt.Sprintf("  Status: %s  %s\n",
 		components.TicketStatusIcon(t.Status)+" "+string(t.Status),
 		lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Updated: "+t.Updated.Format(time.RFC1123)),
 	))
@@ -129,11 +130,8 @@ func (v *TicketDetailView) renderContent() string {
 	if t.FeatureBranch != "" {
 		sb.WriteString(fmt.Sprintf("  Branch: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(t.FeatureBranch)))
 	}
-	if t.StackID != "" {
-		sb.WriteString(fmt.Sprintf("  Stack: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(t.StackID)))
-	}
-	if t.CommitHash != "" {
-		sb.WriteString(fmt.Sprintf("  Commit: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(t.CommitHash)))
+	if t.WorktreePath != "" {
+		sb.WriteString(fmt.Sprintf("  Worktree: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(t.WorktreePath)))
 	}
 	sb.WriteString("\n")
 
@@ -141,11 +139,6 @@ func (v *TicketDetailView) renderContent() string {
 	if t.Description != "" {
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Description") + "\n")
 		sb.WriteString(indent(wrapText(t.Description, wrapWidth), "  ") + "\n\n")
-	}
-
-	if t.VerifiableResult != "" {
-		sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Verifiable Result") + "\n")
-		sb.WriteString(indent(wrapText(t.VerifiableResult, wrapWidth), "  ") + "\n\n")
 	}
 
 	if len(v.blockers) > 0 {
@@ -157,13 +150,70 @@ func (v *TicketDetailView) renderContent() string {
 		sb.WriteString("\n")
 	}
 
+	// Tasks section
+	completed := 0
+	for _, task := range t.Tasks {
+		if task.CompletedAt != nil {
+			completed++
+		}
+	}
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render(
-		fmt.Sprintf("Threads (%d)", len(v.threads))) + "\n")
-	if len(v.threads) == 0 {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  no threads") + "\n")
+		fmt.Sprintf("Tasks (%d/%d)", completed, len(t.Tasks))) + "\n")
+	if len(t.Tasks) == 0 {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  no tasks") + "\n")
 	} else {
-		active, ready, resolved := 0, 0, 0
-		for _, th := range v.threads {
+		sb.WriteString("  " + comp.ProgressBar(completed, len(t.Tasks), 20) + "\n")
+		for _, task := range t.Tasks {
+			icon := "○"
+			col := lipgloss.Color("8")
+			if task.CompletedAt != nil {
+				icon = "●"
+				col = lipgloss.Color("2")
+			}
+			taskLine := fmt.Sprintf("  %s %s. %s",
+				lipgloss.NewStyle().Foreground(col).Render(icon),
+				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("%d", task.Position)),
+				task.Title,
+			)
+			if task.CommitHash != "" {
+				taskLine += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(task.CommitHash[:7])
+			}
+			if len(task.Threads) > 0 {
+				active, ready := 0, 0
+				for _, th := range task.Threads {
+					switch th.Status {
+					case model.ThreadActive:
+						active++
+					case model.ThreadReady:
+						ready++
+					}
+				}
+				var parts []string
+				if active > 0 {
+					parts = append(parts, fmt.Sprintf("%d active", active))
+				}
+				if ready > 0 {
+					parts = append(parts, lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(fmt.Sprintf("%d ready", ready)))
+				}
+				if len(parts) > 0 {
+					taskLine += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("("+strings.Join(parts, " · ")+")")
+				}
+			}
+			sb.WriteString(taskLine + "\n")
+			if task.Description != "" {
+				sb.WriteString(indent(wrapText(task.Description, wrapWidth-4), "      ") + "\n")
+			}
+			if task.VerifiableResult != "" {
+				sb.WriteString("      " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("✓ "+task.VerifiableResult) + "\n")
+			}
+		}
+	}
+	sb.WriteString("\n")
+
+	// Thread summary (aggregated across all tasks)
+	active, ready, resolved := 0, 0, 0
+	for _, task := range t.Tasks {
+		for _, th := range task.Threads {
 			switch th.Status {
 			case model.ThreadActive:
 				active++
@@ -173,6 +223,13 @@ func (v *TicketDetailView) renderContent() string {
 				resolved++
 			}
 		}
+	}
+	total := active + ready + resolved
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Render(
+		fmt.Sprintf("Threads (%d)", total)) + "\n")
+	if total == 0 {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  no threads") + "\n")
+	} else {
 		sb.WriteString(fmt.Sprintf("  %s active  %s ready  %s resolved\n",
 			lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(fmt.Sprintf("%d", active)),
 			lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(fmt.Sprintf("%d", ready)),

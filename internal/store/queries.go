@@ -6,71 +6,31 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 )
 
-// DraftPlan groups a plan with all its children (used by DraftQueue).
-type DraftPlan struct {
-	Plan     *model.Ticket
-	Children []*model.Ticket // all children, not just drafts
+// WorkType indicates what kind of work is available on a ticket.
+type WorkType string
+
+const (
+	WorkTypeNew       WorkType = "new_work"
+	WorkTypeAmendment WorkType = "amendment"
+)
+
+// WorkItem describes a ticket that has actionable work for an agent.
+type WorkItem struct {
+	Type   WorkType
+	Ticket *model.Ticket
 }
 
-// DraftQueue holds draft tickets grouped by plan plus standalone drafts.
-type DraftQueue struct {
-	Plans      []DraftPlan
-	Standalone []*model.Ticket // draft tickets not under any plan
-}
-
-// DraftQueue returns draft tickets grouped under their parent plans, plus standalone drafts.
-func (s *Store) DraftQueue() (*DraftQueue, error) {
-	all, err := s.ListTickets()
-	if err != nil {
-		return nil, err
-	}
-
-	ticketMap := make(map[string]*model.Ticket, len(all))
-	for _, t := range all {
-		ticketMap[t.ID] = t
-	}
-
-	childSet := make(map[string]bool)
-	var plans []DraftPlan
-	for _, t := range all {
-		if !t.IsPlan() {
-			continue
-		}
-		var children []*model.Ticket
-		hasDraft := false
-		for _, childID := range t.BlockedBy {
-			if child, ok := ticketMap[childID]; ok {
-				children = append(children, child)
-				if child.Status == model.StatusDraft {
-					hasDraft = true
-					childSet[childID] = true
-				}
-			}
-		}
-		if hasDraft {
-			plans = append(plans, DraftPlan{Plan: t, Children: children})
-		}
-	}
-
-	var standalone []*model.Ticket
-	for _, t := range all {
-		if t.IsPlan() || childSet[t.ID] || t.Status != model.StatusDraft {
-			continue
-		}
-		standalone = append(standalone, t)
-	}
-
-	return &DraftQueue{Plans: plans, Standalone: standalone}, nil
-}
-
-// AvailableWork returns ready tickets (not plans) whose blockers are all completed.
-func (s *Store) AvailableWork() ([]*model.Ticket, error) {
-	rows, err := s.db.Query(`
+// FindWork returns tickets with actionable work for agents:
+//   - new_work:  ready tickets with all blockers completed and no worktree claimed
+//   - amendment: in_review tickets that have at least one ready thread across their tasks
+func (s *Store) FindWork() ([]*WorkItem, error) {
+	// New work: ready tickets, all blockers completed, no worktree claimed.
+	newRows, err := s.db.Query(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(stack_id,''), COALESCE(commit_hash,''), verifiable_result, created, updated
+		       COALESCE(worktree_path,''), created, updated
 		FROM tickets t
 		WHERE t.status = 'ready'
-		  AND t.type = 'ticket'
+		  AND t.worktree_path IS NULL
 		  AND NOT EXISTS (
 		    SELECT 1 FROM blocked_by b
 		    JOIN tickets bt ON bt.id = b.blocker_id
@@ -80,81 +40,77 @@ func (s *Store) AvailableWork() ([]*model.Ticket, error) {
 	if err != nil {
 		return nil, err
 	}
-	return collectTickets(s, rows)
+	newTickets, err := collectTickets(s, newRows)
+	if err != nil {
+		return nil, err
+	}
+
+	// Amendment work: in_review tickets that have ready threads on any task.
+	amendRows, err := s.db.Query(`
+		SELECT DISTINCT t.id, t.title, t.description, t.type, t.status, t.feature_branch,
+		       COALESCE(t.worktree_path,''), t.created, t.updated
+		FROM tickets t
+		JOIN tasks tk ON tk.ticket_id = t.id
+		JOIN comment_threads ct ON ct.task_id = tk.id
+		WHERE t.status = 'in_review'
+		  AND ct.status = 'ready'
+		ORDER BY t.created ASC`)
+	if err != nil {
+		return nil, err
+	}
+	amendTickets, err := collectTickets(s, amendRows)
+	if err != nil {
+		return nil, err
+	}
+
+	var items []*WorkItem
+	for _, t := range newTickets {
+		items = append(items, &WorkItem{Type: WorkTypeNew, Ticket: t})
+	}
+	for _, t := range amendTickets {
+		items = append(items, &WorkItem{Type: WorkTypeAmendment, Ticket: t})
+	}
+	return items, nil
 }
 
-// ReviewQueue returns stacks (all tickets in_review) and standalone in_review tickets.
+// DraftQueue returns draft tickets.
+type DraftQueue struct {
+	Tickets []*model.Ticket
+}
+
+func (s *Store) DraftQueue() (*DraftQueue, error) {
+	tickets, err := s.ListTickets(model.StatusDraft)
+	if err != nil {
+		return nil, err
+	}
+	return &DraftQueue{Tickets: tickets}, nil
+}
+
+// ReviewQueue returns tickets in in_review status.
 type ReviewQueue struct {
-	Stacks     map[string][]*model.Ticket // stack_id → tickets
-	Standalone []*model.Ticket
+	Tickets []*model.Ticket
 }
 
 func (s *Store) ReviewQueue() (*ReviewQueue, error) {
-	// Stacks where all tickets are in_review
-	stackRows, err := s.db.Query(`
-		WITH stack_status AS (
-		  SELECT stack_id,
-		         COUNT(*) AS total,
-		         SUM(CASE WHEN status = 'in_review' THEN 1 ELSE 0 END) AS in_review_count
-		  FROM tickets
-		  WHERE stack_id IS NOT NULL
-		  GROUP BY stack_id
-		)
-		SELECT t.id, t.title, t.description, t.type, t.status, t.feature_branch,
-		       COALESCE(t.stack_id,''), COALESCE(t.commit_hash,''), t.verifiable_result, t.created, t.updated
-		FROM tickets t
-		JOIN stack_status s ON s.stack_id = t.stack_id
-		WHERE s.total = s.in_review_count
-		ORDER BY t.stack_id, t.created`)
-	if err != nil {
-		return nil, err
-	}
-	stackTickets, err := collectTickets(s, stackRows)
-	if err != nil {
-		return nil, err
-	}
-
-	stacks := make(map[string][]*model.Ticket)
-	for _, t := range stackTickets {
-		stacks[t.StackID] = append(stacks[t.StackID], t)
-	}
-
-	// Standalone in_review tickets
-	soloRows, err := s.db.Query(`
+	rows, err := s.db.Query(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(stack_id,''), COALESCE(commit_hash,''), verifiable_result, created, updated
+		       COALESCE(worktree_path,''), created, updated
 		FROM tickets
-		WHERE status = 'in_review' AND stack_id IS NULL
+		WHERE status = 'in_review'
 		ORDER BY created`)
 	if err != nil {
 		return nil, err
 	}
-	standalone, err := collectTickets(s, soloRows)
+	tickets, err := collectTickets(s, rows)
 	if err != nil {
 		return nil, err
 	}
-
-	return &ReviewQueue{Stacks: stacks, Standalone: standalone}, nil
+	return &ReviewQueue{Tickets: tickets}, nil
 }
 
-// TicketHierarchy returns plans first with BlockedBy populated, then standalone tickets.
+// TicketHierarchy returns all tickets.
 func (s *Store) TicketHierarchy() ([]*model.Ticket, error) {
 	return s.ListTickets()
-}
-
-// BlockingTickets returns tickets that have id in their blocked_by list.
-func (s *Store) BlockingTickets(id string) ([]*model.Ticket, error) {
-	rows, err := s.db.Query(`
-		SELECT t.id, t.title, t.description, t.type, t.status, t.feature_branch,
-		       COALESCE(t.stack_id,''), COALESCE(t.commit_hash,''), t.verifiable_result, t.created, t.updated
-		FROM tickets t
-		JOIN blocked_by b ON b.ticket_id = t.id
-		WHERE b.blocker_id = ?
-		ORDER BY t.created`, id)
-	if err != nil {
-		return nil, err
-	}
-	return collectTickets(s, rows)
 }
 
 func collectTickets(s *Store, rows *sql.Rows) ([]*model.Ticket, error) {
@@ -168,7 +124,7 @@ func collectTickets(s *Store, rows *sql.Rows) ([]*model.Ticket, error) {
 		tickets = append(tickets, t)
 	}
 	rowsErr := rows.Err()
-	rows.Close() // close before loadBlockedBy to free the single connection
+	rows.Close()
 	if rowsErr != nil {
 		return nil, rowsErr
 	}
@@ -176,6 +132,11 @@ func collectTickets(s *Store, rows *sql.Rows) ([]*model.Ticket, error) {
 		if err := s.loadBlockedBy(t); err != nil {
 			return nil, err
 		}
+		tasks, err := s.GetTasksForTicket(t.ID)
+		if err != nil {
+			return nil, err
+		}
+		t.Tasks = tasks
 	}
 	return tickets, nil
 }

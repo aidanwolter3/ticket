@@ -25,65 +25,69 @@ func main() {
 	}
 	defer s.Close()
 
-	t043 := &model.Ticket{
-		Title:            "Add JWT validation",
-		Type:             model.TypeTicket,
-		Status:           model.StatusReady,
-		FeatureBranch:    "feat/auth-argon2",
-		StackID:          "auth-1",
-		VerifiableResult: "Run `npm test -- auth/jwt`. All tests pass.",
+	// Auth redesign ticket with three implementation tasks.
+	auth := &model.Ticket{
+		Title:         "Auth redesign",
+		Type:          model.TypeTicket,
+		Status:        model.StatusReady,
+		FeatureBranch: "feat/auth-argon2",
 	}
-	must(s.CreateTicket(t043))
-	fmt.Println("Created", t043.ID)
+	must(s.CreateTicket(auth))
+	fmt.Println("Created", auth.ID)
 
-	t044 := &model.Ticket{
-		Title:            "Replace bcrypt with argon2",
-		Type:             model.TypeTicket,
-		Status:           model.StatusReady,
-		FeatureBranch:    "feat/auth-argon2",
-		StackID:          "auth-1",
-		BlockedBy:        []string{t043.ID},
-		VerifiableResult: "Run `npm test -- auth/`. All tests pass. Login works with both old and new hashes.",
+	tasks := []struct {
+		title, verifiable string
+	}{
+		{
+			"Add JWT validation",
+			"Run `npm test -- auth/jwt`. All tests pass.",
+		},
+		{
+			"Replace bcrypt with argon2",
+			"Run `npm test -- auth/`. All tests pass. Login works with both old and new hashes.",
+		},
+		{
+			"Migrate user sessions",
+			"Run `npm test -- auth/sessions`. All sessions migrate without forced logouts.",
+		},
 	}
-	must(s.CreateTicket(t044))
-	fmt.Println("Created", t044.ID)
-
-	t045 := &model.Ticket{
-		Title:            "Migrate user sessions",
-		Type:             model.TypeTicket,
-		Status:           model.StatusReady,
-		FeatureBranch:    "feat/auth-argon2",
-		StackID:          "auth-1",
-		BlockedBy:        []string{t044.ID},
-		VerifiableResult: "Run `npm test -- auth/sessions`. All sessions migrate without forced logouts.",
+	for i, td := range tasks {
+		task := &model.Task{
+			TicketID:         auth.ID,
+			Title:            td.title,
+			Position:         i + 1,
+			VerifiableResult: td.verifiable,
+		}
+		must(s.CreateTask(task))
+		fmt.Println("  Task", task.ID, task.Title)
 	}
-	must(s.CreateTicket(t045))
-	fmt.Println("Created", t045.ID)
 
-	t042 := &model.Ticket{
-		Title:     "Auth redesign",
-		Type:      model.TypePlan,
-		Status:    model.StatusDraft,
-		BlockedBy: []string{t043.ID, t044.ID, t045.ID},
-	}
-	must(s.CreateTicket(t042))
-	fmt.Println("Created", t042.ID, "(plan)")
-
-	t046 := &model.Ticket{
+	// Standalone in_review ticket with a thread on its task.
+	audit := &model.Ticket{
 		Title:       "Audit log refactor",
 		Type:        model.TypeTicket,
 		Status:      model.StatusInReview,
 		Description: "Clean up the audit log module to use structured logging.",
 	}
-	must(s.CreateTicket(t046))
-	fmt.Println("Created", t046.ID, "(standalone in_review)")
+	must(s.CreateTicket(audit))
+	fmt.Println("Created", audit.ID, "(in_review)")
 
-	thread, _ := s.CreateThread(t046.ID)
-	s.AddMessage(thread.ID, "human:aidan", "The log rotation logic is duplicated in three places, please consolidate.")
-	s.AddMessage(thread.ID, "agent:claude", "I'll extract it into a shared helper in pkg/logging.")
-	fmt.Println("Added thread to", t046.ID)
+	auditTask := &model.Task{
+		TicketID: audit.ID,
+		Title:    "Refactor audit log to structured logging",
+		Position: 1,
+		VerifiableResult: "Run `go test ./pkg/logging/...`. All tests pass.",
+	}
+	must(s.CreateTask(auditTask))
+	fmt.Println("  Task", auditTask.ID)
 
-	fmt.Println("\nDone. Run: ./ticket")
+	thread, err := s.CreateThread(auditTask.ID)
+	must(err)
+	must2(s.AddMessage(thread.ID, "human:aidan", "The log rotation logic is duplicated in three places, please consolidate."))
+	must2(s.AddMessage(thread.ID, "agent:claude", "I'll extract it into a shared helper in pkg/logging."))
+	fmt.Println("  Added thread to task", auditTask.ID)
+
+	fmt.Println("\nDone. Run: go run ./cmd/ticket/")
 }
 
 func must(err error) {
@@ -91,4 +95,8 @@ func must(err error) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func must2(_ interface{}, err error) {
+	must(err)
 }

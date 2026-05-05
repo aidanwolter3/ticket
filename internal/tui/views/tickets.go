@@ -12,18 +12,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-type ticketRow struct {
-	ticket *model.Ticket
-	indent int
-}
-
 type TicketsView struct {
-	store  *store.Store
-	rows   []ticketRow
-	cursor int
-	width  int
-	height int
-	err    error
+	store   *store.Store
+	tickets []*model.Ticket
+	cursor  int
+	width   int
+	height  int
+	err     error
 }
 
 func NewTicketsView(s *store.Store) *TicketsView {
@@ -39,47 +34,10 @@ func (v *TicketsView) load() {
 		return
 	}
 	v.err = nil
+	v.tickets = tickets
 
-	planMap := make(map[string]*model.Ticket)
-	for _, t := range tickets {
-		if t.IsPlan() {
-			planMap[t.ID] = t
-		}
-	}
-
-	childSet := make(map[string]bool)
-	for _, t := range tickets {
-		if t.IsPlan() {
-			for _, c := range t.BlockedBy {
-				childSet[c] = true
-			}
-		}
-	}
-
-	v.rows = nil
-	for _, t := range tickets {
-		if !t.IsPlan() {
-			continue
-		}
-		v.rows = append(v.rows, ticketRow{ticket: t, indent: 0})
-		for _, childID := range t.BlockedBy {
-			for _, child := range tickets {
-				if child.ID == childID {
-					v.rows = append(v.rows, ticketRow{ticket: child, indent: 1})
-					break
-				}
-			}
-		}
-	}
-	for _, t := range tickets {
-		if t.IsPlan() || childSet[t.ID] {
-			continue
-		}
-		v.rows = append(v.rows, ticketRow{ticket: t, indent: 0})
-	}
-
-	if v.cursor >= len(v.rows) {
-		v.cursor = max(0, len(v.rows)-1)
+	if v.cursor >= len(v.tickets) {
+		v.cursor = max(0, len(v.tickets)-1)
 	}
 }
 
@@ -93,10 +51,10 @@ func (v *TicketsView) Refresh() {
 }
 
 func (v *TicketsView) SelectedTicket() *model.Ticket {
-	if len(v.rows) == 0 || v.cursor >= len(v.rows) {
+	if len(v.tickets) == 0 || v.cursor >= len(v.tickets) {
 		return nil
 	}
-	return v.rows[v.cursor].ticket
+	return v.tickets[v.cursor]
 }
 
 func (v *TicketsView) Init() tea.Cmd { return nil }
@@ -110,7 +68,7 @@ func (v *TicketsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				v.cursor--
 			}
 		case key.Matches(msg, downBinding):
-			if v.cursor < len(v.rows)-1 {
+			if v.cursor < len(v.tickets)-1 {
 				v.cursor++
 			}
 		}
@@ -129,53 +87,52 @@ func (v *TicketsView) View() string {
 		return sb.String()
 	}
 
-	if len(v.rows) == 0 {
+	if len(v.tickets) == 0 {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("No tickets.") + "\n")
 		return sb.String()
 	}
 
 	visible := v.height - 2
 	if visible < 1 {
-		visible = len(v.rows)
+		visible = len(v.tickets)
 	}
 	start := 0
 	if v.cursor >= visible {
 		start = v.cursor - visible + 1
 	}
 
-	for i := start; i < len(v.rows) && i < start+visible; i++ {
-		row := v.rows[i]
-		indent := strings.Repeat("  ", row.indent)
-		icon := components.TicketStatusIcon(row.ticket.Status)
-		title := row.ticket.Title
-		maxTitle := v.width - row.indent*2 - len(row.ticket.ID) - 3
+	for i := start; i < len(v.tickets) && i < start+visible; i++ {
+		t := v.tickets[i]
+		icon := components.TicketStatusIcon(t.Status)
+
+		taskCount := len(t.Tasks)
+		taskTag := ""
+		if taskCount > 0 {
+			done := 0
+			for _, task := range t.Tasks {
+				if task.CompletedAt != nil {
+					done++
+				}
+			}
+			taskTag = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).
+				Render(fmt.Sprintf("[%d/%d]", done, taskCount))
+		}
+
+		maxTitle := v.width - len(t.ID) - 3
 		if maxTitle < 5 {
 			maxTitle = 5
 		}
+		title := t.Title
 		if len([]rune(title)) > maxTitle {
 			title = string([]rune(title)[:maxTitle-1]) + "…"
 		}
 
-		var line string
-		if row.ticket.IsPlan() {
-			line = fmt.Sprintf("%s%s %s %s",
-				indent,
-				lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render("▼"),
-				lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true).Render(row.ticket.ID),
-				lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(title),
-			)
-		} else {
-			stackTag := ""
-			if row.ticket.StackID != "" {
-				stackTag = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render("["+row.ticket.StackID+"]")
-			}
-			line = fmt.Sprintf("%s%s %s %s%s",
-				indent, icon,
-				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(row.ticket.ID),
-				title,
-				stackTag,
-			)
-		}
+		line := fmt.Sprintf("%s %s %s%s",
+			icon,
+			lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(t.ID),
+			title,
+			taskTag,
+		)
 
 		if i == v.cursor {
 			line = lipgloss.NewStyle().Reverse(true).Render(line)

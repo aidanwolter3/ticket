@@ -20,18 +20,24 @@ type importTicket struct {
 	// Ref is a local name used only within this JSON document to wire up
 	// blocked_by relationships between tickets being created together.
 	// It is not stored in the database.
-	Ref              string `json:"ref"`
-	Title            string `json:"title"`
-	Type             string `json:"type"`   // "ticket" | "plan" — defaults to "ticket"
-	Status           string `json:"status"` // defaults to "draft"
-	Description      string `json:"description"`
-	FeatureBranch    string `json:"feature_branch"`
-	StackID          string `json:"stack_id"`
-	VerifiableResult string `json:"verifiable_result"`
+	Ref           string        `json:"ref"`
+	Title         string        `json:"title"`
+	Status        string        `json:"status"` // defaults to "draft"
+	Description   string        `json:"description"`
+	FeatureBranch string        `json:"feature_branch"`
+	WorktreePath  string        `json:"worktree_path"`
 	// BlockedBy may contain refs from this document ("jwt") or existing IDs ("T-042").
 	BlockedBy []string       `json:"blocked_by"`
+	Tasks     []importTask   `json:"tasks"`
 	Notes     []importNote   `json:"notes"`
-	Threads   []importThread `json:"threads"`
+	Threads   []importThread `json:"threads"` // deprecated: threads now belong to tasks
+}
+
+type importTask struct {
+	Title            string         `json:"title"`
+	Description      string         `json:"description"`
+	VerifiableResult string         `json:"verifiable_result"`
+	Threads          []importThread `json:"threads"`
 }
 
 type importNote struct {
@@ -103,24 +109,18 @@ func importTickets(s *store.Store, inputs []importTicket) (*importResult, error)
 			return nil, fmt.Errorf("ticket with ref %q is missing a title", in.Ref)
 		}
 
-		ticketType := model.TypeTicket
-		if in.Type == "plan" {
-			ticketType = model.TypePlan
-		}
-
 		status := model.StatusDraft
 		if in.Status != "" {
 			status = model.Status(in.Status)
 		}
 
 		t := &model.Ticket{
-			Title:            in.Title,
-			Type:             ticketType,
-			Status:           status,
-			Description:      in.Description,
-			FeatureBranch:    in.FeatureBranch,
-			StackID:          in.StackID,
-			VerifiableResult: in.VerifiableResult,
+			Title:         in.Title,
+			Type:          model.TypeTicket,
+			Status:        status,
+			Description:   in.Description,
+			FeatureBranch: in.FeatureBranch,
+			WorktreePath:  in.WorktreePath,
 		}
 		if err := s.CreateTicket(t); err != nil {
 			return nil, fmt.Errorf("create ticket %q: %w", in.Title, err)
@@ -144,7 +144,6 @@ func importTickets(s *store.Store, inputs []importTicket) (*importResult, error)
 			if id, ok := refToID[ref]; ok {
 				resolved = append(resolved, id)
 			} else {
-				// Treat as a literal ticket ID (e.g., "T-042" from an existing ticket).
 				resolved = append(resolved, ref)
 			}
 		}
@@ -154,27 +153,41 @@ func importTickets(s *store.Store, inputs []importTicket) (*importResult, error)
 		}
 	}
 
-	// Third pass: add notes and threads.
+	// Third pass: create tasks, notes, and threads.
 	for i, in := range inputs {
-		for _, n := range in.Notes {
-			if _, err := s.AddNote(created[i].ID, n.Author, n.Text); err != nil {
-				return nil, fmt.Errorf("add note to %s: %w", created[i].ID, err)
+		ticketID := created[i].ID
+
+		for pos, it := range in.Tasks {
+			task := &model.Task{
+				TicketID:         ticketID,
+				Title:            it.Title,
+				Description:      it.Description,
+				Position:         pos + 1,
+				VerifiableResult: it.VerifiableResult,
+			}
+			if err := s.CreateTask(task); err != nil {
+				return nil, fmt.Errorf("create task %q for %s: %w", it.Title, ticketID, err)
+			}
+			for _, th := range it.Threads {
+				thread, err := s.CreateThread(task.ID)
+				if err != nil {
+					return nil, fmt.Errorf("create thread on task %s: %w", task.ID, err)
+				}
+				for _, msg := range th.Messages {
+					if _, err := s.AddMessage(thread.ID, msg.Author, msg.Text); err != nil {
+						return nil, fmt.Errorf("add message to thread %s: %w", thread.ID, err)
+					}
+				}
 			}
 		}
-		for _, th := range in.Threads {
-			thread, err := s.CreateThread(created[i].ID)
-			if err != nil {
-				return nil, fmt.Errorf("create thread on %s: %w", created[i].ID, err)
-			}
-			for _, msg := range th.Messages {
-				if _, err := s.AddMessage(thread.ID, msg.Author, msg.Text); err != nil {
-					return nil, fmt.Errorf("add message to thread %s: %w", thread.ID, err)
-				}
+
+		for _, n := range in.Notes {
+			if _, err := s.AddNote(ticketID, n.Author, n.Text); err != nil {
+				return nil, fmt.Errorf("add note to %s: %w", ticketID, err)
 			}
 		}
 	}
 
-	// Build result map: ref (or title) → assigned ID.
 	resultMap := make(map[string]string, len(inputs))
 	for k, v := range refToID {
 		resultMap[k] = v

@@ -2,7 +2,6 @@ package views
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/aidanwolter/ticket/internal/model"
@@ -12,18 +11,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-type reviewItem struct {
-	stackID string // empty for standalone
-	tickets []*model.Ticket
-}
-
 type ReviewQueueView struct {
-	store  *store.Store
-	items  []reviewItem
-	cursor int
-	width  int
-	height int
-	err    error
+	store   *store.Store
+	tickets []*model.Ticket
+	cursor  int
+	width   int
+	height  int
+	err     error
 }
 
 func NewReviewQueueView(s *store.Store) *ReviewQueueView {
@@ -39,25 +33,9 @@ func (v *ReviewQueueView) load() {
 		return
 	}
 	v.err = nil
-	v.items = nil
-
-	// Stacks first (sorted by stack ID for determinism)
-	var stackIDs []string
-	for id := range q.Stacks {
-		stackIDs = append(stackIDs, id)
-	}
-	sort.Strings(stackIDs)
-	for _, id := range stackIDs {
-		v.items = append(v.items, reviewItem{stackID: id, tickets: q.Stacks[id]})
-	}
-
-	// Standalone
-	for _, t := range q.Standalone {
-		v.items = append(v.items, reviewItem{tickets: []*model.Ticket{t}})
-	}
-
-	if v.cursor >= len(v.items) {
-		v.cursor = max(0, len(v.items)-1)
+	v.tickets = q.Tickets
+	if v.cursor >= len(v.tickets) && len(v.tickets) > 0 {
+		v.cursor = len(v.tickets) - 1
 	}
 }
 
@@ -68,33 +46,18 @@ func (v *ReviewQueueView) SetSize(w, h int) {
 	v.height = h
 }
 
-func (v *ReviewQueueView) SelectedItem() *reviewItem {
-	if len(v.items) == 0 || v.cursor >= len(v.items) {
+func (v *ReviewQueueView) SelectedTicket() *model.Ticket {
+	if len(v.tickets) == 0 || v.cursor >= len(v.tickets) {
 		return nil
 	}
-	return &v.items[v.cursor]
+	return v.tickets[v.cursor]
 }
 
-// FirstTicket returns the first ticket of the selected item.
 func (v *ReviewQueueView) FirstTicketID() string {
-	item := v.SelectedItem()
-	if item == nil || len(item.tickets) == 0 {
-		return ""
+	if t := v.SelectedTicket(); t != nil {
+		return t.ID
 	}
-	return item.tickets[0].ID
-}
-
-// StackTicketIDs returns all ticket IDs in the selected item (for stack walk).
-func (v *ReviewQueueView) StackTicketIDs() []string {
-	item := v.SelectedItem()
-	if item == nil {
-		return nil
-	}
-	var ids []string
-	for _, t := range item.tickets {
-		ids = append(ids, t.ID)
-	}
-	return ids
+	return ""
 }
 
 func (v *ReviewQueueView) Init() tea.Cmd { return nil }
@@ -108,7 +71,7 @@ func (v *ReviewQueueView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				v.cursor--
 			}
 		case "down", "j":
-			if v.cursor < len(v.items)-1 {
+			if v.cursor < len(v.tickets)-1 {
 				v.cursor++
 			}
 		}
@@ -129,66 +92,38 @@ func (v *ReviewQueueView) View() string {
 		return sb.String()
 	}
 
-	if len(v.items) == 0 {
+	if len(v.tickets) == 0 {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("No tickets pending review.") + "\n")
 		return sb.String()
 	}
 
-	hasStacks := false
-	hasStandalone := false
-	for _, item := range v.items {
-		if item.stackID != "" {
-			hasStacks = true
-		} else {
-			hasStandalone = true
-		}
+	visible := v.height - 4
+	if visible < 1 {
+		visible = len(v.tickets)
+	}
+	start := 0
+	if v.cursor >= visible {
+		start = v.cursor - visible + 1
 	}
 
-	if hasStacks {
-		sb.WriteString(lipgloss.NewStyle().Underline(true).Render("Stacks ready for review") + "\n\n")
-	}
+	for i := start; i < len(v.tickets) && i < start+visible; i++ {
+		t := v.tickets[i]
 
-	for i, item := range v.items {
-		if item.stackID == "" {
-			continue
+		active, ready := threadCountsForTicket(t)
+		threadSummary := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
+			fmt.Sprintf("%d active · %d ready threads", active, ready))
+
+		title := t.Title
+		if len([]rune(title)) > 40 {
+			title = string([]rune(title)[:39]) + "…"
 		}
-		active, ready := threadCounts(item.tickets)
-		summary := fmt.Sprintf("%d tickets · %d active threads · %d ready",
-			len(item.tickets), active, ready)
 
-		header := fmt.Sprintf("%s  %s",
-			lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true).Render(item.stackID),
-			lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(summary))
-
-		if i == v.cursor {
-			header = lipgloss.NewStyle().Reverse(true).Render(header)
-		}
-		sb.WriteString(header + "\n")
-
-		perTicket := "  "
-		for _, t := range item.tickets {
-			perTicket += components.TicketStatusIcon(t.Status) + " " +
-				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(t.ID) + "  "
-		}
-		sb.WriteString(perTicket + "\n\n")
-	}
-
-	if hasStandalone {
-		sb.WriteString(lipgloss.NewStyle().Underline(true).Render("Standalone tickets") + "\n\n")
-	}
-
-	for i, item := range v.items {
-		if item.stackID != "" {
-			continue
-		}
-		t := item.tickets[0]
-		active, _ := threadCountsForOne(t)
-		line := fmt.Sprintf("%s %s  %s",
+		line := fmt.Sprintf("%s %s  %s  %s",
 			components.TicketStatusIcon(t.Status),
-			t.Title,
-			lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-				fmt.Sprintf("%d active threads", active)))
-
+			lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(t.ID),
+			title,
+			threadSummary,
+		)
 		if i == v.cursor {
 			line = lipgloss.NewStyle().Reverse(true).Render(line)
 		}
@@ -197,14 +132,14 @@ func (v *ReviewQueueView) View() string {
 
 	sb.WriteString("\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑↓ navigate · enter open · r review stack · q quit"))
+		"↑↓ navigate · enter open · q quit"))
 
 	return sb.String()
 }
 
-func threadCounts(tickets []*model.Ticket) (active, ready int) {
-	for _, t := range tickets {
-		for _, th := range t.Threads {
+func threadCountsForTicket(t *model.Ticket) (active, ready int) {
+	for _, task := range t.Tasks {
+		for _, th := range task.Threads {
 			switch th.Status {
 			case model.ThreadActive:
 				active++
@@ -214,8 +149,4 @@ func threadCounts(tickets []*model.Ticket) (active, ready int) {
 		}
 	}
 	return
-}
-
-func threadCountsForOne(t *model.Ticket) (active, ready int) {
-	return threadCounts([]*model.Ticket{t})
 }

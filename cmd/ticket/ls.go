@@ -15,24 +15,37 @@ import (
 
 // ticketJSON is the JSON representation of a ticket for CLI output.
 type ticketJSON struct {
-	ID               string       `json:"id"`
-	Title            string       `json:"title"`
-	Type             string       `json:"type"`
-	Status           string       `json:"status"`
-	Description      string       `json:"description,omitempty"`
-	FeatureBranch    string       `json:"feature_branch,omitempty"`
-	StackID          string       `json:"stack_id,omitempty"`
-	CommitHash       string       `json:"commit_hash,omitempty"`
-	VerifiableResult string       `json:"verifiable_result,omitempty"`
-	BlockedBy        []string     `json:"blocked_by,omitempty"`
+	ID            string       `json:"id"`
+	Title         string       `json:"title"`
+	Type          string       `json:"type"`
+	Status        string       `json:"status"`
+	Description   string       `json:"description,omitempty"`
+	FeatureBranch string       `json:"feature_branch,omitempty"`
+	WorktreePath  string       `json:"worktree_path,omitempty"`
+	BlockedBy     []string     `json:"blocked_by,omitempty"`
+	Tasks         []taskJSON   `json:"tasks,omitempty"`
+	Threads       []threadJSON `json:"threads,omitempty"`
+	Notes         []noteJSON   `json:"notes,omitempty"`
+	Created       time.Time    `json:"created"`
+	Updated       time.Time    `json:"updated"`
+}
+
+type taskJSON struct {
+	ID               string     `json:"id"`
+	Position         int        `json:"position"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description,omitempty"`
+	CommitHash       string     `json:"commit_hash,omitempty"`
+	VerifiableResult string     `json:"verifiable_result,omitempty"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty"`
 	Threads          []threadJSON `json:"threads,omitempty"`
-	Notes            []noteJSON   `json:"notes,omitempty"`
-	Created          time.Time    `json:"created"`
-	Updated          time.Time    `json:"updated"`
+	Created          time.Time  `json:"created"`
+	Updated          time.Time  `json:"updated"`
 }
 
 type threadJSON struct {
 	ID       string        `json:"id"`
+	TaskID   string        `json:"task_id"`
 	Status   string        `json:"status"`
 	Messages []messageJSON `json:"messages,omitempty"`
 	Created  time.Time     `json:"created"`
@@ -57,7 +70,6 @@ func runList(args []string, defaultDB string) {
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	statusFilter := fs.String("status", "", "filter by status (draft|ready|in_progress|in_review|completed)")
 	jsonOut := fs.Bool("json", false, "output full ticket data as JSON")
-	actionable := fs.Bool("actionable", false, "show only ready tickets with all blockers completed")
 	fs.Parse(args)
 
 	s := openStore(*dbPath)
@@ -65,9 +77,7 @@ func runList(args []string, defaultDB string) {
 
 	var tickets []*model.Ticket
 	var err error
-	if *actionable {
-		tickets, err = s.AvailableWork()
-	} else if *statusFilter != "" {
+	if *statusFilter != "" {
 		tickets, err = s.ListTickets(model.Status(*statusFilter))
 	} else {
 		tickets, err = s.ListTickets()
@@ -94,34 +104,24 @@ func runList(args []string, defaultDB string) {
 	}
 
 	termW := termWidth()
-	maxIDLen, maxTypeLen, maxStatusLen := 0, 0, 0
+	maxIDLen, maxStatusLen := 0, 0
 	for _, t := range tickets {
 		if l := len(t.ID); l > maxIDLen {
 			maxIDLen = l
-		}
-		if !t.IsPlan() {
-			// blank for regular tickets
-		} else if l := len(string(t.Type)); l > maxTypeLen {
-			maxTypeLen = l
 		}
 		if l := len(string(t.Status)); l > maxStatusLen {
 			maxStatusLen = l
 		}
 	}
-	// 3 padding groups of 2 spaces (between 4 columns)
-	maxTitleLen := termW - maxIDLen - maxTypeLen - maxStatusLen - 6
+	maxTitleLen := termW - maxIDLen - maxStatusLen - 4
 	if maxTitleLen < 10 {
 		maxTitleLen = 10
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, t := range tickets {
-		typeStr := ""
-		if t.IsPlan() {
-			typeStr = string(t.Type)
-		}
 		title := truncateRunes(t.Title, maxTitleLen)
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID, title, typeStr, t.Status)
+		fmt.Fprintf(w, "%s\t%s\t%s\n", t.ID, title, t.Status)
 	}
 	w.Flush()
 }
@@ -147,34 +147,19 @@ func truncateRunes(s string, max int) string {
 
 func toTicketJSON(t *model.Ticket) ticketJSON {
 	tj := ticketJSON{
-		ID:               t.ID,
-		Title:            t.Title,
-		Type:             string(t.Type),
-		Status:           string(t.Status),
-		Description:      t.Description,
-		FeatureBranch:    t.FeatureBranch,
-		StackID:          t.StackID,
-		CommitHash:       t.CommitHash,
-		VerifiableResult: t.VerifiableResult,
-		BlockedBy:        t.BlockedBy,
-		Created:          t.Created,
-		Updated:          t.Updated,
+		ID:            t.ID,
+		Title:         t.Title,
+		Type:          string(t.Type),
+		Status:        string(t.Status),
+		Description:   t.Description,
+		FeatureBranch: t.FeatureBranch,
+		WorktreePath:  t.WorktreePath,
+		BlockedBy:     t.BlockedBy,
+		Created:       t.Created,
+		Updated:       t.Updated,
 	}
-	for _, th := range t.Threads {
-		thj := threadJSON{
-			ID:      th.ID,
-			Status:  string(th.Status),
-			Created: th.Created,
-		}
-		for _, m := range th.Messages {
-			thj.Messages = append(thj.Messages, messageJSON{
-				ID:      m.ID,
-				Author:  m.Author,
-				Text:    m.Text,
-				Created: m.Created,
-			})
-		}
-		tj.Threads = append(tj.Threads, thj)
+	for _, task := range t.Tasks {
+		tj.Tasks = append(tj.Tasks, toTaskJSON(&task))
 	}
 	for _, n := range t.Notes {
 		tj.Notes = append(tj.Notes, noteJSON{
@@ -182,6 +167,42 @@ func toTicketJSON(t *model.Ticket) ticketJSON {
 			Author:  n.Author,
 			Text:    n.Text,
 			Created: n.Created,
+		})
+	}
+	return tj
+}
+
+func toTaskJSON(t *model.Task) taskJSON {
+	tj := taskJSON{
+		ID:               t.ID,
+		Position:         t.Position,
+		Title:            t.Title,
+		Description:      t.Description,
+		CommitHash:       t.CommitHash,
+		VerifiableResult: t.VerifiableResult,
+		CompletedAt:      t.CompletedAt,
+		Created:          t.Created,
+		Updated:          t.Updated,
+	}
+	for _, th := range t.Threads {
+		tj.Threads = append(tj.Threads, toThreadJSON(&th))
+	}
+	return tj
+}
+
+func toThreadJSON(th *model.Thread) threadJSON {
+	tj := threadJSON{
+		ID:      th.ID,
+		TaskID:  th.TaskID,
+		Status:  string(th.Status),
+		Created: th.Created,
+	}
+	for _, m := range th.Messages {
+		tj.Messages = append(tj.Messages, messageJSON{
+			ID:      m.ID,
+			Author:  m.Author,
+			Text:    m.Text,
+			Created: m.Created,
 		})
 	}
 	return tj

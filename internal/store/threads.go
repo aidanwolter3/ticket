@@ -9,19 +9,19 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 )
 
-func (s *Store) CreateThread(ticketID string) (*model.Thread, error) {
+func (s *Store) CreateThread(taskID string) (*model.Thread, error) {
 	id := ids.NewUUID()
 	now := time.Now().UnixMilli()
-	_, err := s.db.Exec(`INSERT INTO comment_threads (id, ticket_id, status, created) VALUES (?, ?, 'active', ?)`,
-		id, ticketID, now)
+	_, err := s.db.Exec(`INSERT INTO comment_threads (id, task_id, status, created) VALUES (?, ?, 'active', ?)`,
+		id, taskID, now)
 	if err != nil {
 		return nil, fmt.Errorf("create thread: %w", err)
 	}
 	return &model.Thread{
-		ID:       id,
-		TicketID: ticketID,
-		Status:   model.ThreadActive,
-		Created:  time.UnixMilli(now),
+		ID:      id,
+		TaskID:  taskID,
+		Status:  model.ThreadActive,
+		Created: time.UnixMilli(now),
 	}, nil
 }
 
@@ -58,8 +58,40 @@ func (s *Store) AddMessage(threadID, author, text string) (*model.Message, error
 	}, nil
 }
 
-func (s *Store) GetThreadsForTicket(ticketID string) ([]*model.Thread, error) {
-	rows, err := s.db.Query(`SELECT id, ticket_id, status, created FROM comment_threads WHERE ticket_id=? ORDER BY created`, ticketID)
+func (s *Store) GetThreadsForTask(taskID string) ([]*model.Thread, error) {
+	rows, err := s.db.Query(`SELECT id, task_id, status, created FROM comment_threads WHERE task_id=? ORDER BY created`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var threads []*model.Thread
+	for rows.Next() {
+		t, err := scanThread(rows)
+		if err != nil {
+			return nil, err
+		}
+		threads = append(threads, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, t := range threads {
+		if err := s.loadMessages(t); err != nil {
+			return nil, err
+		}
+	}
+	return threads, nil
+}
+
+// GetAllThreadsForTicket returns all threads across all tasks of a ticket,
+// ordered by task position then thread creation time.
+func (s *Store) GetAllThreadsForTicket(ticketID string) ([]*model.Thread, error) {
+	rows, err := s.db.Query(`
+		SELECT ct.id, ct.task_id, ct.status, ct.created
+		FROM comment_threads ct
+		JOIN tasks tk ON tk.id = ct.task_id
+		WHERE tk.ticket_id = ?
+		ORDER BY tk.position, ct.created`, ticketID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +141,7 @@ func scanThread(r scanner) (*model.Thread, error) {
 		statusStr string
 		createdMs int64
 	)
-	if err := r.Scan(&t.ID, &t.TicketID, &statusStr, &createdMs); err != nil {
+	if err := r.Scan(&t.ID, &t.TaskID, &statusStr, &createdMs); err != nil {
 		return nil, err
 	}
 	t.Status = model.ThreadStatus(statusStr)

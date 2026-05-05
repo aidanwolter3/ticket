@@ -10,19 +10,31 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 
 CREATE TABLE IF NOT EXISTS tickets (
+  id             TEXT PRIMARY KEY,
+  title          TEXT NOT NULL,
+  description    TEXT NOT NULL DEFAULT '',
+  type           TEXT NOT NULL DEFAULT 'ticket'
+                 CHECK(type IN ('ticket')),
+  status         TEXT NOT NULL DEFAULT 'draft'
+                 CHECK(status IN ('draft','ready','in_progress','in_review','completed')),
+  feature_branch TEXT NOT NULL DEFAULT '',
+  worktree_path  TEXT,
+  created        INTEGER NOT NULL,
+  updated        INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
   id                TEXT PRIMARY KEY,
+  ticket_id         TEXT NOT NULL,
   title             TEXT NOT NULL,
   description       TEXT NOT NULL DEFAULT '',
-  type              TEXT NOT NULL DEFAULT 'ticket'
-                    CHECK(type IN ('ticket', 'plan')),
-  status            TEXT NOT NULL DEFAULT 'draft'
-                    CHECK(status IN ('draft','ready','in_progress','in_review','completed')),
-  feature_branch    TEXT NOT NULL DEFAULT '',
-  stack_id          TEXT,
+  position          INTEGER NOT NULL,
   commit_hash       TEXT,
   verifiable_result TEXT NOT NULL DEFAULT '',
+  completed_at      INTEGER,
   created           INTEGER NOT NULL,
-  updated           INTEGER NOT NULL
+  updated           INTEGER NOT NULL,
+  FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS blocked_by (
@@ -35,12 +47,12 @@ CREATE TABLE IF NOT EXISTS blocked_by (
 );
 
 CREATE TABLE IF NOT EXISTS comment_threads (
-  id        TEXT PRIMARY KEY,
-  ticket_id TEXT NOT NULL,
-  status    TEXT NOT NULL DEFAULT 'active'
-            CHECK(status IN ('active','ready','resolved')),
-  created   INTEGER NOT NULL,
-  FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+  id       TEXT PRIMARY KEY,
+  task_id  TEXT NOT NULL,
+  status   TEXT NOT NULL DEFAULT 'active'
+           CHECK(status IN ('active','ready','resolved')),
+  created  INTEGER NOT NULL,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS thread_messages (
@@ -63,9 +75,10 @@ CREATE TABLE IF NOT EXISTS notes (
 
 CREATE INDEX IF NOT EXISTS idx_tickets_status         ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_type           ON tickets(type);
-CREATE INDEX IF NOT EXISTS idx_tickets_stack          ON tickets(stack_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_ticket           ON tasks(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_position         ON tasks(ticket_id, position);
 CREATE INDEX IF NOT EXISTS idx_blocked_by_blocker     ON blocked_by(blocker_id);
-CREATE INDEX IF NOT EXISTS idx_threads_ticket         ON comment_threads(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_threads_task           ON comment_threads(task_id);
 CREATE INDEX IF NOT EXISTS idx_thread_messages_thread ON thread_messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_notes_ticket           ON notes(ticket_id);
 `

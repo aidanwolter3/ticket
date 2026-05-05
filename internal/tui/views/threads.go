@@ -11,10 +11,23 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+type threadItemKind int
+
+const (
+	itemTask   threadItemKind = iota
+	itemThread
+)
+
+type threadItem struct {
+	kind   threadItemKind
+	task   model.Task
+	thread *model.Thread // nil when kind == itemTask
+}
+
 type ThreadsView struct {
 	store    *store.Store
 	ticketID string
-	threads  []*model.Thread
+	items    []threadItem
 	cursor   int
 	expanded map[string]bool
 	width    int
@@ -32,21 +45,46 @@ func NewThreadsView(s *store.Store, ticketID string) (*ThreadsView, error) {
 }
 
 func (v *ThreadsView) load() error {
-	threads, err := v.store.GetThreadsForTicket(v.ticketID)
+	tasks, err := v.store.GetTasksForTicket(v.ticketID)
 	if err != nil {
 		return err
 	}
-	v.threads = threads
-	if v.cursor >= len(v.threads) {
-		v.cursor = max(0, len(v.threads)-1)
+	v.items = nil
+	for _, task := range tasks {
+		v.items = append(v.items, threadItem{kind: itemTask, task: task})
+		threads, err := v.store.GetThreadsForTask(task.ID)
+		if err != nil {
+			return err
+		}
+		for _, th := range threads {
+			v.items = append(v.items, threadItem{kind: itemThread, task: task, thread: th})
+		}
+	}
+	if v.cursor >= len(v.items) {
+		v.cursor = max(0, len(v.items)-1)
 	}
 	return nil
 }
 
-func (v *ThreadsView) Reload() error            { return v.load() }
-func (v *ThreadsView) Threads() []*model.Thread { return v.threads }
-func (v *ThreadsView) Cursor() int              { return v.cursor }
-func (v *ThreadsView) TicketID() string         { return v.ticketID }
+func (v *ThreadsView) Reload() error { return v.load() }
+func (v *ThreadsView) TicketID() string { return v.ticketID }
+
+// SelectedThread returns the highlighted thread, or nil if on a task row.
+func (v *ThreadsView) SelectedThread() *model.Thread {
+	if v.cursor < len(v.items) && v.items[v.cursor].kind == itemThread {
+		return v.items[v.cursor].thread
+	}
+	return nil
+}
+
+// SelectedTaskID returns the task ID for the current cursor position
+// (works whether the cursor is on a task row or a thread row).
+func (v *ThreadsView) SelectedTaskID() string {
+	if v.cursor < len(v.items) {
+		return v.items[v.cursor].task.ID
+	}
+	return ""
+}
 
 func (v *ThreadsView) SetSize(w, h int) {
 	v.width = w
@@ -64,17 +102,17 @@ func (v *ThreadsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				v.cursor--
 			}
 		case "down", "j":
-			if v.cursor < len(v.threads)-1 {
+			if v.cursor < len(v.items)-1 {
 				v.cursor++
 			}
 		case "enter":
-			if v.cursor < len(v.threads) {
-				id := v.threads[v.cursor].ID
+			if v.cursor < len(v.items) && v.items[v.cursor].kind == itemThread {
+				id := v.items[v.cursor].thread.ID
 				v.expanded[id] = !v.expanded[id]
 			}
 		case "right":
-			if v.cursor < len(v.threads) {
-				th := v.threads[v.cursor]
+			if v.cursor < len(v.items) && v.items[v.cursor].kind == itemThread {
+				th := v.items[v.cursor].thread
 				var to model.ThreadStatus
 				switch th.Status {
 				case model.ThreadActive:
@@ -88,14 +126,14 @@ func (v *ThreadsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				v.load()
 			}
 		case "x":
-			if v.cursor < len(v.threads) {
-				th := v.threads[v.cursor]
+			if v.cursor < len(v.items) && v.items[v.cursor].kind == itemThread {
+				th := v.items[v.cursor].thread
 				v.err = v.store.TransitionThread(th.ID, model.ThreadResolved, "human")
 				v.load()
 			}
 		case "left":
-			if v.cursor < len(v.threads) {
-				th := v.threads[v.cursor]
+			if v.cursor < len(v.items) && v.items[v.cursor].kind == itemThread {
+				th := v.items[v.cursor].thread
 				if th.Status == model.ThreadResolved {
 					v.err = v.store.TransitionThread(th.ID, model.ThreadActive, "human")
 					v.load()
@@ -119,37 +157,63 @@ func (v *ThreadsView) View() string {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("Error: "+v.err.Error()) + "\n")
 	}
 
-	if len(v.threads) == 0 {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("No threads. Press 'n' to create one.") + "\n")
+	if len(v.items) == 0 {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("No tasks found.") + "\n")
 	}
 
-	for i, th := range v.threads {
-		icon := components.ThreadStatusIcon(th.Status)
-		summary := th.Summary()
-		msgCount := fmt.Sprintf("(%d msg)", len(th.Messages))
-
-		line := fmt.Sprintf("%s %s %s",
-			icon, summary,
-			lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(msgCount))
-
-		if i == v.cursor {
-			line = lipgloss.NewStyle().Reverse(true).Render(line)
-		}
-		sb.WriteString(line + "\n")
-
-		if v.expanded[th.ID] {
-			for _, msg := range th.Messages {
-				author := lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(msg.Author)
-				msgWrap := v.width - 6 - len([]rune(msg.Author))
-				sb.WriteString(fmt.Sprintf("    %s: %s\n", author, wrapText(msg.Text, msgWrap)))
+	for i, item := range v.items {
+		switch item.kind {
+		case itemTask:
+			if i > 0 {
+				sb.WriteString("\n")
 			}
-			sb.WriteString("\n")
+			taskLine := fmt.Sprintf("%s  %d. %s",
+				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(item.task.ID),
+				item.task.Position,
+				item.task.Title,
+			)
+			if i == v.cursor {
+				taskLine = lipgloss.NewStyle().Reverse(true).Render(taskLine)
+			} else {
+				taskLine = lipgloss.NewStyle().Bold(true).Render(taskLine)
+			}
+			sb.WriteString(taskLine + "\n")
+
+			// Show "(no threads)" when this task has no threads.
+			hasThreads := i+1 < len(v.items) && v.items[i+1].kind == itemThread
+			if !hasThreads {
+				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  (no threads — press n to start one)") + "\n")
+			}
+
+		case itemThread:
+			th := item.thread
+			icon := components.ThreadStatusIcon(th.Status)
+			summary := th.Summary()
+			msgCount := fmt.Sprintf("(%d msg)", len(th.Messages))
+
+			line := fmt.Sprintf("  %s %s %s",
+				icon, summary,
+				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(msgCount))
+
+			if i == v.cursor {
+				line = lipgloss.NewStyle().Reverse(true).Render(line)
+			}
+			sb.WriteString(line + "\n")
+
+			if v.expanded[th.ID] {
+				for _, msg := range th.Messages {
+					author := lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(msg.Author)
+					msgWrap := v.width - 8 - len([]rune(msg.Author))
+					sb.WriteString(fmt.Sprintf("    %s: %s\n", author, wrapText(msg.Text, msgWrap)))
+				}
+				sb.WriteString("\n")
+			}
 		}
 	}
 
 	sb.WriteString("\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑↓ navigate · enter expand · r reply · → toggle ready · x resolve · ← reopen · n new · esc back"))
+		"↑↓ navigate · enter expand · r reply · → toggle ready · x resolve · ← reopen · n new thread · esc back"))
 
 	return sb.String()
 }

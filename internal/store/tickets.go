@@ -35,11 +35,10 @@ func (s *Store) CreateTicket(t *model.Ticket) error {
 	t.Updated = time.UnixMilli(now)
 
 	_, err = s.db.Exec(`
-		INSERT INTO tickets (id, title, description, type, status, feature_branch, stack_id, commit_hash, verifiable_result, created, updated)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO tickets (id, title, description, type, status, feature_branch, worktree_path, created, updated)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.Title, t.Description, string(t.Type), string(t.Status),
-		t.FeatureBranch, nullStr(t.StackID), nullStr(t.CommitHash),
-		t.VerifiableResult, now, now,
+		t.FeatureBranch, nullStr(t.WorktreePath), now, now,
 	)
 	if err != nil {
 		return fmt.Errorf("insert ticket: %w", err)
@@ -52,11 +51,10 @@ func (s *Store) UpdateTicket(t *model.Ticket) error {
 	t.Updated = time.UnixMilli(now)
 	_, err := s.db.Exec(`
 		UPDATE tickets SET title=?, description=?, type=?, status=?, feature_branch=?,
-		  stack_id=?, commit_hash=?, verifiable_result=?, updated=?
+		  worktree_path=?, updated=?
 		WHERE id=?`,
 		t.Title, t.Description, string(t.Type), string(t.Status),
-		t.FeatureBranch, nullStr(t.StackID), nullStr(t.CommitHash),
-		t.VerifiableResult, now, t.ID,
+		t.FeatureBranch, nullStr(t.WorktreePath), now, t.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update ticket: %w", err)
@@ -65,108 +63,25 @@ func (s *Store) UpdateTicket(t *model.Ticket) error {
 }
 
 func (s *Store) TransitionTicket(id string, to model.Status, author string) error {
-	var fromStr, typeStr string
-	err := s.db.QueryRow(`SELECT status, type FROM tickets WHERE id=?`, id).Scan(&fromStr, &typeStr)
+	var fromStr string
+	err := s.db.QueryRow(`SELECT status FROM tickets WHERE id=?`, id).Scan(&fromStr)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("ticket %s not found", id)
 	}
 	if err != nil {
 		return err
 	}
-	if model.TicketType(typeStr) == model.TypePlan {
-		return fmt.Errorf("plan status is auto-derived from child tickets and cannot be set directly")
-	}
 	if err := model.ValidateTicketTransition(model.Status(fromStr), to, author); err != nil {
 		return err
 	}
 	now := time.Now().UnixMilli()
-	if _, err = s.db.Exec(`UPDATE tickets SET status=?, updated=? WHERE id=?`, string(to), now, id); err != nil {
-		return err
-	}
-	return s.updateParentPlanStatus(id)
-}
-
-// updateParentPlanStatus recalculates and persists the status for any plan that has id as a child.
-func (s *Store) updateParentPlanStatus(childID string) error {
-	rows, err := s.db.Query(`
-		SELECT t.id FROM tickets t
-		JOIN blocked_by b ON b.ticket_id = t.id
-		WHERE b.blocker_id = ? AND t.type = 'plan'`, childID)
-	if err != nil {
-		return err
-	}
-	var planIDs []string
-	for rows.Next() {
-		var pid string
-		if err := rows.Scan(&pid); err != nil {
-			rows.Close()
-			return err
-		}
-		planIDs = append(planIDs, pid)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for _, planID := range planIDs {
-		if err := s.recalcPlanStatus(planID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Store) recalcPlanStatus(planID string) error {
-	rows, err := s.db.Query(`
-		SELECT t.status FROM tickets t
-		JOIN blocked_by b ON b.ticket_id = ? AND b.blocker_id = t.id`, planID)
-	if err != nil {
-		return err
-	}
-	var statuses []model.Status
-	for rows.Next() {
-		var st string
-		if err := rows.Scan(&st); err != nil {
-			rows.Close()
-			return err
-		}
-		statuses = append(statuses, model.Status(st))
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	derived := model.DerivePlanStatus(statuses)
-	now := time.Now().UnixMilli()
-	_, err = s.db.Exec(`UPDATE tickets SET status=?, updated=? WHERE id=?`, string(derived), now, planID)
+	_, err = s.db.Exec(`UPDATE tickets SET status=?, updated=? WHERE id=?`, string(to), now, id)
 	return err
 }
 
-// PromoteDraftChildren transitions all draft direct children of a plan to ready.
-func (s *Store) PromoteDraftChildren(planID, author string) ([]*model.Ticket, error) {
-	plan, err := s.GetTicket(planID)
-	if err != nil {
-		return nil, err
-	}
-	if !plan.IsPlan() {
-		return nil, fmt.Errorf("%s is not a plan", planID)
-	}
-	var promoted []*model.Ticket
-	for _, childID := range plan.BlockedBy {
-		child, err := s.GetTicket(childID)
-		if err != nil {
-			continue
-		}
-		if child.Status != model.StatusDraft {
-			continue
-		}
-		if err := s.TransitionTicket(childID, model.StatusReady, author); err != nil {
-			return nil, fmt.Errorf("failed to promote %s: %w", childID, err)
-		}
-		child.Status = model.StatusReady
-		promoted = append(promoted, child)
-	}
-	return promoted, nil
+// PromoteTicket transitions a draft ticket to ready.
+func (s *Store) PromoteTicket(ticketID, author string) error {
+	return s.TransitionTicket(ticketID, model.StatusReady, author)
 }
 
 func (s *Store) DeleteTicket(id string) error {
@@ -175,7 +90,10 @@ func (s *Store) DeleteTicket(id string) error {
 }
 
 func (s *Store) GetTicket(id string) (*model.Ticket, error) {
-	row := s.db.QueryRow(`SELECT id, title, description, type, status, feature_branch, COALESCE(stack_id,''), COALESCE(commit_hash,''), verifiable_result, created, updated FROM tickets WHERE id=?`, id)
+	row := s.db.QueryRow(`
+		SELECT id, title, description, type, status, feature_branch,
+		       COALESCE(worktree_path,''), created, updated
+		FROM tickets WHERE id=?`, id)
 	t, err := scanTicket(row)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("ticket %s not found", id)
@@ -186,6 +104,11 @@ func (s *Store) GetTicket(id string) (*model.Ticket, error) {
 	if err := s.loadBlockedBy(t); err != nil {
 		return nil, err
 	}
+	tasks, err := s.GetTasksForTicket(id)
+	if err != nil {
+		return nil, err
+	}
+	t.Tasks = tasks
 	return t, nil
 }
 
@@ -193,14 +116,19 @@ func (s *Store) ListTickets(filter ...model.Status) ([]*model.Ticket, error) {
 	var query string
 	var args []interface{}
 	if len(filter) == 0 {
-		query = `SELECT id, title, description, type, status, feature_branch, COALESCE(stack_id,''), COALESCE(commit_hash,''), verifiable_result, created, updated FROM tickets ORDER BY created`
+		query = `SELECT id, title, description, type, status, feature_branch,
+		               COALESCE(worktree_path,''), created, updated
+		         FROM tickets ORDER BY created`
 	} else {
 		placeholders := make([]string, len(filter))
 		for i, f := range filter {
 			placeholders[i] = "?"
 			args = append(args, string(f))
 		}
-		query = fmt.Sprintf(`SELECT id, title, description, type, status, feature_branch, COALESCE(stack_id,''), COALESCE(commit_hash,''), verifiable_result, created, updated FROM tickets WHERE status IN (%s) ORDER BY created`, strings.Join(placeholders, ","))
+		query = fmt.Sprintf(`SELECT id, title, description, type, status, feature_branch,
+		               COALESCE(worktree_path,''), created, updated
+		         FROM tickets WHERE status IN (%s) ORDER BY created`,
+			strings.Join(placeholders, ","))
 	}
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -216,7 +144,7 @@ func (s *Store) ListTickets(filter ...model.Status) ([]*model.Ticket, error) {
 		tickets = append(tickets, t)
 	}
 	rowsErr := rows.Err()
-	rows.Close() // close before loadBlockedBy to release the single connection
+	rows.Close()
 	if rowsErr != nil {
 		return nil, rowsErr
 	}
@@ -274,8 +202,7 @@ func scanTicket(r scanner) (*model.Ticket, error) {
 		updatedMs int64
 	)
 	err := r.Scan(&t.ID, &t.Title, &t.Description, &typeStr, &statusStr,
-		&t.FeatureBranch, &t.StackID, &t.CommitHash,
-		&t.VerifiableResult, &createdMs, &updatedMs)
+		&t.FeatureBranch, &t.WorktreePath, &createdMs, &updatedMs)
 	if err != nil {
 		return nil, err
 	}

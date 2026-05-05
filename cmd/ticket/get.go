@@ -29,19 +29,17 @@ func runGet(args []string, defaultDB string) {
 
 	tj := toTicketJSON(t)
 
-	threads, err := s.GetThreadsForTicket(id)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "load threads: %v\n", err)
-		os.Exit(1)
-	}
-	for _, th := range threads {
-		thj := threadJSON{ID: th.ID, Status: string(th.Status), Created: th.Created}
-		for _, m := range th.Messages {
-			thj.Messages = append(thj.Messages, messageJSON{
-				ID: m.ID, Author: m.Author, Text: m.Text, Created: m.Created,
-			})
+	// Load threads per task.
+	for i := range tj.Tasks {
+		taskID := tj.Tasks[i].ID
+		threads, err := s.GetThreadsForTask(taskID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "load threads for task %s: %v\n", taskID, err)
+			os.Exit(1)
 		}
-		tj.Threads = append(tj.Threads, thj)
+		for _, th := range threads {
+			tj.Tasks[i].Threads = append(tj.Tasks[i].Threads, toThreadJSON(th))
+		}
 	}
 
 	notes, err := s.GetNotesForTicket(id)

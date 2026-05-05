@@ -28,6 +28,9 @@ func main() {
 		case "get":
 			runGet(os.Args[2:], defaultDB)
 			return
+		case "find-work":
+			runFindWork(os.Args[2:], defaultDB)
+			return
 		case "transition":
 			runTransition(os.Args[2:], defaultDB)
 			return
@@ -95,8 +98,8 @@ Usage:
   ticket [--db path]                          launch TUI
   ticket import [--db path] [file]            batch-create tickets from JSON (stdin if no file)
   ticket ls [--db path] [--status s] [--json] list tickets
-  ticket ls [--db path] --actionable          list ready tickets with all blockers completed
-  ticket get [--db path] <id>                 get a single ticket as JSON
+  ticket get [--db path] <id>                 get a single ticket as JSON (includes tasks and threads)
+  ticket find-work [--db path]                find actionable work for agents (JSON)
   ticket transition [--db path] <id> <status> <author>
                                               transition a ticket's status
   ticket note add [--db path] <ticket-id> <author> <text>
@@ -105,8 +108,8 @@ Usage:
                                               add a reply to a thread
   ticket thread transition [--db path] <thread-id> <new-status> <author>
                                               transition a thread's status (agents: ready→active only)
-  ticket promote [--db path] <plan-id> <author>
-                                              promote all draft children of a plan to ready
+  ticket promote [--db path] <ticket-id> <author>
+                                              promote a draft ticket to ready
   ticket delete [--db path] <id>              delete a ticket
   ticket purge [--db path] --yes              delete the database file
 

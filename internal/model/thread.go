@@ -12,7 +12,7 @@ const (
 
 type Thread struct {
 	ID       string
-	TicketID string
+	TaskID   string
 	Status   ThreadStatus
 	Messages []Message
 	Created  time.Time

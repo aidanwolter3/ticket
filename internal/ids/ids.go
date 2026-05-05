@@ -13,3 +13,7 @@ func NewUUID() string {
 func TicketID(n int) string {
 	return fmt.Sprintf("T-%03d", n)
 }
+
+func TaskID(n int) string {
+	return fmt.Sprintf("TS-%03d", n)
+}

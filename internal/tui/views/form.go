@@ -14,11 +14,8 @@ type FormField int
 
 const (
 	FieldTitle FormField = iota
-	FieldType
 	FieldDescription
 	FieldBranch
-	FieldStackID
-	FieldVerifiable
 	FieldBlockedBy
 	FieldStatus
 	fieldCount
@@ -42,11 +39,8 @@ func NewFormView(existing *model.Ticket) *FormView {
 		f.fields[i] = ti
 	}
 	f.fields[FieldTitle].Placeholder = "Title (required)"
-	f.fields[FieldType].Placeholder = "Type: ticket or plan"
 	f.fields[FieldDescription].Placeholder = "Description"
 	f.fields[FieldBranch].Placeholder = "Feature branch"
-	f.fields[FieldStackID].Placeholder = "Stack ID (optional)"
-	f.fields[FieldVerifiable].Placeholder = "Verifiable result"
 	f.fields[FieldBlockedBy].Placeholder = "Blocked by (comma-separated IDs)"
 	f.fields[FieldStatus].Placeholder = "Status"
 
@@ -54,15 +48,11 @@ func NewFormView(existing *model.Ticket) *FormView {
 		f.isEdit = true
 		f.ticketID = existing.ID
 		f.fields[FieldTitle].SetValue(existing.Title)
-		f.fields[FieldType].SetValue(string(existing.Type))
 		f.fields[FieldDescription].SetValue(existing.Description)
 		f.fields[FieldBranch].SetValue(existing.FeatureBranch)
-		f.fields[FieldStackID].SetValue(existing.StackID)
-		f.fields[FieldVerifiable].SetValue(existing.VerifiableResult)
 		f.fields[FieldBlockedBy].SetValue(strings.Join(existing.BlockedBy, ", "))
 		f.fields[FieldStatus].SetValue(string(existing.Status))
 	} else {
-		f.fields[FieldType].SetValue("ticket")
 		f.fields[FieldStatus].SetValue("draft")
 	}
 	f.fields[FieldTitle].Focus()
@@ -109,10 +99,6 @@ func (f *FormView) Validate() error {
 
 func (f *FormView) ToTicket() *model.Ticket {
 	blockedBy := parseIDs(f.fields[FieldBlockedBy].Value())
-	ticketType := model.TicketType(f.fields[FieldType].Value())
-	if ticketType != model.TypePlan {
-		ticketType = model.TypeTicket
-	}
 	status := model.Status(f.fields[FieldStatus].Value())
 	switch status {
 	case model.StatusDraft, model.StatusReady, model.StatusInProgress, model.StatusInReview, model.StatusCompleted:
@@ -120,14 +106,12 @@ func (f *FormView) ToTicket() *model.Ticket {
 		status = model.StatusDraft
 	}
 	t := &model.Ticket{
-		Title:            strings.TrimSpace(f.fields[FieldTitle].Value()),
-		Type:             ticketType,
-		Description:      f.fields[FieldDescription].Value(),
-		FeatureBranch:    f.fields[FieldBranch].Value(),
-		StackID:          f.fields[FieldStackID].Value(),
-		VerifiableResult: f.fields[FieldVerifiable].Value(),
-		BlockedBy:        blockedBy,
-		Status:           status,
+		Title:         strings.TrimSpace(f.fields[FieldTitle].Value()),
+		Type:          model.TypeTicket,
+		Description:   f.fields[FieldDescription].Value(),
+		FeatureBranch: f.fields[FieldBranch].Value(),
+		BlockedBy:     blockedBy,
+		Status:        status,
 	}
 	if f.isEdit {
 		t.ID = f.ticketID
@@ -147,7 +131,7 @@ func (f *FormView) View() string {
 	}
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n\n")
 
-	labels := []string{"Title", "Type", "Description", "Branch", "Stack ID", "Verifiable Result", "Blocked By", "Status"}
+	labels := []string{"Title", "Description", "Branch", "Blocked By", "Status"}
 	for i, label := range labels {
 		prefix := "  "
 		if FormField(i) == f.focused {

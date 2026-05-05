@@ -24,7 +24,6 @@ type appScreen int
 const (
 	screenList appScreen = iota // split-pane: list left, detail right
 	screenThreads
-	screenStack
 	screenForm
 	screenStatusModal
 	screenNoteModal
@@ -57,22 +56,16 @@ type App struct {
 	reviewView  *views.ReviewQueueView
 	draftView   *views.DraftReviewView
 
-	// detail views (right pane — always loaded for selected ticket)
+	// detail view (right pane)
 	ticketDetail *views.TicketDetailView
-	planDetail   *views.PlanDetailView
 
 	// overlay screens
 	threadsView    *views.ThreadsView
-	stackView      *views.StackView
 	formView       *views.FormView
 	statusModal    *views.StatusModal
 	noteModal      *views.NoteModal
 	replyModal     *views.ReplyModal
 	newThreadModal *views.NewThreadModal
-
-	// stack review walk
-	stackWalk    []string
-	stackWalkIdx int
 }
 
 func New(s *store.Store) *App {
@@ -127,41 +120,20 @@ func (a *App) loadCurrentDetail() {
 func (a *App) loadDetailForID(id string) {
 	if id == "" {
 		a.ticketDetail = nil
-		a.planDetail = nil
 		return
 	}
-	t, err := a.store.GetTicket(id)
+	td, err := views.NewTicketDetailView(a.store, id)
 	if err != nil {
 		a.ticketDetail = nil
-		a.planDetail = nil
 		return
 	}
-	bodyH := a.bodyHeight()
-	if t.IsPlan() {
-		pd, err := views.NewPlanDetailView(a.store, id)
-		if err != nil {
-			return
-		}
-		pd.SetSize(a.rightW, bodyH)
-		a.planDetail = pd
-		a.ticketDetail = nil
-	} else {
-		td, err := views.NewTicketDetailView(a.store, id)
-		if err != nil {
-			return
-		}
-		td.SetSize(a.rightW, bodyH)
-		a.ticketDetail = td
-		a.planDetail = nil
-	}
+	td.SetSize(a.rightW, a.bodyHeight())
+	a.ticketDetail = td
 }
 
 func (a *App) currentTicketID() string {
 	if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil {
 		return a.ticketDetail.Ticket().ID
-	}
-	if a.planDetail != nil && a.planDetail.Ticket() != nil {
-		return a.planDetail.Ticket().ID
 	}
 	return ""
 }
@@ -175,14 +147,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.ticketDetail != nil {
 			_ = a.ticketDetail.Reload()
 		}
-		if a.planDetail != nil {
-			_ = a.planDetail.Reload()
-		}
 		if a.threadsView != nil {
 			_ = a.threadsView.Reload()
-		}
-		if a.stackView != nil {
-			_ = a.stackView.Reload()
 		}
 		return a, tickDB()
 
@@ -204,21 +170,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.ticketDetail != nil {
 			a.ticketDetail.SetSize(a.rightW, bodyH)
 		}
-		if a.planDetail != nil {
-			a.planDetail.SetSize(a.rightW, bodyH)
-		}
 		if a.threadsView != nil {
 			a.threadsView.SetSize(a.width, a.height)
-		}
-		if a.stackView != nil {
-			a.stackView.SetSize(a.width, a.height)
 		}
 		return a, nil
 
 	case tea.KeyMsg:
 		// Global shortcuts (only when not in a modal/form)
-		if a.screen == screenList || a.screen == screenThreads ||
-			a.screen == screenStack {
+		if a.screen == screenList || a.screen == screenThreads {
 			switch msg.String() {
 			case "ctrl+c":
 				return a, tea.Quit
@@ -279,8 +238,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateList(msg)
 	case screenThreads:
 		return a.updateThreads(msg)
-	case screenStack:
-		return a.updateStack(msg)
 	case screenForm:
 		return a.updateForm(msg)
 	case screenConfirmDelete:
@@ -336,39 +293,18 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			id := a.currentTicketID()
 			if id != "" && a.ticketDetail != nil {
-				// Plans can't be manually transitioned
 				a.statusModal = views.NewStatusModal(a.ticketDetail.Ticket().Status)
 				a.screen = screenStatusModal
-			}
-			return a, nil
-		case "S":
-			id := a.currentTicketID()
-			if id != "" {
-				t, err := a.store.GetTicket(id)
-				if err == nil && t.StackID != "" {
-					sv, err := views.NewStackView(a.store, t.StackID, id)
-					if err != nil {
-						a.setErr(err)
-						return a, nil
-					}
-					sv.SetSize(a.width, a.height)
-					a.stackView = sv
-					a.screen = screenStack
-				}
 			}
 			return a, nil
 		case "[":
 			if a.ticketDetail != nil {
 				a.ticketDetail.ScrollUp(3)
-			} else if a.planDetail != nil {
-				a.planDetail.ScrollUp(3)
 			}
 			return a, nil
 		case "]":
 			if a.ticketDetail != nil {
 				a.ticketDetail.ScrollDown(3)
-			} else if a.planDetail != nil {
-				a.planDetail.ScrollDown(3)
 			}
 			return a, nil
 		}
@@ -381,17 +317,6 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if t := a.ticketsView.SelectedTicket(); t != nil {
 					a.pendingDeleteID = t.ID
 					a.screen = screenConfirmDelete
-				}
-				return a, nil
-			}
-		case tabReview:
-			switch km.String() {
-			case "r":
-				ids := a.reviewView.StackTicketIDs()
-				if len(ids) > 0 {
-					a.stackWalk = ids
-					a.stackWalkIdx = 0
-					a.loadDetailForID(ids[0])
 				}
 				return a, nil
 			}
@@ -449,57 +374,26 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case "r":
 			if a.threadsView != nil {
-				threads := a.threadsView.Threads()
-				idx := a.threadsView.Cursor()
-				if idx < len(threads) {
-					a.replyModal = views.NewReplyModal(threads[idx].ID)
+				if th := a.threadsView.SelectedThread(); th != nil {
+					a.replyModal = views.NewReplyModal(th.ID)
 					a.screen = screenReplyModal
 				}
 			}
 			return a, nil
 		case "n":
 			if a.threadsView != nil {
-				a.newThreadModal = views.NewNewThreadModal(a.threadsView.TicketID())
+				taskID := a.threadsView.SelectedTaskID()
+				if taskID == "" {
+					a.setErr(fmt.Errorf("no task selected"))
+					return a, nil
+				}
+				a.newThreadModal = views.NewNewThreadModal(taskID)
 				a.screen = screenNewThreadModal
 			}
 			return a, nil
 		}
 	}
 	_, cmd := a.threadsView.Update(msg)
-	return a, cmd
-}
-
-// --- Stack screen ---
-
-func (a *App) updateStack(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if km, ok := msg.(tea.KeyMsg); ok {
-		switch km.String() {
-		case "esc":
-			a.screen = screenList
-			return a, nil
-		case "enter":
-			if a.stackView != nil {
-				id := a.stackView.SelectedTicketID()
-				if id != "" {
-					a.loadDetailForID(id)
-					a.screen = screenList
-				}
-			}
-			return a, nil
-		case "r":
-			if a.stackView != nil {
-				ids := a.stackView.AllTicketIDs()
-				if len(ids) > 0 {
-					a.stackWalk = ids
-					a.stackWalkIdx = 0
-					a.loadDetailForID(ids[0])
-					a.screen = screenList
-				}
-			}
-			return a, nil
-		}
-	}
-	_, cmd := a.stackView.Update(msg)
 	return a, cmd
 }
 
@@ -670,7 +564,7 @@ func (a *App) updateNewThreadModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case "ctrl+s":
 			if a.newThreadModal.Text() != "" {
-				thread, err := a.store.CreateThread(a.newThreadModal.TicketID())
+				thread, err := a.store.CreateThread(a.newThreadModal.TaskID())
 				if err != nil {
 					a.setErr(err)
 					a.screen = screenThreads
@@ -732,15 +626,10 @@ func (a *App) View() string {
 		if a.ticketDetail != nil {
 			a.ticketDetail.SetSize(a.rightW, bodyH)
 		}
-		if a.planDetail != nil {
-			a.planDetail.SetSize(a.rightW, bodyH)
-		}
 
 		var rightContent string
 		if a.ticketDetail != nil {
 			rightContent = a.ticketDetail.View()
-		} else if a.planDetail != nil {
-			rightContent = a.planDetail.View()
 		} else {
 			rightContent = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("8")).
@@ -758,10 +647,6 @@ func (a *App) View() string {
 	case screenThreads:
 		if a.threadsView != nil {
 			sb.WriteString(a.threadsView.View())
-		}
-	case screenStack:
-		if a.stackView != nil {
-			sb.WriteString(a.stackView.View())
 		}
 	case screenForm:
 		if a.formView != nil {
@@ -839,7 +724,6 @@ func (a *App) renderHelp() string {
 			"t                 threads",
 			"n                 add note",
 			"s                 change status",
-			"S                 stack view",
 			"[ / ]             scroll up / down",
 		}},
 		{"Threads", []string{
@@ -851,10 +735,6 @@ func (a *App) renderHelp() string {
 			"←                 reopen",
 			"n                 new thread",
 			"esc               back",
-		}},
-		{"Review Queue", []string{
-			"↑↓                navigate",
-			"r                 open stack (walk all)",
 		}},
 		{"Draft Review", []string{
 			"↑↓                navigate",
@@ -890,8 +770,5 @@ func (a *App) setErr(err error) {
 func (a *App) reloadCurrentDetail() {
 	if a.ticketDetail != nil {
 		_ = a.ticketDetail.Reload()
-	}
-	if a.planDetail != nil {
-		_ = a.planDetail.Reload()
 	}
 }

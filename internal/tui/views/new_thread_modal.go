@@ -12,10 +12,10 @@ type NewThreadModal struct {
 	authorIn textinput.Model
 	textIn   textinput.Model
 	focused  int
-	ticketID string
+	taskID   string
 }
 
-func NewNewThreadModal(ticketID string) *NewThreadModal {
+func NewNewThreadModal(taskID string) *NewThreadModal {
 	author := textinput.New()
 	author.Placeholder = "Author (e.g., human:aidan)"
 	author.SetValue("human:aidan")
@@ -25,7 +25,7 @@ func NewNewThreadModal(ticketID string) *NewThreadModal {
 	text.Placeholder = "First message"
 	text.CharLimit = 500
 
-	return &NewThreadModal{authorIn: author, textIn: text, ticketID: ticketID}
+	return &NewThreadModal{authorIn: author, textIn: text, taskID: taskID}
 }
 
 func (m *NewThreadModal) Init() tea.Cmd { return textinput.Blink }
@@ -55,9 +55,9 @@ func (m *NewThreadModal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *NewThreadModal) Author() string   { return m.authorIn.Value() }
-func (m *NewThreadModal) Text() string     { return m.textIn.Value() }
-func (m *NewThreadModal) TicketID() string { return m.ticketID }
+func (m *NewThreadModal) Author() string { return m.authorIn.Value() }
+func (m *NewThreadModal) Text() string   { return m.textIn.Value() }
+func (m *NewThreadModal) TaskID() string { return m.taskID }
 
 func (m *NewThreadModal) View() string {
 	var sb strings.Builder
