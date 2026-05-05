@@ -241,6 +241,53 @@ func TestOsEnvDBPath(t *testing.T) {
 	assert.NoError(t, statErr)
 }
 
+func TestAddBlocker(t *testing.T) {
+	s := newTestStore(t)
+	a := &model.Ticket{Title: "A", Type: model.TypeTicket, Status: model.StatusDraft}
+	b := &model.Ticket{Title: "B", Type: model.TypeTicket, Status: model.StatusDraft}
+	c := &model.Ticket{Title: "C", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(a))
+	require.NoError(t, s.CreateTicket(b))
+	require.NoError(t, s.CreateTicket(c))
+
+	// Self-block
+	assert.Error(t, s.AddBlocker(a.ID, a.ID))
+
+	// Non-existent ticket
+	assert.Error(t, s.AddBlocker(a.ID, "T-999"))
+
+	// Valid: b blocked by a
+	require.NoError(t, s.AddBlocker(b.ID, a.ID))
+	got, err := s.GetTicket(b.ID)
+	require.NoError(t, err)
+	assert.Contains(t, got.BlockedBy, a.ID)
+
+	// Cycle: a blocked by b would create a→b→a cycle
+	assert.Error(t, s.AddBlocker(a.ID, b.ID))
+
+	// Longer cycle: c blocked by b, then a blocked by c → a→b→c→a
+	require.NoError(t, s.AddBlocker(c.ID, b.ID))
+	assert.Error(t, s.AddBlocker(a.ID, c.ID))
+}
+
+func TestRemoveBlocker(t *testing.T) {
+	s := newTestStore(t)
+	a := &model.Ticket{Title: "A", Type: model.TypeTicket, Status: model.StatusDraft}
+	b := &model.Ticket{Title: "B", Type: model.TypeTicket, Status: model.StatusDraft, BlockedBy: nil}
+	require.NoError(t, s.CreateTicket(a))
+	require.NoError(t, s.CreateTicket(b))
+
+	// Remove non-existent relationship
+	assert.Error(t, s.RemoveBlocker(b.ID, a.ID))
+
+	// Add then remove
+	require.NoError(t, s.AddBlocker(b.ID, a.ID))
+	require.NoError(t, s.RemoveBlocker(b.ID, a.ID))
+	got, err := s.GetTicket(b.ID)
+	require.NoError(t, err)
+	assert.NotContains(t, got.BlockedBy, a.ID)
+}
+
 func ticketIDs(tickets []*model.Ticket) []string {
 	ids := make([]string, len(tickets))
 	for i, t := range tickets {

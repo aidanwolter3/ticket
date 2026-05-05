@@ -246,6 +246,55 @@ func scanTicket(r scanner) (*model.Ticket, error) {
 	return &t, nil
 }
 
+func (s *Store) AddBlocker(ticketID, blockerID string) error {
+	if ticketID == blockerID {
+		return fmt.Errorf("ticket cannot block itself")
+	}
+
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM tickets WHERE id IN (?, ?)`, ticketID, blockerID).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count < 2 {
+		return fmt.Errorf("one or both tickets not found")
+	}
+
+	// Detect cycle: does blockerID already transitively depend on ticketID?
+	err = s.db.QueryRow(`
+		WITH RECURSIVE ancestors(id) AS (
+			SELECT blocker_id FROM blocked_by WHERE ticket_id = ?
+			UNION ALL
+			SELECT bb.blocker_id FROM blocked_by bb JOIN ancestors a ON bb.ticket_id = a.id
+		)
+		SELECT COUNT(*) FROM ancestors WHERE id = ?
+	`, blockerID, ticketID).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("adding blocker %s to %s would create a cycle", blockerID, ticketID)
+	}
+
+	_, err = s.db.Exec(`INSERT OR IGNORE INTO blocked_by (ticket_id, blocker_id) VALUES (?, ?)`, ticketID, blockerID)
+	return err
+}
+
+func (s *Store) RemoveBlocker(ticketID, blockerID string) error {
+	result, err := s.db.Exec(`DELETE FROM blocked_by WHERE ticket_id=? AND blocker_id=?`, ticketID, blockerID)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%s is not blocked by %s", ticketID, blockerID)
+	}
+	return nil
+}
+
 func nullStr(s string) interface{} {
 	if s == "" {
 		return nil
