@@ -19,6 +19,9 @@ func main() {
 
 	if len(os.Args) >= 2 {
 		switch os.Args[1] {
+		case "draft":
+			runDraft(os.Args[2:], defaultDB)
+			return
 		case "import":
 			runImport(os.Args[2:], defaultDB)
 			return
@@ -123,6 +126,8 @@ func printUsage() {
 
 Usage:
   ticket [--db path]                          launch TUI
+  ticket draft [--db path] --title STR --repo STR [--description STR|-] [--branch STR] [--json]
+                                              create a draft ticket from flags; outputs assigned ID (or --json for full ticket)
   ticket import [--db path] [file]            batch-create tickets from JSON (stdin if no file)
   ticket ls [--db path] [--status s] [--json] list tickets
   ticket get [--db path] <id>                 get a single ticket as JSON (includes tasks and threads)
