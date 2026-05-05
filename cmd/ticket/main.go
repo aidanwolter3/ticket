@@ -46,9 +46,6 @@ func main() {
 		case "ready":
 			runReady(os.Args[2:], defaultDB)
 			return
-		case "promote":
-			runPromote(os.Args[2:], defaultDB)
-			return
 		case "delete":
 			runDelete(os.Args[2:], defaultDB)
 			return
@@ -158,8 +155,7 @@ Usage:
                                               remove that dependency
   ticket ready [--db path] <ticket-id> <author>
                                               promote a draft ticket to ready
-  ticket promote [--db path] <ticket-id> <author>
-                                              deprecated alias for 'ticket ready'
+
   ticket approve [--db path] <id> <author>    approve an in_review ticket (human only)
   ticket merge [--db path] <id> <author>      ff-merge, delete branch, remove worktree (human only)
   ticket config set [--db path] <key> <value> set a config value
