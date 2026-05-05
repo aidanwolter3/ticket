@@ -52,6 +52,12 @@ func main() {
 		case "task":
 			runTask(os.Args[2:], defaultDB)
 			return
+		case "block":
+			runBlock(os.Args[2:], defaultDB)
+			return
+		case "unblock":
+			runUnblock(os.Args[2:], defaultDB)
+			return
 		case "help", "--help", "-h":
 			printUsage()
 			return
@@ -116,6 +122,10 @@ Usage:
   ticket task complete [--db path] <task-id>  mark a task complete
   ticket task uncomplete [--db path] <task-id>
                                               mark a task incomplete
+  ticket block [--db path] <ticket-id> <blocker-id>
+                                              record that <ticket-id> is blocked by <blocker-id>
+  ticket unblock [--db path] <ticket-id> <blocker-id>
+                                              remove that dependency
   ticket promote [--db path] <ticket-id> <author>
                                               promote a draft ticket to ready
   ticket delete [--db path] <id>              delete a ticket
