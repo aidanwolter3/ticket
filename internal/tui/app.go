@@ -297,6 +297,20 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.ticketDetail.ScrollDown(3)
 			}
 			return a, nil
+		case "R":
+			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == "ready" {
+				id := a.currentTicketID()
+				if err := a.store.TransitionTicket(id, "draft", "human"); err != nil {
+					a.setErr(err)
+				} else {
+					a.statusMsg = fmt.Sprintf("%s → draft", id)
+					a.statusErr = false
+					a.draftView.Refresh()
+					a.ticketsView.Refresh()
+					a.loadCurrentDetail()
+				}
+			}
+			return a, nil
 		case "r":
 			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == "draft" {
 				id := a.currentTicketID()
@@ -731,6 +745,7 @@ func (a *App) renderHelp() string {
 			"t                 threads",
 			"n                 add note",
 			"r                 mark ready (draft tickets)",
+			"R                 back to draft (ready tickets)",
 			"a                 approve (in_review tickets)",
 			"m                 merge (approved tickets)",
 			"[ / ]             scroll up / down",

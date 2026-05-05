@@ -112,6 +112,8 @@ func (v *TicketDetailView) View() string {
 		switch v.ticket.Status {
 		case model.StatusDraft:
 			hint += " · r mark ready"
+		case model.StatusReady:
+			hint += " · R back to draft"
 		case model.StatusInReview:
 			hint += " · a approve"
 		case model.StatusApproved:
