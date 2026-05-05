@@ -70,6 +70,9 @@ func main() {
 		case "approve":
 			runApprove(os.Args[2:], defaultDB)
 			return
+		case "merge":
+			runMerge(os.Args[2:], defaultDB)
+			return
 		case "help", "--help", "-h":
 			printUsage()
 			return
@@ -143,6 +146,7 @@ Usage:
   ticket promote [--db path] <ticket-id> <author>
                                               promote a draft ticket to ready
   ticket approve [--db path] <id> <author>    approve an in_review ticket (human only)
+  ticket merge [--db path] <id> <author>      ff-merge, delete branch, remove worktree (human only)
   ticket config set [--db path] <key> <value> set a config value
   ticket config get [--db path] <key>         get a config value (worktrees defaults to true)
   ticket delete [--db path] <id>              delete a ticket
