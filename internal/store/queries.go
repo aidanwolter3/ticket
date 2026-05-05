@@ -73,6 +73,25 @@ func (s *Store) FindWork() ([]*WorkItem, error) {
 	return items, nil
 }
 
+// AvailableWork returns ready tickets with all blockers completed.
+func (s *Store) AvailableWork() ([]*model.Ticket, error) {
+	rows, err := s.db.Query(`
+		SELECT id, title, description, type, status, feature_branch,
+		       COALESCE(worktree_path,''), created, updated
+		FROM tickets t
+		WHERE t.status = 'ready'
+		  AND NOT EXISTS (
+		    SELECT 1 FROM blocked_by b
+		    JOIN tickets bt ON bt.id = b.blocker_id
+		    WHERE b.ticket_id = t.id AND bt.status != 'completed'
+		  )
+		ORDER BY t.created ASC`)
+	if err != nil {
+		return nil, err
+	}
+	return collectTickets(s, rows)
+}
+
 // DraftQueue returns draft tickets.
 type DraftQueue struct {
 	Tickets []*model.Ticket

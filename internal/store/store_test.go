@@ -46,7 +46,7 @@ func TestCreateAndGetTicket(t *testing.T) {
 	assert.Equal(t, model.StatusDraft, got.Status)
 }
 
-func TestPlanWithChildren(t *testing.T) {
+func TestTicketWithChildren(t *testing.T) {
 	s := newTestStore(t)
 	child1 := &model.Ticket{Title: "Child 1", Type: model.TypeTicket, Status: model.StatusDraft}
 	child2 := &model.Ticket{Title: "Child 2", Type: model.TypeTicket, Status: model.StatusDraft}
@@ -55,15 +55,15 @@ func TestPlanWithChildren(t *testing.T) {
 	require.NoError(t, s.CreateTicket(child2))
 	require.NoError(t, s.CreateTicket(child3))
 
-	plan := &model.Ticket{
-		Title:     "Parent plan",
-		Type:      model.TypePlan,
+	parent := &model.Ticket{
+		Title:     "Parent ticket",
+		Type:      model.TypeTicket,
 		Status:    model.StatusDraft,
 		BlockedBy: []string{child1.ID, child2.ID, child3.ID},
 	}
-	require.NoError(t, s.CreateTicket(plan))
+	require.NoError(t, s.CreateTicket(parent))
 
-	got, err := s.GetTicket(plan.ID)
+	got, err := s.GetTicket(parent.ID)
 	require.NoError(t, err)
 	assert.Len(t, got.BlockedBy, 3)
 }
@@ -73,7 +73,10 @@ func TestThreadAndMessages(t *testing.T) {
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
 
-	thread, err := s.CreateThread(ticket.ID)
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	thread, err := s.CreateThread(task.ID)
 	require.NoError(t, err)
 
 	_, err = s.AddMessage(thread.ID, "human:aidan", "first message")
@@ -110,7 +113,10 @@ func TestCascadeDelete(t *testing.T) {
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
 
-	thread, err := s.CreateThread(ticket.ID)
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	thread, err := s.CreateThread(task.ID)
 	require.NoError(t, err)
 	_, err = s.AddMessage(thread.ID, "human:aidan", "msg")
 	require.NoError(t, err)
@@ -120,7 +126,7 @@ func TestCascadeDelete(t *testing.T) {
 	require.NoError(t, s.DeleteTicket(ticket.ID))
 
 	var count int
-	s.db.QueryRow(`SELECT COUNT(*) FROM comment_threads WHERE ticket_id=?`, ticket.ID).Scan(&count)
+	s.db.QueryRow(`SELECT COUNT(*) FROM comment_threads WHERE task_id=?`, task.ID).Scan(&count)
 	assert.Equal(t, 0, count)
 	s.db.QueryRow(`SELECT COUNT(*) FROM thread_messages WHERE thread_id=?`, thread.ID).Scan(&count)
 	assert.Equal(t, 0, count)
@@ -142,7 +148,10 @@ func TestInvalidThreadTransition(t *testing.T) {
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
 
-	thread, err := s.CreateThread(ticket.ID)
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	thread, err := s.CreateThread(task.ID)
 	require.NoError(t, err)
 
 	// Agent trying to resolve directly
@@ -162,16 +171,12 @@ func TestAvailableWork(t *testing.T) {
 	free := &model.Ticket{Title: "Free", Type: model.TypeTicket, Status: model.StatusReady}
 	require.NoError(t, s.CreateTicket(free))
 
-	plan := &model.Ticket{Title: "Plan", Type: model.TypePlan, Status: model.StatusReady}
-	require.NoError(t, s.CreateTicket(plan))
-
 	work, err := s.AvailableWork()
 	require.NoError(t, err)
 	ids := ticketIDs(work)
 	assert.Contains(t, ids, blocker.ID)
 	assert.Contains(t, ids, free.ID)
 	assert.NotContains(t, ids, blocked.ID)
-	assert.NotContains(t, ids, plan.ID)
 
 	// complete the blocker; blocked should now appear
 	_, err = s.db.Exec(`UPDATE tickets SET status='completed' WHERE id=?`, blocker.ID)
@@ -185,38 +190,28 @@ func TestAvailableWork(t *testing.T) {
 func TestReviewQueue(t *testing.T) {
 	s := newTestStore(t)
 
-	// Full stack in review
-	t1 := &model.Ticket{Title: "S1-T1", Type: model.TypeTicket, Status: model.StatusInReview, StackID: "s1"}
-	t2 := &model.Ticket{Title: "S1-T2", Type: model.TypeTicket, Status: model.StatusInReview, StackID: "s1"}
-	require.NoError(t, s.CreateTicket(t1))
-	require.NoError(t, s.CreateTicket(t2))
+	r1 := &model.Ticket{Title: "R1", Type: model.TypeTicket, Status: model.StatusInReview}
+	r2 := &model.Ticket{Title: "R2", Type: model.TypeTicket, Status: model.StatusInReview}
+	require.NoError(t, s.CreateTicket(r1))
+	require.NoError(t, s.CreateTicket(r2))
 
-	// Mixed stack (not in queue)
-	t3 := &model.Ticket{Title: "S2-T1", Type: model.TypeTicket, Status: model.StatusInReview, StackID: "s2"}
-	t4 := &model.Ticket{Title: "S2-T2", Type: model.TypeTicket, Status: model.StatusInProgress, StackID: "s2"}
-	require.NoError(t, s.CreateTicket(t3))
-	require.NoError(t, s.CreateTicket(t4))
-
-	// Standalone in_review
-	solo := &model.Ticket{Title: "Solo", Type: model.TypeTicket, Status: model.StatusInReview}
-	require.NoError(t, s.CreateTicket(solo))
+	other := &model.Ticket{Title: "Other", Type: model.TypeTicket, Status: model.StatusInProgress}
+	require.NoError(t, s.CreateTicket(other))
 
 	q, err := s.ReviewQueue()
 	require.NoError(t, err)
-	assert.Contains(t, stackIDs(q.Stacks), "s1")
-	assert.NotContains(t, stackIDs(q.Stacks), "s2")
-	assert.Len(t, q.Standalone, 1)
-	assert.Equal(t, solo.ID, q.Standalone[0].ID)
+	assert.Len(t, q.Tickets, 2)
+	assert.NotContains(t, ticketIDs(q.Tickets), other.ID)
 }
 
 func TestTicketHierarchy(t *testing.T) {
 	s := newTestStore(t)
-	plan := &model.Ticket{Title: "Plan", Type: model.TypePlan, Status: model.StatusDraft}
-	require.NoError(t, s.CreateTicket(plan))
+	parent := &model.Ticket{Title: "Parent", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(parent))
 	child := &model.Ticket{Title: "Child", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(child))
-	plan.BlockedBy = []string{child.ID}
-	require.NoError(t, s.UpdateTicket(plan))
+	parent.BlockedBy = []string{child.ID}
+	require.NoError(t, s.UpdateTicket(parent))
 
 	tickets, err := s.TicketHierarchy()
 	require.NoError(t, err)
@@ -254,10 +249,3 @@ func ticketIDs(tickets []*model.Ticket) []string {
 	return ids
 }
 
-func stackIDs(stacks map[string][]*model.Ticket) []string {
-	var ids []string
-	for k := range stacks {
-		ids = append(ids, k)
-	}
-	return ids
-}

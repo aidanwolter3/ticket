@@ -83,6 +83,11 @@ func (s *Store) GetThreadsForTask(taskID string) ([]*model.Thread, error) {
 	return threads, nil
 }
 
+// GetThreadsForTicket returns all threads across all tasks of a ticket.
+func (s *Store) GetThreadsForTicket(ticketID string) ([]*model.Thread, error) {
+	return s.GetAllThreadsForTicket(ticketID)
+}
+
 // GetAllThreadsForTicket returns all threads across all tasks of a ticket,
 // ordered by task position then thread creation time.
 func (s *Store) GetAllThreadsForTicket(ticketID string) ([]*model.Thread, error) {

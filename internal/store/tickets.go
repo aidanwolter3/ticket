@@ -156,6 +156,39 @@ func (s *Store) ListTickets(filter ...model.Status) ([]*model.Ticket, error) {
 	return tickets, nil
 }
 
+// BlockingTickets returns tickets that are blocked by the given ticket ID.
+func (s *Store) BlockingTickets(blockerID string) ([]*model.Ticket, error) {
+	rows, err := s.db.Query(`
+		SELECT id, title, description, type, status, feature_branch,
+		       COALESCE(worktree_path,''), created, updated
+		FROM tickets
+		WHERE id IN (SELECT ticket_id FROM blocked_by WHERE blocker_id=?)
+		ORDER BY created`, blockerID)
+	if err != nil {
+		return nil, err
+	}
+	var tickets []*model.Ticket
+	for rows.Next() {
+		t, err := scanTicket(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		tickets = append(tickets, t)
+	}
+	rowsErr := rows.Err()
+	rows.Close()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+	for _, t := range tickets {
+		if err := s.loadBlockedBy(t); err != nil {
+			return nil, err
+		}
+	}
+	return tickets, nil
+}
+
 func (s *Store) setBlockedBy(ticketID string, blockers []string) error {
 	_, err := s.db.Exec(`DELETE FROM blocked_by WHERE ticket_id=?`, ticketID)
 	if err != nil {
