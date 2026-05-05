@@ -159,6 +159,7 @@ Usage:
   ticket merge [--db path] <id> <author>      ff-merge, delete branch, remove worktree (human only)
   ticket config set [--db path] <key> <value> set a config value
   ticket config get [--db path] <key>         get a config value (worktrees defaults to true)
+  ticket config ls  [--db path]               list all config settings with defaults
   ticket delete [--db path] <id>              delete a ticket
   ticket purge [--db path] --yes              delete the database file
 
