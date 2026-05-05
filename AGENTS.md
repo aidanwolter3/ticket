@@ -196,6 +196,7 @@ Valid transitions for agents:
 |---|---|---|
 | `ready` | `in_progress` | yes |
 | `in_progress` | `in_review` | yes |
+| `in_review` | `in_progress` | yes |
 | `in_review` | `ready` | **human only** |
 | `in_review` | `completed` | **human only** |
 | `active` thread | `ready` thread | **human only** |
@@ -216,7 +217,8 @@ go run ./cmd/ticket transition T-001 in_progress agent:claude
 # 3. Read full context (tasks, threads, notes)
 go run ./cmd/ticket get T-001
 
-# 4. Implement each task in order — one commit per task
+# 4. Implement each task in order — one commit per task, then mark it done:
+go run ./cmd/ticket task complete <task-id> agent:claude
 
 # 5. Add a note summarising any non-obvious decisions
 go run ./cmd/ticket note add T-001 agent:claude 'Explain any non-obvious decisions here.'
@@ -236,6 +238,7 @@ Agents **must** commit all changes before transitioning a ticket to `in_review`.
   T-001 TS-002: replace bcrypt with argon2
   ```
 - **Verifiable result**: after each task, run the `verifiable_result` check before moving to the next task.
+- **Mark complete**: after committing each task, call `ticket task complete <task-id> agent:claude` to persist completion state and update the progress bar.
 
 ### Handling amendment requests
 
