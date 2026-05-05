@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aidanwolter/ticket/internal/model"
 )
@@ -37,14 +38,7 @@ func runDraft(args []string, defaultDB string) {
 			fmt.Fprintf(os.Stderr, "read stdin: %v\n", err)
 			os.Exit(1)
 		}
-		combined := ""
-		for i, l := range lines {
-			if i > 0 {
-				combined += "\n"
-			}
-			combined += l
-		}
-		desc = combined
+		desc = strings.Join(lines, "\n")
 	}
 
 	s := openStore(*dbPath)
