@@ -79,9 +79,23 @@ func (s *Store) TransitionTicket(id string, to model.Status, author string) erro
 	return err
 }
 
-// PromoteTicket transitions a draft ticket to ready.
-func (s *Store) PromoteTicket(ticketID, author string) error {
-	return s.TransitionTicket(ticketID, model.StatusReady, author)
+// PromoteTicket transitions a draft ticket to ready and returns the ticket so
+// the caller can set up the worktree.
+func (s *Store) PromoteTicket(ticketID, author string) (*model.Ticket, error) {
+	if err := s.TransitionTicket(ticketID, model.StatusReady, author); err != nil {
+		return nil, err
+	}
+	return s.GetTicket(ticketID)
+}
+
+// SetWorktreePath updates the worktree_path (and optionally feature_branch) on a ticket.
+func (s *Store) SetWorktreePath(ticketID, worktreePath, featureBranch string) error {
+	now := time.Now().UnixMilli()
+	_, err := s.db.Exec(`
+		UPDATE tickets SET worktree_path=?, feature_branch=?, updated=?
+		WHERE id=?`,
+		nullStr(worktreePath), featureBranch, now, ticketID)
+	return err
 }
 
 func (s *Store) DeleteTicket(id string) error {
