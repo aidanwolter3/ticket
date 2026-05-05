@@ -43,6 +43,9 @@ func main() {
 		case "transition":
 			runTransition(os.Args[2:], defaultDB)
 			return
+		case "ready":
+			runReady(os.Args[2:], defaultDB)
+			return
 		case "promote":
 			runPromote(os.Args[2:], defaultDB)
 			return
@@ -153,8 +156,10 @@ Usage:
                                               record that <ticket-id> is blocked by <blocker-id>
   ticket unblock [--db path] <ticket-id> <blocker-id>
                                               remove that dependency
-  ticket promote [--db path] <ticket-id> <author>
+  ticket ready [--db path] <ticket-id> <author>
                                               promote a draft ticket to ready
+  ticket promote [--db path] <ticket-id> <author>
+                                              deprecated alias for 'ticket ready'
   ticket approve [--db path] <id> <author>    approve an in_review ticket (human only)
   ticket merge [--db path] <id> <author>      ff-merge, delete branch, remove worktree (human only)
   ticket config set [--db path] <key> <value> set a config value
