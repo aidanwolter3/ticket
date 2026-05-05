@@ -58,6 +58,9 @@ func main() {
 		case "unblock":
 			runUnblock(os.Args[2:], defaultDB)
 			return
+		case "config":
+			runConfig(os.Args[2:], defaultDB)
+			return
 		case "help", "--help", "-h":
 			printUsage()
 			return
@@ -128,6 +131,8 @@ Usage:
                                               remove that dependency
   ticket promote [--db path] <ticket-id> <author>
                                               promote a draft ticket to ready
+  ticket config set [--db path] <key> <value> set a config value
+  ticket config get [--db path] <key>         get a config value (worktrees defaults to true)
   ticket delete [--db path] <id>              delete a ticket
   ticket purge [--db path] --yes              delete the database file
 
