@@ -357,6 +357,20 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return a, nil
+		case "[":
+			if a.ticketDetail != nil {
+				a.ticketDetail.ScrollUp(3)
+			} else if a.planDetail != nil {
+				a.planDetail.ScrollUp(3)
+			}
+			return a, nil
+		case "]":
+			if a.ticketDetail != nil {
+				a.ticketDetail.ScrollDown(3)
+			} else if a.planDetail != nil {
+				a.planDetail.ScrollDown(3)
+			}
+			return a, nil
 		}
 
 		// Tab-specific list actions
@@ -826,6 +840,7 @@ func (a *App) renderHelp() string {
 			"n                 add note",
 			"s                 change status",
 			"S                 stack view",
+			"[ / ]             scroll up / down",
 		}},
 		{"Threads", []string{
 			"↑↓                navigate",

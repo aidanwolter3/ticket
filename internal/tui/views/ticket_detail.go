@@ -80,25 +80,26 @@ func (v *TicketDetailView) SetSize(w, h int) {
 	v.vp.SetContent(v.renderContent())
 }
 
+func (v *TicketDetailView) ScrollUp(n int)   { v.vp.LineUp(n) }
+func (v *TicketDetailView) ScrollDown(n int) { v.vp.LineDown(n) }
+
 func (v *TicketDetailView) Init() tea.Cmd { return nil }
 
 func (v *TicketDetailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		v.SetSize(msg.Width, msg.Height)
-	default:
-		var cmd tea.Cmd
-		v.vp, cmd = v.vp.Update(msg)
-		return v, cmd
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		v.SetSize(ws.Width, ws.Height)
+		return v, nil
 	}
-	return v, nil
+	var cmd tea.Cmd
+	v.vp, cmd = v.vp.Update(msg)
+	return v, cmd
 }
 
 func (v *TicketDetailView) View() string {
 	v.vp.SetContent(v.renderContent())
 	return v.vp.View() + "\n" +
 		lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-			"e edit · t threads · n note · b blockers · s status · esc back")
+			"e edit · t threads · n note · s status · [ ] scroll · esc back")
 }
 
 func (v *TicketDetailView) renderContent() string {

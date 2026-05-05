@@ -7,6 +7,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/components"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -19,6 +20,7 @@ type PlanDetailView struct {
 	children []*model.Ticket
 	threads  []*model.Thread
 	notes    []*model.Note
+	vp       viewport.Model
 	width    int
 	height   int
 	err      error
@@ -56,18 +58,36 @@ func (v *PlanDetailView) Reload() error {
 
 func (v *PlanDetailView) Ticket() *model.Ticket { return v.ticket }
 
-func (v *PlanDetailView) SetSize(w, h int) { v.width = w; v.height = h }
-func (v *PlanDetailView) Init() tea.Cmd    { return nil }
+func (v *PlanDetailView) SetSize(w, h int) {
+	v.width = w
+	v.height = h
+	v.vp = viewport.New(w, h-2)
+	v.vp.SetContent(v.renderContent())
+}
+
+func (v *PlanDetailView) ScrollUp(n int)   { v.vp.LineUp(n) }
+func (v *PlanDetailView) ScrollDown(n int) { v.vp.LineDown(n) }
+
+func (v *PlanDetailView) Init() tea.Cmd { return nil }
 
 func (v *PlanDetailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
-		v.width = ws.Width
-		v.height = ws.Height
+		v.SetSize(ws.Width, ws.Height)
+		return v, nil
 	}
-	return v, nil
+	var cmd tea.Cmd
+	v.vp, cmd = v.vp.Update(msg)
+	return v, cmd
 }
 
 func (v *PlanDetailView) View() string {
+	v.vp.SetContent(v.renderContent())
+	return v.vp.View() + "\n" +
+		lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
+			"e edit · t threads · n note · s status · [ ] scroll · esc back")
+}
+
+func (v *PlanDetailView) renderContent() string {
 	if v.ticket == nil {
 		return "No plan loaded."
 	}
@@ -84,7 +104,6 @@ func (v *PlanDetailView) View() string {
 		sb.WriteString(indent(wrapText(t.Description, v.width-2), "  ") + "\n\n")
 	}
 
-	// Progress bar
 	completed := 0
 	for _, c := range v.children {
 		if c.Status == model.StatusCompleted {
@@ -94,11 +113,10 @@ func (v *PlanDetailView) View() string {
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Progress") + "\n")
 	sb.WriteString("  " + comp.ProgressBar(completed, len(v.children), 20) + "\n\n")
 
-	// Children
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render(
 		fmt.Sprintf("Children (%d)", len(v.children))) + "\n")
 	if len(v.children) == 0 {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  no children  press 'a' to add") + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  no children") + "\n")
 	} else {
 		for _, c := range v.children {
 			sb.WriteString(fmt.Sprintf("  %s %s  %s\n",
@@ -109,20 +127,14 @@ func (v *PlanDetailView) View() string {
 	}
 	sb.WriteString("\n")
 
-	// Threads summary
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render(
 		fmt.Sprintf("Threads (%d)", len(v.threads))) + "\n\n")
 
-	// Notes
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render(
 		fmt.Sprintf("Notes (%d)", len(v.notes))) + "\n")
 	for _, n := range v.notes {
 		sb.WriteString(fmt.Sprintf("  [%s] %s\n", n.Author, n.Text))
 	}
-
-	sb.WriteString("\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"e edit · t threads · n note · a add child · s status · esc back"))
 
 	return sb.String()
 }
