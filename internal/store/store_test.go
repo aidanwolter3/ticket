@@ -204,6 +204,41 @@ func TestInvalidThreadTransition(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestBlockerSatisfiedByApprovedOrMerged(t *testing.T) {
+	s := newTestStore(t)
+
+	blocker := &model.Ticket{Title: "Blocker", Type: model.TypeTicket, Status: model.StatusReady}
+	require.NoError(t, s.CreateTicket(blocker))
+	blocked := &model.Ticket{Title: "Blocked", Type: model.TypeTicket, Status: model.StatusReady, BlockedBy: []string{blocker.ID}}
+	require.NoError(t, s.CreateTicket(blocked))
+
+	// blocked ticket is not claimable while blocker is ready.
+	items, err := s.ClaimWork("agent:test")
+	require.NoError(t, err)
+	require.NotNil(t, items)
+	assert.Equal(t, blocker.ID, items.Ticket.ID)
+
+	// Reset blocker back to ready.
+	_, err = s.db.Exec(`UPDATE tickets SET status='ready' WHERE id=?`, blocker.ID)
+	require.NoError(t, err)
+
+	// approved blocker unblocks dependent.
+	_, err = s.db.Exec(`UPDATE tickets SET status='approved' WHERE id=?`, blocker.ID)
+	require.NoError(t, err)
+	work, err := s.PeekWork()
+	require.NoError(t, err)
+	workIDs := workItemIDs(work)
+	assert.Contains(t, workIDs, blocked.ID, "approved blocker should unblock")
+
+	// merged blocker also unblocks dependent.
+	_, err = s.db.Exec(`UPDATE tickets SET status='merged' WHERE id=?`, blocker.ID)
+	require.NoError(t, err)
+	work, err = s.PeekWork()
+	require.NoError(t, err)
+	workIDs = workItemIDs(work)
+	assert.Contains(t, workIDs, blocked.ID, "merged blocker should unblock")
+}
+
 func TestAvailableWork(t *testing.T) {
 	s := newTestStore(t)
 
@@ -337,6 +372,14 @@ func ticketIDs(tickets []*model.Ticket) []string {
 	ids := make([]string, len(tickets))
 	for i, t := range tickets {
 		ids[i] = t.ID
+	}
+	return ids
+}
+
+func workItemIDs(items []*WorkItem) []string {
+	ids := make([]string, len(items))
+	for i, w := range items {
+		ids[i] = w.Ticket.ID
 	}
 	return ids
 }
