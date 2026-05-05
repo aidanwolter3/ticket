@@ -11,17 +11,19 @@ func ValidateTicketTransition(from, to Status, author string) error {
 	isHuman := author == "human" || strings.HasPrefix(author, "human:")
 
 	allowed := map[Status]map[Status]bool{
-		StatusDraft:      {StatusReady: true},                         // human
-		StatusReady:      {StatusDraft: true, StatusInProgress: true}, // human or agent
-		StatusInProgress: {StatusInReview: true},                      // agent
-		StatusInReview:   {StatusReady: true, StatusCompleted: true, StatusInProgress: true}, // human or agent
-		StatusCompleted:  {},
+		StatusDraft:      {StatusReady: true},
+		StatusReady:      {StatusDraft: true, StatusInProgress: true},
+		StatusInProgress: {StatusInReview: true},
+		StatusInReview:   {StatusReady: true, StatusApproved: true, StatusInProgress: true},
+		StatusApproved:   {StatusMerged: true},
+		StatusMerged:     {},
 	}
 
 	humanOnly := map[Status]map[Status]bool{
 		StatusDraft:    {StatusReady: true},
 		StatusReady:    {StatusDraft: true},
-		StatusInReview: {StatusReady: true, StatusCompleted: true},
+		StatusInReview: {StatusReady: true, StatusApproved: true},
+		StatusApproved: {StatusMerged: true},
 	}
 
 	targets, ok := allowed[from]

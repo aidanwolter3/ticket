@@ -26,6 +26,7 @@ type importTicket struct {
 	Description   string        `json:"description"`
 	FeatureBranch string        `json:"feature_branch"`
 	WorktreePath  string        `json:"worktree_path"`
+	RepoPath      string        `json:"repo_path"`
 	// BlockedBy may contain refs from this document ("jwt") or existing IDs ("T-042").
 	BlockedBy []string       `json:"blocked_by"`
 	Tasks     []importTask   `json:"tasks"`
@@ -121,6 +122,7 @@ func importTickets(s *store.Store, inputs []importTicket) (*importResult, error)
 			Description:   in.Description,
 			FeatureBranch: in.FeatureBranch,
 			WorktreePath:  in.WorktreePath,
+			RepoPath:      in.RepoPath,
 		}
 		if err := s.CreateTicket(t); err != nil {
 			return nil, fmt.Errorf("create ticket %q: %w", in.Title, err)

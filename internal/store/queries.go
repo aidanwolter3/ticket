@@ -27,14 +27,14 @@ func (s *Store) FindWork() ([]*WorkItem, error) {
 	// New work: ready tickets, all blockers completed, no worktree claimed.
 	newRows, err := s.db.Query(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(worktree_path,''), created, updated
+		       COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
 		FROM tickets t
 		WHERE t.status = 'ready'
 		  AND t.worktree_path IS NULL
 		  AND NOT EXISTS (
 		    SELECT 1 FROM blocked_by b
 		    JOIN tickets bt ON bt.id = b.blocker_id
-		    WHERE b.ticket_id = t.id AND bt.status != 'completed'
+		    WHERE b.ticket_id = t.id AND bt.status NOT IN ('approved', 'merged')
 		  )
 		ORDER BY t.created ASC`)
 	if err != nil {
@@ -77,13 +77,13 @@ func (s *Store) FindWork() ([]*WorkItem, error) {
 func (s *Store) AvailableWork() ([]*model.Ticket, error) {
 	rows, err := s.db.Query(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(worktree_path,''), created, updated
+		       COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
 		FROM tickets t
 		WHERE t.status = 'ready'
 		  AND NOT EXISTS (
 		    SELECT 1 FROM blocked_by b
 		    JOIN tickets bt ON bt.id = b.blocker_id
-		    WHERE b.ticket_id = t.id AND bt.status != 'completed'
+		    WHERE b.ticket_id = t.id AND bt.status NOT IN ('approved', 'merged')
 		  )
 		ORDER BY t.created ASC`)
 	if err != nil {
@@ -113,7 +113,7 @@ type ReviewQueue struct {
 func (s *Store) ReviewQueue() (*ReviewQueue, error) {
 	rows, err := s.db.Query(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(worktree_path,''), created, updated
+		       COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
 		FROM tickets
 		WHERE status = 'in_review'
 		ORDER BY created`)

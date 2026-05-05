@@ -35,10 +35,10 @@ func (s *Store) CreateTicket(t *model.Ticket) error {
 	t.Updated = time.UnixMilli(now)
 
 	_, err = s.db.Exec(`
-		INSERT INTO tickets (id, title, description, type, status, feature_branch, worktree_path, created, updated)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO tickets (id, title, description, type, status, feature_branch, worktree_path, repo_path, created, updated)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.Title, t.Description, string(t.Type), string(t.Status),
-		t.FeatureBranch, nullStr(t.WorktreePath), now, now,
+		t.FeatureBranch, nullStr(t.WorktreePath), nullStr(t.RepoPath), now, now,
 	)
 	if err != nil {
 		return fmt.Errorf("insert ticket: %w", err)
@@ -51,10 +51,10 @@ func (s *Store) UpdateTicket(t *model.Ticket) error {
 	t.Updated = time.UnixMilli(now)
 	_, err := s.db.Exec(`
 		UPDATE tickets SET title=?, description=?, type=?, status=?, feature_branch=?,
-		  worktree_path=?, updated=?
+		  worktree_path=?, repo_path=?, updated=?
 		WHERE id=?`,
 		t.Title, t.Description, string(t.Type), string(t.Status),
-		t.FeatureBranch, nullStr(t.WorktreePath), now, t.ID,
+		t.FeatureBranch, nullStr(t.WorktreePath), nullStr(t.RepoPath), now, t.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update ticket: %w", err)
@@ -92,7 +92,7 @@ func (s *Store) DeleteTicket(id string) error {
 func (s *Store) GetTicket(id string) (*model.Ticket, error) {
 	row := s.db.QueryRow(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(worktree_path,''), created, updated
+		       COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
 		FROM tickets WHERE id=?`, id)
 	t, err := scanTicket(row)
 	if err == sql.ErrNoRows {
@@ -117,7 +117,7 @@ func (s *Store) ListTickets(filter ...model.Status) ([]*model.Ticket, error) {
 	var args []interface{}
 	if len(filter) == 0 {
 		query = `SELECT id, title, description, type, status, feature_branch,
-		               COALESCE(worktree_path,''), created, updated
+		               COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
 		         FROM tickets ORDER BY created`
 	} else {
 		placeholders := make([]string, len(filter))
@@ -126,7 +126,7 @@ func (s *Store) ListTickets(filter ...model.Status) ([]*model.Ticket, error) {
 			args = append(args, string(f))
 		}
 		query = fmt.Sprintf(`SELECT id, title, description, type, status, feature_branch,
-		               COALESCE(worktree_path,''), created, updated
+		               COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
 		         FROM tickets WHERE status IN (%s) ORDER BY created`,
 			strings.Join(placeholders, ","))
 	}
@@ -160,7 +160,7 @@ func (s *Store) ListTickets(filter ...model.Status) ([]*model.Ticket, error) {
 func (s *Store) BlockingTickets(blockerID string) ([]*model.Ticket, error) {
 	rows, err := s.db.Query(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(worktree_path,''), created, updated
+		       COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
 		FROM tickets
 		WHERE id IN (SELECT ticket_id FROM blocked_by WHERE blocker_id=?)
 		ORDER BY created`, blockerID)
@@ -235,7 +235,7 @@ func scanTicket(r scanner) (*model.Ticket, error) {
 		updatedMs int64
 	)
 	err := r.Scan(&t.ID, &t.Title, &t.Description, &typeStr, &statusStr,
-		&t.FeatureBranch, &t.WorktreePath, &createdMs, &updatedMs)
+		&t.FeatureBranch, &t.WorktreePath, &t.RepoPath, &createdMs, &updatedMs)
 	if err != nil {
 		return nil, err
 	}

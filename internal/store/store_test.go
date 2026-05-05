@@ -21,12 +21,49 @@ func newTestStore(t *testing.T) *Store {
 
 func TestSchemaMigration(t *testing.T) {
 	s := newTestStore(t)
-	tables := []string{"tickets", "blocked_by", "comment_threads", "thread_messages", "notes"}
+	tables := []string{"tickets", "blocked_by", "comment_threads", "thread_messages", "notes", "config"}
 	for _, table := range tables {
 		var name string
 		err := s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&name)
 		require.NoError(t, err, "table %s missing", table)
 	}
+	// Verify repo_path column exists.
+	hasRepo, err := s.hasColumn("tickets", "repo_path")
+	require.NoError(t, err)
+	require.True(t, hasRepo, "repo_path column missing from tickets")
+}
+
+func TestMigrate(t *testing.T) {
+	// Open a fresh DB — migration2 should run automatically.
+	dir := t.TempDir()
+	s, err := Open(filepath.Join(dir, "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+
+	// config table must exist.
+	var name string
+	err = s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='config'`).Scan(&name)
+	require.NoError(t, err, "config table missing")
+
+	// repo_path column must exist.
+	hasRepo, err := s.hasColumn("tickets", "repo_path")
+	require.NoError(t, err)
+	require.True(t, hasRepo, "repo_path column missing")
+
+	// approved and merged are valid statuses.
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:aidan"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusApproved, "human:aidan"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusMerged, "human:aidan"))
+
+	// completed status is no longer valid in the DB.
+	ticket2 := &model.Ticket{Title: "T2", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket2))
+	_, dbErr := s.db.Exec(`UPDATE tickets SET status='completed' WHERE id=?`, ticket2.ID)
+	require.Error(t, dbErr, "completed status should be rejected by CHECK constraint")
 }
 
 func TestCreateAndGetTicket(t *testing.T) {
@@ -139,7 +176,15 @@ func TestInvalidTicketTransition(t *testing.T) {
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
 
-	err := s.TransitionTicket(ticket.ID, model.StatusCompleted, "human")
+	// draft → merged is not a valid transition.
+	err := s.TransitionTicket(ticket.ID, model.StatusMerged, "human")
+	assert.Error(t, err)
+
+	// Agent cannot approve (human only).
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:aidan"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
+	err = s.TransitionTicket(ticket.ID, model.StatusApproved, "agent:claude")
 	assert.Error(t, err)
 }
 
@@ -178,8 +223,8 @@ func TestAvailableWork(t *testing.T) {
 	assert.Contains(t, ids, free.ID)
 	assert.NotContains(t, ids, blocked.ID)
 
-	// complete the blocker; blocked should now appear
-	_, err = s.db.Exec(`UPDATE tickets SET status='completed' WHERE id=?`, blocker.ID)
+	// approve the blocker; blocked should now appear
+	_, err = s.db.Exec(`UPDATE tickets SET status='approved' WHERE id=?`, blocker.ID)
 	require.NoError(t, err)
 
 	work, err = s.AvailableWork()

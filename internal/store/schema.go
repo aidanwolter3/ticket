@@ -16,11 +16,17 @@ CREATE TABLE IF NOT EXISTS tickets (
   type           TEXT NOT NULL DEFAULT 'ticket'
                  CHECK(type IN ('ticket')),
   status         TEXT NOT NULL DEFAULT 'draft'
-                 CHECK(status IN ('draft','ready','in_progress','in_review','completed')),
+                 CHECK(status IN ('draft','ready','in_progress','in_review','approved','merged')),
   feature_branch TEXT NOT NULL DEFAULT '',
   worktree_path  TEXT,
+  repo_path      TEXT,
   created        INTEGER NOT NULL,
   updated        INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS config (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS tasks (

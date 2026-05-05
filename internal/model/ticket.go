@@ -9,7 +9,9 @@ const (
 	StatusReady      Status = "ready"
 	StatusInProgress Status = "in_progress"
 	StatusInReview   Status = "in_review"
-	StatusCompleted  Status = "completed"
+	StatusApproved   Status = "approved"
+	StatusMerged     Status = "merged"
+	StatusCompleted  Status = "merged" // deprecated alias for merged
 )
 
 type TicketType string
@@ -26,6 +28,7 @@ type Ticket struct {
 	Status        Status
 	FeatureBranch string
 	WorktreePath  string
+	RepoPath      string
 	BlockedBy     []string
 	Tasks         []Task
 	Threads       []Thread // aggregated from all tasks

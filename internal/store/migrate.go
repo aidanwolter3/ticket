@@ -29,6 +29,14 @@ func (s *Store) runMigrations() error {
 			return fmt.Errorf("record migration 1: %w", err)
 		}
 	}
+	if current < 2 {
+		if err := s.migration2(); err != nil {
+			return fmt.Errorf("migration 2: %w", err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO schema_migrations (version, applied) VALUES (2, ?)`, time.Now().UnixMilli()); err != nil {
+			return fmt.Errorf("record migration 2: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -386,6 +394,16 @@ func (s *Store) migration1() error {
 	return tx.Commit()
 }
 
+// hasTable reports whether the given table exists in the database.
+func (s *Store) hasTable(table string) (bool, error) {
+	var name string
+	err := s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&name)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // hasColumn reports whether the given table has the given column.
 func (s *Store) hasColumn(table, column string) (bool, error) {
 	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
@@ -430,6 +448,104 @@ func firstTaskForTicket(tx *sql.Tx, ticketID string) (string, error) {
 		return "", nil
 	}
 	return id, err
+}
+
+// migration2 adds the config table, adds repo_path column, and recreates the
+// tickets table to change the status CHECK (removing 'completed', adding
+// 'approved'/'merged'). Existing 'completed' rows are mapped to 'merged'.
+func (s *Store) migration2() error {
+	// Check outside the transaction — hasColumn uses s.db which would deadlock
+	// inside a transaction when MaxOpenConns=1.
+	ticketsExists, err := s.hasTable("tickets")
+	if err != nil {
+		return err
+	}
+	var hasRepo bool
+	if ticketsExists {
+		hasRepo, err = s.hasColumn("tickets", "repo_path")
+		if err != nil {
+			return err
+		}
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Add config table.
+	if _, err = tx.Exec(`CREATE TABLE IF NOT EXISTS config (
+		key    TEXT PRIMARY KEY,
+		value  TEXT NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("create config table: %w", err)
+	}
+
+	// Only migrate the tickets table if it already exists; fresh DBs get the
+	// correct schema from schema.go after migrations complete.
+	if ticketsExists {
+		// Add repo_path column if not present.
+		if !hasRepo {
+			if _, err = tx.Exec(`ALTER TABLE tickets ADD COLUMN repo_path TEXT`); err != nil {
+				return fmt.Errorf("add repo_path column: %w", err)
+			}
+		}
+
+		// Recreate tickets table to change the CHECK constraint.
+		// SQLite does not support modifying CHECK constraints in place.
+		if _, err = tx.Exec(`
+			CREATE TABLE tickets_new (
+			  id             TEXT PRIMARY KEY,
+			  title          TEXT NOT NULL,
+			  description    TEXT NOT NULL DEFAULT '',
+			  type           TEXT NOT NULL DEFAULT 'ticket'
+			                 CHECK(type IN ('ticket')),
+			  status         TEXT NOT NULL DEFAULT 'draft'
+			                 CHECK(status IN ('draft','ready','in_progress','in_review','approved','merged')),
+			  feature_branch TEXT NOT NULL DEFAULT '',
+			  worktree_path  TEXT,
+			  repo_path      TEXT,
+			  created        INTEGER NOT NULL,
+			  updated        INTEGER NOT NULL
+			)`); err != nil {
+			return fmt.Errorf("create tickets_new: %w", err)
+		}
+
+		// Copy rows, mapping 'completed' → 'merged'.
+		if _, err = tx.Exec(`
+			INSERT INTO tickets_new
+			  (id, title, description, type, status, feature_branch, worktree_path, repo_path, created, updated)
+			SELECT
+			  id, title, description, type,
+			  CASE WHEN status = 'completed' THEN 'merged' ELSE status END,
+			  feature_branch, worktree_path, repo_path,
+			  created, updated
+			FROM tickets`); err != nil {
+			return fmt.Errorf("copy tickets: %w", err)
+		}
+
+		if _, err = tx.Exec(`DROP TABLE tickets`); err != nil {
+			return fmt.Errorf("drop old tickets: %w", err)
+		}
+		if _, err = tx.Exec(`ALTER TABLE tickets_new RENAME TO tickets`); err != nil {
+			return fmt.Errorf("rename tickets: %w", err)
+		}
+
+		// Recreate indexes dropped with the old table.
+		if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)`); err != nil {
+			return fmt.Errorf("recreate idx_tickets_status: %w", err)
+		}
+		if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type)`); err != nil {
+			return fmt.Errorf("recreate idx_tickets_type: %w", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 func nullStrTx(s string) interface{} {
