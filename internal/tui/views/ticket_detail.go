@@ -74,6 +74,9 @@ func (v *TicketDetailView) Ticket() *model.Ticket {
 }
 
 func (v *TicketDetailView) SetSize(w, h int) {
+	if v.width == w && v.height == h {
+		return
+	}
 	v.width = w
 	v.height = h
 	v.vp = viewport.New(w, h-2)

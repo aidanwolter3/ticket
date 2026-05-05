@@ -59,6 +59,9 @@ func (v *PlanDetailView) Reload() error {
 func (v *PlanDetailView) Ticket() *model.Ticket { return v.ticket }
 
 func (v *PlanDetailView) SetSize(w, h int) {
+	if v.width == w && v.height == h {
+		return
+	}
 	v.width = w
 	v.height = h
 	v.vp = viewport.New(w, h-2)
