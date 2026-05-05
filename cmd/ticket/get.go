@@ -5,15 +5,17 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func runGet(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("get", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
+	jsonOut := fs.Bool("json", false, "output raw JSON")
 	fs.Parse(args)
 
 	if fs.NArg() == 0 {
-		fmt.Fprintln(os.Stderr, "usage: ticket get [--db path] <id>")
+		fmt.Fprintln(os.Stderr, "usage: ticket get [--db path] [--json] <id>")
 		os.Exit(1)
 	}
 	id := fs.Arg(0)
@@ -53,7 +55,35 @@ func runGet(args []string, defaultDB string) {
 		})
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	enc.Encode(tj)
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(tj)
+		return
+	}
+
+	blockedBy := "none"
+	if len(tj.BlockedBy) > 0 {
+		blockedBy = strings.Join(tj.BlockedBy, ", ")
+	}
+
+	fmt.Printf("ID:             %s\n", tj.ID)
+	fmt.Printf("Title:          %s\n", tj.Title)
+	fmt.Printf("Type:           %s\n", tj.Type)
+	fmt.Printf("Status:         %s\n", tj.Status)
+	if tj.FeatureBranch != "" {
+		fmt.Printf("Feature Branch: %s\n", tj.FeatureBranch)
+	}
+	fmt.Printf("Blocked By:     %s\n", blockedBy)
+
+	if len(tj.Tasks) > 0 {
+		fmt.Println("\nTasks:")
+		for _, task := range tj.Tasks {
+			check := " "
+			if task.CompletedAt != nil {
+				check = "x"
+			}
+			fmt.Printf("  %d. [%s] %s  %s\n", task.Position, check, task.ID, task.Title)
+		}
+	}
 }
