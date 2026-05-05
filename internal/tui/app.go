@@ -320,6 +320,40 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return a, nil
 			}
+		case tabReview:
+			switch km.String() {
+			case "A":
+				t := a.reviewView.SelectedTicket()
+				if t != nil {
+					// Check for open threads before approving.
+					hasOpen := false
+					for _, task := range t.Tasks {
+						threads, err := a.store.GetThreadsForTask(task.ID)
+						if err == nil {
+							for _, th := range threads {
+								if th.Status == "active" || th.Status == "ready" {
+									hasOpen = true
+								}
+							}
+						}
+					}
+					if hasOpen {
+						a.reviewView.SetInlineErr("cannot approve: ticket has open threads")
+					} else {
+						if err := a.store.TransitionTicket(t.ID, "approved", "human"); err != nil {
+							a.reviewView.SetInlineErr(err.Error())
+						} else {
+							a.reviewView.ClearInlineErr()
+							a.statusMsg = fmt.Sprintf("%s → approved", t.ID)
+							a.statusErr = false
+							a.reviewView.Refresh()
+							a.ticketsView.Refresh()
+							a.loadCurrentDetail()
+						}
+					}
+				}
+				return a, nil
+			}
 		case tabDraft:
 			switch km.String() {
 			case "a":

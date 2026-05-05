@@ -18,6 +18,7 @@ type ReviewQueueView struct {
 	width   int
 	height  int
 	err     error
+	inlineErr string
 }
 
 func NewReviewQueueView(s *store.Store) *ReviewQueueView {
@@ -39,7 +40,9 @@ func (v *ReviewQueueView) load() {
 	}
 }
 
-func (v *ReviewQueueView) Refresh() { v.load() }
+func (v *ReviewQueueView) Refresh()           { v.load() }
+func (v *ReviewQueueView) ClearInlineErr()    { v.inlineErr = "" }
+func (v *ReviewQueueView) SetInlineErr(s string) { v.inlineErr = s }
 
 func (v *ReviewQueueView) SetSize(w, h int) {
 	v.width = w
@@ -131,8 +134,11 @@ func (v *ReviewQueueView) View() string {
 	}
 
 	sb.WriteString("\n")
+	if v.inlineErr != "" {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("✗ "+v.inlineErr) + "\n")
+	}
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑↓ navigate · enter open · q quit"))
+		"↑↓ navigate · enter open · A approve · q quit"))
 
 	return sb.String()
 }

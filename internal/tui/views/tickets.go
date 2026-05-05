@@ -136,6 +136,8 @@ func (v *TicketsView) View() string {
 
 		if i == v.cursor {
 			line = lipgloss.NewStyle().Reverse(true).Render(line)
+		} else if t.Status == "merged" {
+			line = lipgloss.NewStyle().Faint(true).Render(line)
 		}
 		sb.WriteString(line + "\n")
 	}
