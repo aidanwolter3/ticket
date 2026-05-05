@@ -130,7 +130,7 @@ func (v *DraftReviewView) View() string {
 
 	sb.WriteString("\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑↓ navigate · enter open · r promote → ready · d delete · q quit"))
+		"↑↓ navigate · enter open · r mark ready · d delete · q quit"))
 
 	return sb.String()
 }

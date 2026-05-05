@@ -724,14 +724,23 @@ func (a *App) renderHelp() string {
 		}},
 		{"List Panel (left)", []string{
 			"↑↓ / j/k          navigate",
-			"d                 delete ticket",
-			"m                 merge approved ticket",
 		}},
 		{"Detail Panel (right)", []string{
 			"e                 edit",
 			"t                 threads",
 			"n                 add note",
 			"[ / ]             scroll up / down",
+		}},
+		{"Tickets Tab", []string{
+			"d                 delete ticket",
+			"m                 merge approved ticket",
+		}},
+		{"Review Queue", []string{
+			"a                 approve ticket",
+		}},
+		{"Draft Review", []string{
+			"r                 mark ready",
+			"d                 delete ticket",
 		}},
 		{"Threads", []string{
 			"↑↓                navigate",
@@ -743,11 +752,6 @@ func (a *App) renderHelp() string {
 			"←                 reopen",
 			"n                 new thread",
 			"esc               back",
-		}},
-		{"Draft Review", []string{
-			"↑↓                navigate",
-			"r                 promote → ready",
-			"d                 delete ticket",
 		}},
 		{"Forms / Modals", []string{
 			"tab               next field",

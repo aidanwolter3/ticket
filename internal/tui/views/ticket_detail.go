@@ -107,9 +107,19 @@ func (v *TicketDetailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (v *TicketDetailView) View() string {
 	v.vp.SetContent(v.renderContent())
+	hint := "e edit · t threads · n note · [ ] scroll · esc back"
+	if v.ticket != nil {
+		switch v.ticket.Status {
+		case model.StatusDraft:
+			hint += " · r mark ready"
+		case model.StatusInReview:
+			hint += " · a approve"
+		case model.StatusApproved:
+			hint += " · m merge"
+		}
+	}
 	return v.vp.View() + "\n" +
-		lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-			"e edit · t threads · n note · s status · [ ] scroll · esc back")
+		lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hint)
 }
 
 func (v *TicketDetailView) renderContent() string {
