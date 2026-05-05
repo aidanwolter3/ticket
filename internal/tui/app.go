@@ -297,6 +297,71 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.ticketDetail.ScrollDown(3)
 			}
 			return a, nil
+		case "r":
+			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == "draft" {
+				id := a.currentTicketID()
+				if err := workflow.Promote(a.store, id); err != nil {
+					a.setErr(err)
+				} else {
+					a.statusMsg = fmt.Sprintf("%s → ready", id)
+					a.statusErr = false
+					a.draftView.Refresh()
+					a.ticketsView.Refresh()
+					a.loadCurrentDetail()
+				}
+			}
+			return a, nil
+		case "a":
+			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == "in_review" {
+				id := a.currentTicketID()
+				t, err := a.store.GetTicket(id)
+				if err != nil {
+					a.setErr(err)
+					return a, nil
+				}
+				hasOpen := false
+				for _, task := range t.Tasks {
+					threads, err := a.store.GetThreadsForTask(task.ID)
+					if err == nil {
+						for _, th := range threads {
+							if th.Status == "active" || th.Status == "ready" {
+								hasOpen = true
+							}
+						}
+					}
+				}
+				if hasOpen {
+					a.statusMsg = "cannot approve: ticket has open threads"
+					a.statusErr = true
+				} else if err := a.store.TransitionTicket(id, "approved", "human"); err != nil {
+					a.setErr(err)
+				} else {
+					a.statusMsg = fmt.Sprintf("%s → approved", id)
+					a.statusErr = false
+					a.reviewView.Refresh()
+					a.ticketsView.Refresh()
+					a.loadCurrentDetail()
+				}
+			}
+			return a, nil
+		case "m":
+			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil {
+				id := a.currentTicketID()
+				if a.ticketDetail.Ticket().Status != "approved" {
+					a.statusMsg = fmt.Sprintf("%s is not approved", id)
+					a.statusErr = true
+				} else if err := workflow.Merge(a.store, id); err != nil {
+					a.setErr(err)
+				} else {
+					a.statusMsg = fmt.Sprintf("%s → merged", id)
+					a.statusErr = false
+					a.ticketsView.Refresh()
+					a.reviewView.Refresh()
+					a.draftView.Refresh()
+					a.loadCurrentDetail()
+				}
+			}
+			return a, nil
 		}
 
 		// Tab-specific list actions
@@ -309,74 +374,9 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.screen = screenConfirmDelete
 				}
 				return a, nil
-			case "m":
-				if t := a.ticketsView.SelectedTicket(); t != nil {
-					if t.Status != "approved" {
-						a.statusMsg = fmt.Sprintf("%s is not approved", t.ID)
-						a.statusErr = true
-					} else if err := workflow.Merge(a.store, t.ID); err != nil {
-						a.setErr(err)
-					} else {
-						a.statusMsg = fmt.Sprintf("%s → merged", t.ID)
-						a.statusErr = false
-						a.ticketsView.Refresh()
-						a.reviewView.Refresh()
-						a.draftView.Refresh()
-						a.loadCurrentDetail()
-					}
-				}
-				return a, nil
-			}
-		case tabReview:
-			switch km.String() {
-			case "a":
-				t := a.reviewView.SelectedTicket()
-				if t != nil {
-					// Check for open threads before approving.
-					hasOpen := false
-					for _, task := range t.Tasks {
-						threads, err := a.store.GetThreadsForTask(task.ID)
-						if err == nil {
-							for _, th := range threads {
-								if th.Status == "active" || th.Status == "ready" {
-									hasOpen = true
-								}
-							}
-						}
-					}
-					if hasOpen {
-						a.reviewView.SetInlineErr("cannot approve: ticket has open threads")
-					} else {
-						if err := a.store.TransitionTicket(t.ID, "approved", "human"); err != nil {
-							a.reviewView.SetInlineErr(err.Error())
-						} else {
-							a.reviewView.ClearInlineErr()
-							a.statusMsg = fmt.Sprintf("%s → approved", t.ID)
-							a.statusErr = false
-							a.reviewView.Refresh()
-							a.ticketsView.Refresh()
-							a.loadCurrentDetail()
-						}
-					}
-				}
-				return a, nil
 			}
 		case tabDraft:
 			switch km.String() {
-			case "r":
-				t := a.draftView.SelectedTicket()
-				if t != nil {
-					if err := workflow.Promote(a.store, t.ID); err != nil {
-						a.setErr(err)
-					} else {
-						a.statusMsg = fmt.Sprintf("%s → ready", t.ID)
-						a.statusErr = false
-						a.draftView.Refresh()
-						a.ticketsView.Refresh()
-						a.loadCurrentDetail()
-					}
-				}
-				return a, nil
 			case "d":
 				if t := a.draftView.SelectedTicket(); t != nil {
 					a.pendingDeleteID = t.ID
@@ -724,23 +724,16 @@ func (a *App) renderHelp() string {
 		}},
 		{"List Panel (left)", []string{
 			"↑↓ / j/k          navigate",
+			"d                 delete ticket",
 		}},
 		{"Detail Panel (right)", []string{
 			"e                 edit",
 			"t                 threads",
 			"n                 add note",
+			"r                 mark ready (draft tickets)",
+			"a                 approve (in_review tickets)",
+			"m                 merge (approved tickets)",
 			"[ / ]             scroll up / down",
-		}},
-		{"Tickets Tab", []string{
-			"d                 delete ticket",
-			"m                 merge approved ticket",
-		}},
-		{"Review Queue", []string{
-			"a                 approve ticket",
-		}},
-		{"Draft Review", []string{
-			"r                 mark ready",
-			"d                 delete ticket",
 		}},
 		{"Threads", []string{
 			"↑↓                navigate",
