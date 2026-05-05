@@ -14,7 +14,7 @@ func ValidateTicketTransition(from, to Status, author string) error {
 		StatusDraft:      {StatusReady: true},                         // human
 		StatusReady:      {StatusDraft: true, StatusInProgress: true}, // human or agent
 		StatusInProgress: {StatusInReview: true},                      // agent
-		StatusInReview:   {StatusReady: true, StatusCompleted: true},  // human
+		StatusInReview:   {StatusReady: true, StatusCompleted: true, StatusInProgress: true}, // human or agent
 		StatusCompleted:  {},
 	}
 
