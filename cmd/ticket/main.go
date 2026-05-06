@@ -46,6 +46,9 @@ func main() {
 		case "ready":
 			runReady(os.Args[2:], defaultDB)
 			return
+		case "redraft":
+			runRedraft(os.Args[2:], defaultDB)
+			return
 		case "delete":
 			runDelete(os.Args[2:], defaultDB)
 			return
@@ -155,6 +158,8 @@ Usage:
                                               remove that dependency
   ticket ready [--db path] <ticket-id> <author>
                                               promote a draft ticket to ready
+  ticket redraft [--db path] <ticket-id> <author>
+                                              destroy worktree+branch and move ticket back to draft (human only)
 
   ticket approve [--db path] <id> <author>    approve an in_review ticket (human only)
   ticket merge [--db path] <id> <author>      ff-merge, delete branch, remove worktree (human only)
