@@ -628,6 +628,40 @@ func TestDraftMessageEditDelete(t *testing.T) {
 	assert.Empty(t, state.NewThreads[0].Messages)
 }
 
+func TestAgentSessionCRUD(t *testing.T) {
+	s := newTestStore(t)
+
+	// Table must exist.
+	var name string
+	err := s.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='agent_sessions'`).Scan(&name)
+	require.NoError(t, err, "agent_sessions table missing")
+
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	sess, err := s.CreateAgentSession(ticket.ID, 9999, "/tmp/out.log")
+	require.NoError(t, err)
+	assert.Equal(t, ticket.ID, sess.TicketID)
+	assert.Equal(t, 9999, sess.PID)
+	assert.Equal(t, model.AgentRunning, sess.State)
+
+	got, err := s.GetAgentSessionByTicket(ticket.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, sess.ID, got.ID)
+
+	require.NoError(t, s.UpdateAgentSessionState(sess.ID, model.AgentWaiting))
+	got, err = s.GetAgentSessionByTicket(ticket.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, model.AgentWaiting, got.State)
+
+	require.NoError(t, s.TerminateAllAgentSessions())
+	got, err = s.GetAgentSessionByTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Nil(t, got, "terminated session should not be returned")
+}
+
 func ticketIDs(tickets []*model.Ticket) []string {
 	ids := make([]string, len(tickets))
 	for i, t := range tickets {

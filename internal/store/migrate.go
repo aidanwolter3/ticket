@@ -53,6 +53,14 @@ func (s *Store) runMigrations() error {
 			return fmt.Errorf("record migration 4: %w", err)
 		}
 	}
+	if current < 5 {
+		if err := s.migration5(); err != nil {
+			return fmt.Errorf("migration 5: %w", err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO schema_migrations (version, applied) VALUES (5, ?)`, time.Now().UnixMilli()); err != nil {
+			return fmt.Errorf("record migration 5: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -643,6 +651,27 @@ func (s *Store) migration4() error {
 		return nil
 	}
 	_, err = s.db.Exec(`ALTER TABLE tasks ADD COLUMN round INTEGER NOT NULL DEFAULT 1`)
+	return err
+}
+
+// migration5 creates the agent_sessions table on existing databases.
+// Fresh databases get it from schema.go via CREATE TABLE IF NOT EXISTS.
+func (s *Store) migration5() error {
+	_, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS agent_sessions (
+		  id         TEXT PRIMARY KEY,
+		  ticket_id  TEXT NOT NULL,
+		  pid        INTEGER NOT NULL,
+		  started_at INTEGER NOT NULL,
+		  state      TEXT NOT NULL DEFAULT 'running'
+		             CHECK(state IN ('running','waiting','terminated','crashed')),
+		  log_path   TEXT NOT NULL,
+		  FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+		)`)
+	if err != nil {
+		return fmt.Errorf("create agent_sessions: %w", err)
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_agent_sessions_ticket ON agent_sessions(ticket_id)`)
 	return err
 }
 

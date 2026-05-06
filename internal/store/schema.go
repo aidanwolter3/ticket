@@ -117,4 +117,17 @@ CREATE INDEX IF NOT EXISTS idx_draft_threads_ticket  ON draft_threads(ticket_id)
 CREATE INDEX IF NOT EXISTS idx_draft_messages_thread ON draft_messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_draft_messages_ticket ON draft_messages(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_draft_actions_ticket  ON draft_actions(ticket_id);
+
+CREATE TABLE IF NOT EXISTS agent_sessions (
+  id         TEXT PRIMARY KEY,
+  ticket_id  TEXT NOT NULL,
+  pid        INTEGER NOT NULL,
+  started_at INTEGER NOT NULL,
+  state      TEXT NOT NULL DEFAULT 'running'
+             CHECK(state IN ('running','waiting','terminated','crashed')),
+  log_path   TEXT NOT NULL,
+  FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_sessions_ticket ON agent_sessions(ticket_id);
 `
