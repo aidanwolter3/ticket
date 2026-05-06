@@ -102,6 +102,44 @@ func Ready(s *store.Store, ticketID string, author string, stdout, stderr io.Wri
 	return nil
 }
 
+// Redraft destroys the worktree and feature branch, clears the DB fields, and
+// transitions the ticket back to draft. stdout and stderr control where git
+// output goes; pass io.Discard to suppress.
+func Redraft(s *store.Store, ticketID string, author string, stdout, stderr io.Writer) error {
+	ticket, err := s.GetTicket(ticketID)
+	if err != nil {
+		return fmt.Errorf("redraft: %w", err)
+	}
+
+	if ticket.WorktreePath != "" {
+		repoPath := ticket.RepoPath
+		wtCmd := exec.Command("git", "-C", repoPath, "worktree", "remove", "--force", ticket.WorktreePath)
+		wtCmd.Stdout = stdout
+		wtCmd.Stderr = stderr
+		if err := wtCmd.Run(); err != nil {
+			fmt.Fprintf(stderr, "redraft: warning: could not remove worktree: %v\n", err)
+		}
+
+		if ticket.FeatureBranch != "" {
+			delCmd := exec.Command("git", "-C", repoPath, "branch", "-D", ticket.FeatureBranch)
+			delCmd.Stdout = stdout
+			delCmd.Stderr = stderr
+			if err := delCmd.Run(); err != nil {
+				fmt.Fprintf(stderr, "redraft: warning: could not delete branch %s: %v\n", ticket.FeatureBranch, err)
+			}
+		}
+
+		if err := s.SetWorktreePath(ticketID, "", "", ""); err != nil {
+			return fmt.Errorf("redraft: clear worktree_path: %w", err)
+		}
+	}
+
+	if err := s.TransitionTicket(ticketID, model.StatusDraft, author); err != nil {
+		return fmt.Errorf("redraft: transition: %w", err)
+	}
+	return nil
+}
+
 // Merge ff-merges the feature branch into main, removes the worktree, deletes
 // the branch, and transitions the ticket to merged. stdout and stderr control
 // where git output goes; pass io.Discard to suppress (e.g. from a TUI).
