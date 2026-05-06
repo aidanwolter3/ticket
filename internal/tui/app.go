@@ -29,6 +29,7 @@ const (
 	screenReplyModal
 	screenNewThreadModal
 	screenConfirmDelete
+	screenEditDraftMessage
 )
 
 type dbTickMsg struct{}
@@ -57,10 +58,11 @@ type App struct {
 	ticketDetail *views.TicketDetailView
 
 	// overlay screens
-	threadsView    *views.ThreadsView
-	noteModal      *views.NoteModal
-	replyModal     *views.ReplyModal
-	newThreadModal *views.NewThreadModal
+	threadsView     *views.ThreadsView
+	noteModal       *views.NoteModal
+	replyModal      *views.ReplyModal
+	newThreadModal  *views.NewThreadModal
+	editDraftModal  *views.EditDraftModal
 }
 
 func New(s *store.Store) *App {
@@ -190,6 +192,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateReplyModal(msg)
 	case screenNewThreadModal:
 		return a.updateNewThreadModal(msg)
+	case screenEditDraftMessage:
+		return a.updateEditDraftMessage(msg)
 	}
 	return a, nil
 }
@@ -349,6 +353,27 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return a, nil
+		case "e":
+			if a.threadsView != nil {
+				if dm := a.threadsView.SelectedDraftMessage(); dm != nil {
+					a.editDraftModal = views.NewEditDraftModal(dm.ID, dm.Text)
+					a.screen = screenEditDraftMessage
+				}
+			}
+			return a, nil
+		case "D":
+			if a.threadsView != nil {
+				if dm := a.threadsView.SelectedDraftMessage(); dm != nil {
+					if err := a.store.DeleteDraftMessage(dm.ID); err != nil {
+						a.setErr(err)
+					} else {
+						a.statusMsg = "Draft message deleted"
+						a.statusErr = false
+						a.threadsView.Reload()
+					}
+				}
+			}
+			return a, nil
 		case "r":
 			if a.threadsView != nil {
 				if th := a.threadsView.SelectedThread(); th != nil {
@@ -425,6 +450,35 @@ func (a *App) updateNoteModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	_, cmd := a.noteModal.Update(msg)
 	return a, cmd
+}
+
+// --- Edit draft message modal ---
+
+func (a *App) updateEditDraftMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch km.String() {
+		case "esc":
+			a.screen = screenThreads
+			return a, nil
+		case "ctrl+s":
+			if a.editDraftModal != nil && a.editDraftModal.Text() != "" {
+				if err := a.store.UpdateDraftMessage(a.editDraftModal.MsgID(), a.editDraftModal.Text()); err != nil {
+					a.setErr(err)
+				} else {
+					a.statusMsg = "Draft message updated"
+					a.statusErr = false
+					a.threadsView.Reload()
+				}
+			}
+			a.screen = screenThreads
+			return a, nil
+		}
+	}
+	if a.editDraftModal != nil {
+		_, cmd := a.editDraftModal.Update(msg)
+		return a, cmd
+	}
+	return a, nil
 }
 
 // --- Reply modal ---
@@ -556,6 +610,10 @@ func (a *App) View() string {
 	case screenNewThreadModal:
 		if a.newThreadModal != nil {
 			sb.WriteString(a.newThreadModal.View())
+		}
+	case screenEditDraftMessage:
+		if a.editDraftModal != nil {
+			sb.WriteString(a.editDraftModal.View())
 		}
 	case screenConfirmDelete:
 		prompt := fmt.Sprintf("Delete ticket %s? (y/N) ", a.pendingDeleteID)

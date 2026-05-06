@@ -14,9 +14,10 @@ import (
 type threadItemKind int
 
 const (
-	itemTask        threadItemKind = iota
-	itemThread                     // real thread
-	itemDraftThread                // draft thread not yet submitted
+	itemTask         threadItemKind = iota
+	itemThread                      // real thread
+	itemDraftThread                 // draft thread not yet submitted
+	itemDraftMessage                // draft message (in draft thread or reply to real thread)
 )
 
 type threadItem struct {
@@ -24,7 +25,8 @@ type threadItem struct {
 	task         model.Task
 	thread       *model.Thread      // set when kind == itemThread
 	draftThread  *model.DraftThread // set when kind == itemDraftThread
-	stagedAction string             // "resolve", "reopen", or "" (real threads only)
+	draftMsg     model.DraftMessage // set when kind == itemDraftMessage
+	stagedAction string             // for real threads: "resolve"/"reopen"/""
 	draftReplies []model.DraftMessage
 }
 
@@ -77,17 +79,38 @@ func (v *ThreadsView) load() error {
 				draftReplies: ds.RepliesFor(th.ID),
 			}
 			v.items = append(v.items, item)
+			// When expanded, draft replies become selectable cursor items.
+			if v.expanded[th.ID] {
+				for _, dr := range item.draftReplies {
+					v.items = append(v.items, threadItem{
+						kind:     itemDraftMessage,
+						task:     task,
+						draftMsg: dr,
+					})
+				}
+			}
 		}
 
-		// Append draft threads belonging to this task.
+		// Draft threads for this task.
 		for i := range ds.NewThreads {
 			dt := &ds.NewThreads[i]
-			if dt.TaskID == task.ID {
-				v.items = append(v.items, threadItem{
-					kind:        itemDraftThread,
-					task:        task,
-					draftThread: dt,
-				})
+			if dt.TaskID != task.ID {
+				continue
+			}
+			v.items = append(v.items, threadItem{
+				kind:        itemDraftThread,
+				task:        task,
+				draftThread: dt,
+			})
+			// When expanded, draft thread messages become selectable cursor items.
+			if v.expanded[dt.ID] {
+				for _, msg := range dt.Messages {
+					v.items = append(v.items, threadItem{
+						kind:     itemDraftMessage,
+						task:     task,
+						draftMsg: msg,
+					})
+				}
 			}
 		}
 	}
@@ -100,7 +123,7 @@ func (v *ThreadsView) load() error {
 func (v *ThreadsView) Reload() error { return v.load() }
 func (v *ThreadsView) TicketID() string { return v.ticketID }
 
-// SelectedThread returns the highlighted real thread, or nil if on a task/draft row.
+// SelectedThread returns the highlighted real thread, or nil.
 func (v *ThreadsView) SelectedThread() *model.Thread {
 	if v.cursor < len(v.items) && v.items[v.cursor].kind == itemThread {
 		return v.items[v.cursor].thread
@@ -108,10 +131,11 @@ func (v *ThreadsView) SelectedThread() *model.Thread {
 	return nil
 }
 
-// SelectedDraftThread returns the highlighted draft thread, or nil.
-func (v *ThreadsView) SelectedDraftThread() *model.DraftThread {
-	if v.cursor < len(v.items) && v.items[v.cursor].kind == itemDraftThread {
-		return v.items[v.cursor].draftThread
+// SelectedDraftMessage returns the highlighted draft message, or nil.
+func (v *ThreadsView) SelectedDraftMessage() *model.DraftMessage {
+	if v.cursor < len(v.items) && v.items[v.cursor].kind == itemDraftMessage {
+		m := v.items[v.cursor].draftMsg
+		return &m
 	}
 	return nil
 }
@@ -154,9 +178,11 @@ func (v *ThreadsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case itemThread:
 					id := v.items[v.cursor].thread.ID
 					v.expanded[id] = !v.expanded[id]
+					v.load()
 				case itemDraftThread:
 					id := v.items[v.cursor].draftThread.ID
 					v.expanded[id] = !v.expanded[id]
+					v.load()
 				}
 			}
 		case "x":
@@ -235,12 +261,14 @@ func (v *ThreadsView) View() string {
 			th := item.thread
 			icon := v.threadIcon(th.Status, item.stagedAction)
 			summary := th.Summary()
-			msgCount := fmt.Sprintf("(%d msg)", len(th.Messages)+len(item.draftReplies))
+			totalMsgs := len(th.Messages) + len(item.draftReplies)
+			msgCount := fmt.Sprintf("(%d msg)", totalMsgs)
 
 			suffix := ""
-			if item.stagedAction == model.DraftActionResolve {
+			switch item.stagedAction {
+			case model.DraftActionResolve:
 				suffix = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[→resolved]")
-			} else if item.stagedAction == model.DraftActionReopen {
+			case model.DraftActionReopen:
 				suffix = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[→open]")
 			}
 
@@ -259,14 +287,6 @@ func (v *ThreadsView) View() string {
 					msgWrap := v.width - 8 - len([]rune(msg.Author))
 					sb.WriteString(fmt.Sprintf("    %s: %s\n", author, wrapText(msg.Text, msgWrap)))
 				}
-				for _, dm := range item.draftReplies {
-					author := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(dm.Author + " [draft]")
-					msgWrap := v.width - 8 - len([]rune(dm.Author)) - 8
-					sb.WriteString(fmt.Sprintf("    %s: %s\n", author, wrapText(dm.Text, msgWrap)))
-				}
-				if len(th.Messages) > 0 || len(item.draftReplies) > 0 {
-					sb.WriteString("\n")
-				}
 			}
 
 		case itemDraftThread:
@@ -283,12 +303,10 @@ func (v *ThreadsView) View() string {
 			msgCount := fmt.Sprintf("(%d msg)", len(dt.Messages))
 
 			line := fmt.Sprintf("  %s %s %s %s",
-				draftIcon,
-				summary,
+				draftIcon, summary,
 				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(msgCount),
 				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[draft]"),
 			)
-
 			if i == v.cursor {
 				line = lipgloss.NewStyle().Reverse(true).Render(line)
 			} else {
@@ -296,26 +314,32 @@ func (v *ThreadsView) View() string {
 			}
 			sb.WriteString(line + "\n")
 
-			if v.expanded[dt.ID] {
-				for _, msg := range dt.Messages {
-					author := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(msg.Author + " [draft]")
-					msgWrap := v.width - 8 - len([]rune(msg.Author)) - 8
-					sb.WriteString(fmt.Sprintf("    %s: %s\n", author, wrapText(msg.Text, msgWrap)))
-				}
-				if len(dt.Messages) > 0 {
-					sb.WriteString("\n")
-				}
+		case itemDraftMessage:
+			dm := item.draftMsg
+			author := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(dm.Author + " [draft]")
+			msgWrap := v.width - 8 - len([]rune(dm.Author)) - 8
+			text := wrapText(dm.Text, msgWrap)
+			line := fmt.Sprintf("    %s: %s", author, text)
+			if i == v.cursor {
+				line = lipgloss.NewStyle().Reverse(true).Render(line)
 			}
+			sb.WriteString(line + "\n")
 		}
 	}
 
 	sb.WriteString("\n")
-	hintDraft := ""
-	if v.HasDraft() {
-		hintDraft = " · [ctrl+s] submit review"
+	isDraftMsg := v.cursor < len(v.items) && v.items[v.cursor].kind == itemDraftMessage
+	var hint string
+	if isDraftMsg {
+		hint = "[e] edit · [D] delete · [esc] back"
+	} else {
+		hintExtra := ""
+		if v.HasDraft() {
+			hintExtra = " · [ctrl+s] submit review"
+		}
+		hint = "[↑↓] navigate · [enter] expand · [r] reply · [x] toggle resolve · [n] new thread · [esc] back" + hintExtra
 	}
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"[↑↓] navigate · [enter] expand · [r] reply · [x] toggle resolve · [n] new thread · [esc] back" + hintDraft))
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hint))
 
 	return sb.String()
 }
