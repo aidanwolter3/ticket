@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+
+	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
 func runClaimWork(args []string, defaultDB string) {
@@ -17,7 +19,7 @@ func runClaimWork(args []string, defaultDB string) {
 	s := openStore(*dbPath)
 	defer s.Close()
 
-	item, err := s.ClaimWork("agent:claude")
+	item, err := workflow.Claim(s, "agent:claude", os.Stdout, os.Stderr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "claim-work: %v\n", err)
 		os.Exit(1)
