@@ -17,6 +17,7 @@ func RunTask(args []string, defaultDB string) {
 		fmt.Fprintln(os.Stderr, "  ls         <ticket-id>")
 		fmt.Fprintln(os.Stderr, "  complete   <task-id> <author>")
 		fmt.Fprintln(os.Stderr, "  uncomplete <task-id> <author>")
+		fmt.Fprintln(os.Stderr, "  delete     <task-id>")
 		os.Exit(1)
 	}
 	switch args[0] {
@@ -28,6 +29,8 @@ func RunTask(args []string, defaultDB string) {
 		runTaskComplete(args[1:], defaultDB, false)
 	case "uncomplete":
 		runTaskComplete(args[1:], defaultDB, true)
+	case "delete":
+		runTaskDelete(args[1:], defaultDB)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown task subcommand: %s\n", args[0])
 		os.Exit(1)
@@ -126,6 +129,27 @@ func runTaskList(args []string, defaultDB string) {
 		fmt.Fprintf(w, "%s\t%d\t%s\t%s\t%s\n", t.ID, t.Position, status, t.Title, t.CommitHash)
 	}
 	w.Flush()
+}
+
+func runTaskDelete(args []string, defaultDB string) {
+	fs := flag.NewFlagSet("task delete", flag.ExitOnError)
+	dbPath := fs.String("db", defaultDB, "path to SQLite database")
+	fs.Parse(args)
+
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: ticket task delete [--db path] <task-id>")
+		os.Exit(1)
+	}
+	taskID := fs.Arg(0)
+
+	s := openStore(*dbPath)
+	defer s.Close()
+
+	if err := s.DeleteTask(taskID); err != nil {
+		fmt.Fprintf(os.Stderr, "delete task: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("%s deleted\n", taskID)
 }
 
 func runTaskComplete(args []string, defaultDB string, undo bool) {

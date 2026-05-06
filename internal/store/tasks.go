@@ -148,6 +148,20 @@ func (s *Store) UncompleteTask(id string) error {
 	return err
 }
 
+// DeleteTask removes a task by ID. Returns an error if the task does not exist
+// or has already been completed.
+func (s *Store) DeleteTask(id string) error {
+	t, err := s.GetTask(id)
+	if err != nil {
+		return err
+	}
+	if t.CompletedAt != nil {
+		return fmt.Errorf("task %s is already completed and cannot be deleted", id)
+	}
+	_, err = s.db.Exec(`DELETE FROM tasks WHERE id=?`, id)
+	return err
+}
+
 // LastTaskForTicket returns the task with the highest position for a ticket.
 // Used by the TUI to choose which task to attach new threads to.
 func (s *Store) LastTaskForTicket(ticketID string) (*model.Task, error) {
