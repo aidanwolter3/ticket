@@ -102,17 +102,68 @@ func Ready(s *store.Store, ticketID string, author string, stdout, stderr io.Wri
 	return nil
 }
 
-// SubmitReview flushes all staged draft actions to the store atomically and
-// transitions the ticket from in_review to ready. Draft threads with human
-// comments become needs_attention; staged resolves become resolved; staged
-// reopens become open. stdout and stderr are accepted for interface symmetry
-// but are unused; pass io.Discard.
+// SubmitReview flushes all staged draft actions to the store atomically,
+// auto-generates amendment tasks for each needs_attention thread, and
+// transitions the ticket from in_review to ready. stdout and stderr are
+// accepted for interface symmetry but are unused; pass io.Discard.
 func SubmitReview(s *store.Store, ticketID string, author string, stdout, stderr io.Writer) error {
-	if err := s.FlushDraftState(ticketID); err != nil {
+	naThreadIDs, err := s.FlushDraftState(ticketID)
+	if err != nil {
 		return fmt.Errorf("submit-review: flush draft: %w", err)
 	}
+
+	if len(naThreadIDs) > 0 {
+		if err := createAmendmentTasks(s, ticketID, naThreadIDs); err != nil {
+			return fmt.Errorf("submit-review: create amendment tasks: %w", err)
+		}
+	}
+
 	if err := s.TransitionTicket(ticketID, model.StatusReady, author); err != nil {
 		return fmt.Errorf("submit-review: transition ticket: %w", err)
+	}
+	return nil
+}
+
+// createAmendmentTasks creates round-N tasks for each needs_attention thread.
+func createAmendmentTasks(s *store.Store, ticketID string, naThreadIDs []string) error {
+	ticket, err := s.GetTicket(ticketID)
+	if err != nil {
+		return err
+	}
+
+	// Determine next round number.
+	maxRound := 1
+	for _, task := range ticket.Tasks {
+		if task.Round > maxRound {
+			maxRound = task.Round
+		}
+	}
+	nextRound := maxRound + 1
+
+	// Determine next position.
+	maxPosition := 0
+	for _, task := range ticket.Tasks {
+		if task.Position > maxPosition {
+			maxPosition = task.Position
+		}
+	}
+
+	for i, threadID := range naThreadIDs {
+		th, err := s.GetThread(threadID)
+		if err != nil {
+			return fmt.Errorf("get thread %s: %w", threadID, err)
+		}
+		title := th.Summary()
+		task := &model.Task{
+			TicketID:    ticketID,
+			Title:       title,
+			Description: fmt.Sprintf("Address review thread %s", threadID),
+			Position:    maxPosition + i + 1,
+			Round:       nextRound,
+		}
+		if err := s.CreateTask(task); err != nil {
+			return fmt.Errorf("create amendment task for thread %s: %w", threadID, err)
+		}
 	}
 	return nil
 }

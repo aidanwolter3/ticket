@@ -169,22 +169,25 @@ func (s *Store) GetDraftState(ticketID string) (*model.DraftState, error) {
 }
 
 // FlushDraftState atomically applies all staged draft actions for a ticket to the
-// real store and clears the draft state. It does NOT transition the ticket status.
-func (s *Store) FlushDraftState(ticketID string) error {
+// real store and clears the draft state. Returns the IDs of threads that
+// transitioned to needs_attention. Does NOT transition the ticket status.
+func (s *Store) FlushDraftState(ticketID string) ([]string, error) {
 	state, err := s.GetDraftState(ticketID)
 	if err != nil {
-		return fmt.Errorf("flush draft: get state: %w", err)
+		return nil, fmt.Errorf("flush draft: get state: %w", err)
 	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() {
 		if err != nil {
 			tx.Rollback()
 		}
 	}()
+
+	var naIDs []string
 
 	// 1. Commit new draft threads as real threads (status: needs_attention).
 	for _, dt := range state.NewThreads {
@@ -193,22 +196,23 @@ func (s *Store) FlushDraftState(ticketID string) error {
 		if _, err = tx.Exec(
 			`INSERT INTO comment_threads (id, task_id, status, created) VALUES (?, ?, 'needs_attention', ?)`,
 			threadID, dt.TaskID, now); err != nil {
-			return fmt.Errorf("flush: create thread: %w", err)
+			return nil, fmt.Errorf("flush: create thread: %w", err)
 		}
+		naIDs = append(naIDs, threadID)
 		for _, msg := range dt.Messages {
 			msgID := ids.NewUUID()
 			msgNow := time.Now().UnixMilli()
 			if _, err = tx.Exec(
 				`INSERT INTO thread_messages (id, thread_id, author, text, created) VALUES (?, ?, ?, ?, ?)`,
 				msgID, threadID, msg.Author, msg.Text, msgNow); err != nil {
-				return fmt.Errorf("flush: add thread message: %w", err)
+				return nil, fmt.Errorf("flush: add thread message: %w", err)
 			}
 		}
 		if _, err = tx.Exec(`DELETE FROM draft_messages WHERE thread_id=? AND is_real_thread=0`, dt.ID); err != nil {
-			return fmt.Errorf("flush: delete draft messages: %w", err)
+			return nil, fmt.Errorf("flush: delete draft messages: %w", err)
 		}
 		if _, err = tx.Exec(`DELETE FROM draft_threads WHERE id=?`, dt.ID); err != nil {
-			return fmt.Errorf("flush: delete draft thread: %w", err)
+			return nil, fmt.Errorf("flush: delete draft thread: %w", err)
 		}
 	}
 
@@ -226,11 +230,11 @@ func (s *Store) FlushDraftState(ticketID string) error {
 		if _, err = tx.Exec(
 			`INSERT INTO thread_messages (id, thread_id, author, text, created) VALUES (?, ?, ?, ?, ?)`,
 			msgID, reply.ThreadID, reply.Author, reply.Text, msgNow); err != nil {
-			return fmt.Errorf("flush: add reply: %w", err)
+			return nil, fmt.Errorf("flush: add reply: %w", err)
 		}
 		replyThreads[reply.ThreadID] = true
 		if _, err = tx.Exec(`DELETE FROM draft_messages WHERE id=?`, reply.ID); err != nil {
-			return fmt.Errorf("flush: delete draft reply: %w", err)
+			return nil, fmt.Errorf("flush: delete draft reply: %w", err)
 		}
 	}
 
@@ -247,7 +251,10 @@ func (s *Store) FlushDraftState(ticketID string) error {
 			delete(actionMap, threadID) // processed here, skip below
 		}
 		if _, err = tx.Exec(`UPDATE comment_threads SET status=? WHERE id=?`, targetStatus, threadID); err != nil {
-			return fmt.Errorf("flush: set reply thread status: %w", err)
+			return nil, fmt.Errorf("flush: set reply thread status: %w", err)
+		}
+		if targetStatus == string(model.ThreadNeedsAttention) {
+			naIDs = append(naIDs, threadID)
 		}
 	}
 
@@ -261,16 +268,19 @@ func (s *Store) FlushDraftState(ticketID string) error {
 			targetStatus = string(model.ThreadOpen)
 		}
 		if _, err = tx.Exec(`UPDATE comment_threads SET status=? WHERE id=?`, targetStatus, threadID); err != nil {
-			return fmt.Errorf("flush: set action thread status: %w", err)
+			return nil, fmt.Errorf("flush: set action thread status: %w", err)
 		}
 	}
 
 	// 5. Delete all staged actions for this ticket.
 	if _, err = tx.Exec(`DELETE FROM draft_actions WHERE ticket_id=?`, ticketID); err != nil {
-		return fmt.Errorf("flush: delete draft actions: %w", err)
+		return nil, fmt.Errorf("flush: delete draft actions: %w", err)
 	}
 
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return naIDs, nil
 }
 
 func (s *Store) loadDraftMessagesForThread(threadID string, isRealThread bool) ([]model.DraftMessage, error) {

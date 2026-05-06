@@ -518,6 +518,50 @@ func TestSubmitReview_FlushesAndTransitions(t *testing.T) {
 	}
 }
 
+func TestSubmitReview_CreatesAmendmentTasks(t *testing.T) {
+	s := newTestStore(t)
+
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
+
+	task := &model.Task{TicketID: ticket.ID, Title: "Original task", Position: 1, Round: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	// Create 3 draft threads (all will become needs_attention).
+	for i := 0; i < 3; i++ {
+		dt, err := s.CreateDraftThread(ticket.ID, task.ID)
+		require.NoError(t, err)
+		_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "review comment")
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
+
+	// Ticket should be ready.
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusReady, got.Status)
+
+	// Should have 1 original + 3 amendment tasks.
+	tasks, err := s.GetTasksForTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Len(t, tasks, 4)
+
+	round1, round2 := 0, 0
+	for _, tk := range tasks {
+		if tk.Round == 1 {
+			round1++
+		} else if tk.Round == 2 {
+			round2++
+		}
+	}
+	assert.Equal(t, 1, round1)
+	assert.Equal(t, 3, round2)
+}
+
 func TestSubmitReview_EmptyDraftOK(t *testing.T) {
 	s := newTestStore(t)
 

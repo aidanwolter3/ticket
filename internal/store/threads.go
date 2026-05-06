@@ -9,6 +9,21 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 )
 
+func (s *Store) GetThread(id string) (*model.Thread, error) {
+	row := s.db.QueryRow(`SELECT id, task_id, status, created FROM comment_threads WHERE id=?`, id)
+	t, err := scanThread(row)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("thread %s not found", id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.loadMessages(t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
 func (s *Store) CreateThread(taskID string) (*model.Thread, error) {
 	id := ids.NewUUID()
 	now := time.Now().UnixMilli()

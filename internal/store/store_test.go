@@ -523,7 +523,8 @@ func TestFlushDraftState(t *testing.T) {
 	err = s.SetDraftAction(resolvedThread.ID, ticket.ID, model.DraftActionReopen)
 	require.NoError(t, err)
 
-	require.NoError(t, s.FlushDraftState(ticket.ID))
+	_, flushErr := s.FlushDraftState(ticket.ID)
+	require.NoError(t, flushErr)
 
 	// Draft state must be cleared.
 	state, err := s.GetDraftState(ticket.ID)
