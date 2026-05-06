@@ -107,17 +107,17 @@ func (v *TicketDetailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (v *TicketDetailView) View() string {
 	v.vp.SetContent(v.renderContent())
-	hint := "e edit · t threads · n note · [ ] scroll · esc back"
+	hint := "[e] edit · [t] threads · [n] note · [[/]] scroll · [esc] back"
 	if v.ticket != nil {
 		switch v.ticket.Status {
 		case model.StatusDraft:
-			hint += " · r mark ready"
+			hint += " · [r] mark ready"
 		case model.StatusReady:
-			hint += " · R back to draft"
+			hint += " · [R] back to draft"
 		case model.StatusInReview:
-			hint += " · a approve"
+			hint += " · [a] approve"
 		case model.StatusApproved:
-			hint += " · m merge"
+			hint += " · [m] merge"
 		}
 	}
 	return v.vp.View() + "\n" +
