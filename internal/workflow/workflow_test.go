@@ -260,9 +260,94 @@ func TestClaim_WorktreesDisabled(t *testing.T) {
 	assert.Empty(t, got.FeatureBranch)
 }
 
+// TestWorktreeLifecycle exercises the full promote→claim→dependency-gate→requeue
+// sequence end-to-end through the workflow and store layers.
+func TestWorktreeLifecycle(t *testing.T) {
+	s := newTestStore(t)
+	repoPath := gitRepo(t)
+
+	blocker := &model.Ticket{Title: "Blocker", Type: model.TypeTicket, Status: model.StatusDraft, RepoPath: repoPath}
+	dependent := &model.Ticket{Title: "Dependent", Type: model.TypeTicket, Status: model.StatusDraft, RepoPath: repoPath}
+	require.NoError(t, s.CreateTicket(blocker))
+	require.NoError(t, s.CreateTicket(dependent))
+	require.NoError(t, s.AddBlocker(dependent.ID, blocker.ID))
+
+	// --- promote: no worktrees should be created ---
+	require.NoError(t, Promote(s, blocker.ID, io.Discard, io.Discard))
+	require.NoError(t, Promote(s, dependent.ID, io.Discard, io.Discard))
+
+	b, err := s.GetTicket(blocker.ID)
+	require.NoError(t, err)
+	assert.Empty(t, b.WorktreePath, "promote must not create a worktree")
+	assert.Empty(t, b.FeatureBranch, "promote must not set feature_branch")
+
+	// --- claim blocker: worktree created ---
+	item, err := Claim(s, "agent:test", io.Discard, io.Discard)
+	require.NoError(t, err)
+	require.NotNil(t, item)
+	assert.Equal(t, blocker.ID, item.Ticket.ID)
+
+	b, err = s.GetTicket(blocker.ID)
+	require.NoError(t, err)
+	assert.NotEmpty(t, b.WorktreePath)
+	assert.NotEmpty(t, b.FeatureBranch)
+	_, statErr := os.Stat(b.WorktreePath)
+	require.NoError(t, statErr, "blocker worktree must exist on disk")
+	blockerWorktree := b.WorktreePath
+
+	// --- approved blocker does NOT unblock dependent ---
+	require.NoError(t, s.TransitionTicket(blocker.ID, model.StatusInReview, "agent:test"))
+	require.NoError(t, s.TransitionTicket(blocker.ID, model.StatusApproved, "human:test"))
+
+	peek, err := s.PeekWork()
+	require.NoError(t, err)
+	for _, wi := range peek {
+		assert.NotEqual(t, dependent.ID, wi.Ticket.ID, "dependent must not be claimable while blocker is only approved")
+	}
+
+	// --- merged blocker unblocks dependent ---
+	require.NoError(t, s.TransitionTicket(blocker.ID, model.StatusMerged, "human:test"))
+
+	peek, err = s.PeekWork()
+	require.NoError(t, err)
+	var found bool
+	for _, wi := range peek {
+		if wi.Ticket.ID == dependent.ID {
+			found = true
+		}
+	}
+	assert.True(t, found, "dependent must be claimable once blocker is merged")
+
+	// --- claim dependent: gets its own fresh worktree ---
+	item2, err := Claim(s, "agent:test", io.Discard, io.Discard)
+	require.NoError(t, err)
+	require.NotNil(t, item2)
+	assert.Equal(t, dependent.ID, item2.Ticket.ID)
+
+	d, err := s.GetTicket(dependent.ID)
+	require.NoError(t, err)
+	assert.NotEmpty(t, d.WorktreePath)
+	assert.NotEqual(t, blockerWorktree, d.WorktreePath, "dependent must get its own worktree")
+	_, statErr = os.Stat(d.WorktreePath)
+	require.NoError(t, statErr, "dependent worktree must exist on disk")
+	dependentWorktree := d.WorktreePath
+
+	// --- requeue (in_review → ready): worktree torn down ---
+	require.NoError(t, s.TransitionTicket(dependent.ID, model.StatusInReview, "agent:test"))
+	require.NoError(t, Ready(s, dependent.ID, "human:reviewer", io.Discard, io.Discard))
+
+	d, err = s.GetTicket(dependent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusReady, d.Status)
+	assert.Empty(t, d.WorktreePath, "worktree_path must be cleared after requeue")
+	assert.Empty(t, d.FeatureBranch, "feature_branch must be cleared after requeue")
+	_, statErr = os.Stat(dependentWorktree)
+	assert.True(t, os.IsNotExist(statErr), "worktree directory must be removed after requeue")
+}
+
 func TestReady_TearsDownWorktreeFromInReview(t *testing.T) {
 	s := newTestStore(t)
-	repoPath := newTestRepo(t)
+	repoPath := gitRepo(t)
 
 	ticket := &model.Ticket{
 		Title:    "Test ticket",
