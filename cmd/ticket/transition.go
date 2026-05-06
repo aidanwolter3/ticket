@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/aidanwolter/ticket/internal/model"
+	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
 func runTransition(args []string, defaultDB string) {
@@ -26,8 +27,14 @@ func runTransition(args []string, defaultDB string) {
 	s := openStore(*dbPath)
 	defer s.Close()
 
-	if err := s.TransitionTicket(id, status, author); err != nil {
-		fmt.Fprintf(os.Stderr, "transition failed: %v\n", err)
+	var transErr error
+	if status == model.StatusReady {
+		transErr = workflow.Ready(s, id, author, os.Stdout, os.Stderr)
+	} else {
+		transErr = s.TransitionTicket(id, status, author)
+	}
+	if transErr != nil {
+		fmt.Fprintf(os.Stderr, "transition failed: %v\n", transErr)
 		os.Exit(1)
 	}
 

@@ -19,7 +19,7 @@ func runClaimWork(args []string, defaultDB string) {
 	s := openStore(*dbPath)
 	defer s.Close()
 
-	item, err := workflow.Claim(s, "agent:claude", os.Stdout, os.Stderr)
+	item, err := workflow.Claim(s, "agent:claude", os.Stderr, os.Stderr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "claim-work: %v\n", err)
 		os.Exit(1)
