@@ -110,43 +110,10 @@ func (v *ThreadsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				id := v.items[v.cursor].thread.ID
 				v.expanded[id] = !v.expanded[id]
 			}
-		case "right":
-			if v.cursor < len(v.items) && v.items[v.cursor].kind == itemThread {
-				th := v.items[v.cursor].thread
-				var to model.ThreadStatus
-				switch th.Status {
-				case model.ThreadOpen:
-					to = model.ThreadNeedsAttention
-				case model.ThreadNeedsAttention:
-					to = model.ThreadOpen
-				default:
-					return v, nil
-				}
-				v.err = v.store.TransitionThread(th.ID, to, "human")
-				v.load()
-			}
 		case "x":
 			if v.cursor < len(v.items) && v.items[v.cursor].kind == itemThread {
 				th := v.items[v.cursor].thread
 				v.err = v.store.TransitionThread(th.ID, model.ThreadResolved, "human")
-				v.load()
-			}
-		case "left":
-			if v.cursor < len(v.items) && v.items[v.cursor].kind == itemThread {
-				th := v.items[v.cursor].thread
-				if th.Status == model.ThreadResolved {
-					v.err = v.store.TransitionThread(th.ID, model.ThreadOpen, "human")
-					v.load()
-				}
-			}
-		case "c":
-			if v.cursor < len(v.items) && v.items[v.cursor].kind == itemTask {
-				task := v.items[v.cursor].task
-				if task.CompletedAt != nil {
-					v.err = v.store.UncompleteTask(task.ID)
-				} else {
-					v.err = v.store.CompleteTask(task.ID)
-				}
 				v.load()
 			}
 		}
@@ -230,7 +197,7 @@ func (v *ThreadsView) View() string {
 
 	sb.WriteString("\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"[↑↓] navigate · [c] complete task · [enter] expand · [r] reply · [→] toggle ready · [x] resolve · [←] reopen · [n] new thread · [esc] back"))
+		"[↑↓] navigate · [enter] expand · [r] reply · [x] resolve · [n] new thread · [esc] back"))
 
 	return sb.String()
 }

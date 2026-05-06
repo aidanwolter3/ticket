@@ -322,7 +322,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Tab-specific list actions
 		switch km.String() {
-		case "d":
+		case "D":
 			if t := a.ticketsView.SelectedTicket(); t != nil {
 				a.pendingDeleteID = t.ID
 				a.screen = screenConfirmDelete
@@ -637,10 +637,9 @@ func (a *App) renderHelp() string {
 		}},
 		{"List Panel (left)", []string{
 			"↑↓ / j/k          navigate",
-			"d                 delete ticket",
+			"D                 delete ticket",
 		}},
 		{"Detail Panel (right)", []string{
-			"e                 edit",
 			"t                 threads",
 			"n                 add note",
 			"r                 mark ready (draft tickets)",
@@ -651,12 +650,9 @@ func (a *App) renderHelp() string {
 		}},
 		{"Threads", []string{
 			"↑↓                navigate",
-			"c                 complete/uncomplete task",
 			"enter             expand/collapse",
 			"r                 reply",
-			"→                 toggle active/ready",
 			"x                 resolve",
-			"←                 reopen",
 			"n                 new thread",
 			"esc               back",
 		}},

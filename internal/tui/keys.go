@@ -36,7 +36,7 @@ type ListKeys struct {
 var ListBindings = ListKeys{
 	Up:     key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 	Down:   key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-	Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
+	Delete: key.NewBinding(key.WithKeys("D"), key.WithHelp("D", "delete")),
 	Back:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 	Status: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "change status")),
 	Thread: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "threads")),
@@ -51,9 +51,7 @@ type ThreadKeys struct {
 	Down    key.Binding
 	Enter   key.Binding
 	Reply   key.Binding
-	Toggle  key.Binding
 	Resolve key.Binding
-	Reopen  key.Binding
 	New     key.Binding
 	Back    key.Binding
 }
@@ -63,9 +61,7 @@ var ThreadBindings = ThreadKeys{
 	Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
 	Enter:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand/collapse")),
 	Reply:   key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reply")),
-	Toggle:  key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "toggle active/ready")),
 	Resolve: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "resolve")),
-	Reopen:  key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "reopen")),
 	New:     key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new thread")),
 	Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 }
