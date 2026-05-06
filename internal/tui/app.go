@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aidanwolter/ticket/internal/agent"
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/views"
@@ -30,6 +31,7 @@ const (
 	screenNewThreadModal
 	screenConfirmDelete
 	screenEditDraftMessage
+	screenConfirmDispatch
 )
 
 type dbTickMsg struct{}
@@ -39,17 +41,19 @@ func tickDB() tea.Cmd {
 }
 
 type App struct {
-	store           *store.Store
-	tab             appTab
-	screen          appScreen
-	width           int
-	height          int
-	leftW           int
-	rightW          int
-	statusMsg       string
-	statusErr       bool
-	pendingDeleteID string
-	showHelp        bool
+	store            *store.Store
+	launcher         *agent.Launcher
+	tab              appTab
+	screen           appScreen
+	width            int
+	height           int
+	leftW            int
+	rightW           int
+	statusMsg        string
+	statusErr        bool
+	pendingDeleteID  string
+	pendingDispatchID string
+	showHelp         bool
 
 	// list views (left pane)
 	ticketsView *views.TicketsView
@@ -68,6 +72,7 @@ type App struct {
 func New(s *store.Store) *App {
 	a := &App{
 		store:       s,
+		launcher:    agent.NewLauncher(s),
 		tab:         tabTickets,
 		screen:      screenList,
 		width:       80,
@@ -192,6 +197,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateThreads(msg)
 	case screenConfirmDelete:
 		return a.updateConfirmDelete(msg)
+	case screenConfirmDispatch:
+		return a.updateConfirmDispatch(msg)
 	case screenNoteModal:
 		return a.updateNoteModal(msg)
 	case screenReplyModal:
@@ -323,6 +330,32 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.screen = screenConfirmDelete
 			}
 			return a, nil
+		case "g":
+			if t := a.ticketsView.SelectedTicket(); t != nil && t.Status == model.StatusReady {
+				cmd, _, err := a.store.ConfigGet("agent.command")
+				if err != nil || cmd == "" {
+					a.statusMsg = `agent.command not configured — run: ticket config set agent.command "..."`
+					a.statusErr = true
+					return a, nil
+				}
+				sess, err := a.store.GetAgentSessionByTicket(t.ID)
+				if err == nil && sess != nil {
+					a.statusMsg = fmt.Sprintf("agent already active for %s (state: %s)", t.ID, sess.State)
+					a.statusErr = true
+					return a, nil
+				}
+				a.pendingDispatchID = t.ID
+				a.screen = screenConfirmDispatch
+			}
+			return a, nil
+		case "enter":
+			if t := a.ticketsView.SelectedTicket(); t != nil {
+				sess, err := a.store.GetAgentSessionByTicket(t.ID)
+				if err == nil && sess != nil {
+					return a, a.attachToAgent(sess)
+				}
+			}
+			return a, nil
 		}
 	}
 
@@ -403,6 +436,51 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	_, cmd := a.threadsView.Update(msg)
 	return a, cmd
+}
+
+// --- Confirm dispatch ---
+
+func (a *App) updateConfirmDispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch km.String() {
+		case "y", "Y":
+			id := a.pendingDispatchID
+			a.pendingDispatchID = ""
+			a.screen = screenList
+
+			cmdTemplate, _, err := a.store.ConfigGet("agent.command")
+			if err != nil || cmdTemplate == "" {
+				a.statusMsg = `agent.command not configured`
+				a.statusErr = true
+				return a, nil
+			}
+
+			t, err := a.store.GetTicket(id)
+			if err != nil {
+				a.setErr(err)
+				return a, nil
+			}
+
+			prompt, err := agent.BuildPrompt(cmdTemplate)
+			if err != nil {
+				a.setErr(fmt.Errorf("agent: build prompt: %w", err))
+				return a, nil
+			}
+
+			_, err = a.launcher.Launch(id, t.WorktreePath, prompt)
+			if err != nil {
+				a.setErr(fmt.Errorf("agent launch: %w", err))
+				return a, nil
+			}
+
+			a.statusMsg = fmt.Sprintf("agent dispatched to %s", id)
+			a.statusErr = false
+		default:
+			a.pendingDispatchID = ""
+			a.screen = screenList
+		}
+	}
+	return a, nil
 }
 
 // --- Confirm delete ---
@@ -624,6 +702,9 @@ func (a *App) View() string {
 	case screenConfirmDelete:
 		prompt := fmt.Sprintf("Delete ticket %s? (y/N) ", a.pendingDeleteID)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("1")).Render(prompt))
+	case screenConfirmDispatch:
+		prompt := fmt.Sprintf("Dispatch agent to %s? (y/N) ", a.pendingDispatchID)
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4")).Render(prompt))
 	}
 
 	// Status bar — always rendered to keep View() height constant.
@@ -666,6 +747,8 @@ func (a *App) renderHelp() string {
 			"n                 add note",
 			"r                 mark ready (draft tickets)",
 			"R                 back to draft (ready tickets)",
+			"g                 dispatch agent (ready tickets)",
+			"enter             attach to agent (if active)",
 			"a                 approve (in_review tickets)",
 			"m                 merge (approved tickets)",
 			"[ / ]             scroll up / down",
@@ -695,6 +778,27 @@ func (a *App) renderHelp() string {
 	}
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? / esc to close"))
 	return sb.String()
+}
+
+// attachToAgent suspends the TUI, replays the last 50 lines of the agent log,
+// connects stdin/stdout to the agent's PTY master, and detaches on ctrl+].
+func (a *App) attachToAgent(sess *model.AgentSession) tea.Cmd {
+	ptym := a.launcher.PTYMaster(sess.ID)
+	if ptym == nil {
+		a.statusMsg = fmt.Sprintf("agent PTY for %s is not available", sess.TicketID)
+		a.statusErr = true
+		return nil
+	}
+
+	cmd := &agentAttachCmd{
+		ptym:    ptym,
+		logPath: sess.LogPath,
+		tailN:   50,
+	}
+
+	return tea.Exec(cmd, func(err error) tea.Msg {
+		return dbTickMsg{}
+	})
 }
 
 // --- helpers ---

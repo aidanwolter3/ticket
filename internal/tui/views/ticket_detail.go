@@ -114,7 +114,10 @@ func (v *TicketDetailView) View() string {
 		case model.StatusDraft:
 			hint += " · [r] mark ready"
 		case model.StatusReady:
-			hint += " · [R] back to draft"
+			hint += " · [R] back to draft · [g] dispatch agent"
+			if v.agentSession != nil {
+				hint += " · [enter] attach"
+			}
 		case model.StatusInReview:
 			hint += " · [a] approve"
 		case model.StatusApproved:
