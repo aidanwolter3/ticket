@@ -150,6 +150,10 @@ func TestCascadeDelete(t *testing.T) {
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
 
+	blocker := &model.Ticket{Title: "B", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(blocker))
+	require.NoError(t, s.AddBlocker(ticket.ID, blocker.ID))
+
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
 
@@ -163,11 +167,15 @@ func TestCascadeDelete(t *testing.T) {
 	require.NoError(t, s.DeleteTicket(ticket.ID))
 
 	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE ticket_id=?`, ticket.ID).Scan(&count)
+	assert.Equal(t, 0, count)
 	s.db.QueryRow(`SELECT COUNT(*) FROM comment_threads WHERE task_id=?`, task.ID).Scan(&count)
 	assert.Equal(t, 0, count)
 	s.db.QueryRow(`SELECT COUNT(*) FROM thread_messages WHERE thread_id=?`, thread.ID).Scan(&count)
 	assert.Equal(t, 0, count)
 	s.db.QueryRow(`SELECT COUNT(*) FROM notes WHERE ticket_id=?`, ticket.ID).Scan(&count)
+	assert.Equal(t, 0, count)
+	s.db.QueryRow(`SELECT COUNT(*) FROM blocked_by WHERE ticket_id=?`, ticket.ID).Scan(&count)
 	assert.Equal(t, 0, count)
 }
 

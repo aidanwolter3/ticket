@@ -99,8 +99,40 @@ func (s *Store) SetWorktreePath(ticketID, worktreePath, repoPath, featureBranch 
 }
 
 func (s *Store) DeleteTicket(id string) error {
-	_, err := s.db.Exec(`DELETE FROM tickets WHERE id=?`, id)
-	return err
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Explicit deletion avoids relying on ON DELETE CASCADE, which requires the
+	// per-connection PRAGMA foreign_keys = ON and is absent on tables created by
+	// migration1 (tasks, comment_threads).
+	steps := []struct {
+		query string
+		args  []any
+	}{
+		{`DELETE FROM thread_messages WHERE thread_id IN (
+			SELECT ct.id FROM comment_threads ct
+			JOIN tasks t ON t.id = ct.task_id
+			WHERE t.ticket_id = ?)`, []any{id}},
+		{`DELETE FROM comment_threads WHERE task_id IN (
+			SELECT id FROM tasks WHERE ticket_id = ?)`, []any{id}},
+		{`DELETE FROM tasks WHERE ticket_id = ?`, []any{id}},
+		{`DELETE FROM notes WHERE ticket_id = ?`, []any{id}},
+		{`DELETE FROM blocked_by WHERE ticket_id = ? OR blocker_id = ?`, []any{id, id}},
+		{`DELETE FROM tickets WHERE id = ?`, []any{id}},
+	}
+	for _, s := range steps {
+		if _, err = tx.Exec(s.query, s.args...); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) GetTicket(id string) (*model.Ticket, error) {
