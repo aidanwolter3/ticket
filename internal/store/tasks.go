@@ -33,12 +33,15 @@ func (s *Store) CreateTask(t *model.Task) error {
 	now := time.Now().UnixMilli()
 	t.Created = time.UnixMilli(now)
 	t.Updated = time.UnixMilli(now)
+	if t.Round == 0 {
+		t.Round = 1
+	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO tasks (id, ticket_id, title, description, position,
+		INSERT INTO tasks (id, ticket_id, title, description, position, round,
 		  commit_hash, verifiable_result, completed_at, created, updated)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.TicketID, t.Title, t.Description, t.Position,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.TicketID, t.Title, t.Description, t.Position, t.Round,
 		nullStr(t.CommitHash), t.VerifiableResult, nullTime(t.CompletedAt),
 		now, now,
 	)
@@ -52,10 +55,10 @@ func (s *Store) UpdateTask(t *model.Task) error {
 	now := time.Now().UnixMilli()
 	t.Updated = time.UnixMilli(now)
 	_, err := s.db.Exec(`
-		UPDATE tasks SET title=?, description=?, position=?,
+		UPDATE tasks SET title=?, description=?, position=?, round=?,
 		  commit_hash=?, verifiable_result=?, completed_at=?, updated=?
 		WHERE id=?`,
-		t.Title, t.Description, t.Position,
+		t.Title, t.Description, t.Position, t.Round,
 		nullStr(t.CommitHash), t.VerifiableResult, nullTime(t.CompletedAt),
 		now, t.ID,
 	)
@@ -67,7 +70,7 @@ func (s *Store) UpdateTask(t *model.Task) error {
 
 func (s *Store) GetTask(id string) (*model.Task, error) {
 	row := s.db.QueryRow(`
-		SELECT id, ticket_id, title, description, position,
+		SELECT id, ticket_id, title, description, position, round,
 		       COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
 		FROM tasks WHERE id=?`, id)
 	t, err := scanTask(row)
@@ -79,7 +82,7 @@ func (s *Store) GetTask(id string) (*model.Task, error) {
 
 func (s *Store) GetTasksForTicket(ticketID string) ([]model.Task, error) {
 	rows, err := s.db.Query(`
-		SELECT id, ticket_id, title, description, position,
+		SELECT id, ticket_id, title, description, position, round,
 		       COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
 		FROM tasks WHERE ticket_id=? ORDER BY position`, ticketID)
 	if err != nil {
@@ -111,7 +114,7 @@ func (s *Store) loadTasksForTickets(tickets []*model.Ticket) error {
 		args[i] = t.ID
 	}
 	query := fmt.Sprintf(`
-		SELECT id, ticket_id, title, description, position,
+		SELECT id, ticket_id, title, description, position, round,
 		       COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
 		FROM tasks WHERE ticket_id IN (%s) ORDER BY ticket_id, position`,
 		strings.Join(placeholders, ","))
@@ -149,7 +152,7 @@ func (s *Store) UncompleteTask(id string) error {
 // Used by the TUI to choose which task to attach new threads to.
 func (s *Store) LastTaskForTicket(ticketID string) (*model.Task, error) {
 	row := s.db.QueryRow(`
-		SELECT id, ticket_id, title, description, position,
+		SELECT id, ticket_id, title, description, position, round,
 		       COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
 		FROM tasks WHERE ticket_id=? ORDER BY position DESC LIMIT 1`, ticketID)
 	t, err := scanTask(row)
@@ -161,15 +164,18 @@ func (s *Store) LastTaskForTicket(ticketID string) (*model.Task, error) {
 
 func scanTask(r scanner) (*model.Task, error) {
 	var (
-		t            model.Task
-		completedMs  sql.NullInt64
-		createdMs    int64
-		updatedMs    int64
+		t           model.Task
+		completedMs sql.NullInt64
+		createdMs   int64
+		updatedMs   int64
 	)
-	err := r.Scan(&t.ID, &t.TicketID, &t.Title, &t.Description, &t.Position,
+	err := r.Scan(&t.ID, &t.TicketID, &t.Title, &t.Description, &t.Position, &t.Round,
 		&t.CommitHash, &t.VerifiableResult, &completedMs, &createdMs, &updatedMs)
 	if err != nil {
 		return nil, err
+	}
+	if t.Round == 0 {
+		t.Round = 1
 	}
 	if completedMs.Valid {
 		ts := time.UnixMilli(completedMs.Int64)

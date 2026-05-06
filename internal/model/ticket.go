@@ -43,6 +43,7 @@ type Task struct {
 	Title            string
 	Description      string
 	Position         int
+	Round            int // 1 = original work; N = Nth amendment cycle
 	CommitHash       string
 	VerifiableResult string
 	CompletedAt      *time.Time

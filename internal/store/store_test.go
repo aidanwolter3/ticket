@@ -392,6 +392,59 @@ func TestConfigList(t *testing.T) {
 	assert.Equal(t, map[string]string{"worktrees": "false", "other": "val"}, m)
 }
 
+func TestTaskRoundField(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	// Default round is 1.
+	task1 := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task1))
+	assert.Equal(t, 1, task1.Round)
+
+	got, err := s.GetTask(task1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.Round)
+
+	// Explicit round > 1.
+	task2 := &model.Task{TicketID: ticket.ID, Title: "Amendment", Position: 2, Round: 2}
+	require.NoError(t, s.CreateTask(task2))
+	assert.Equal(t, 2, task2.Round)
+
+	got2, err := s.GetTask(task2.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, got2.Round)
+
+	// GetTasksForTicket preserves round.
+	tasks, err := s.GetTasksForTicket(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, tasks, 2)
+	assert.Equal(t, 1, tasks[0].Round)
+	assert.Equal(t, 2, tasks[1].Round)
+}
+
+func TestTaskRoundSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "round.db")
+
+	s1, err := Open(dbPath)
+	require.NoError(t, err)
+
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s1.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Amendment", Position: 1, Round: 3}
+	require.NoError(t, s1.CreateTask(task))
+	s1.Close()
+
+	s2, err := Open(dbPath)
+	require.NoError(t, err)
+	defer s2.Close()
+
+	got, err := s2.GetTask(task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 3, got.Round)
+}
+
 func TestDraftStatePersists(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "persist.db")

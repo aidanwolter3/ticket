@@ -45,6 +45,14 @@ func (s *Store) runMigrations() error {
 			return fmt.Errorf("record migration 3: %w", err)
 		}
 	}
+	if current < 4 {
+		if err := s.migration4(); err != nil {
+			return fmt.Errorf("migration 4: %w", err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO schema_migrations (version, applied) VALUES (4, ?)`, time.Now().UnixMilli()); err != nil {
+			return fmt.Errorf("record migration 4: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -616,6 +624,26 @@ func (s *Store) migration3() error {
 	}
 
 	return tx.Commit()
+}
+
+// migration4 adds the round column (default 1) to the tasks table.
+func (s *Store) migration4() error {
+	tasksExists, err := s.hasTable("tasks")
+	if err != nil {
+		return err
+	}
+	if !tasksExists {
+		return nil // fresh DB, schema.go will create the table with round
+	}
+	hasRound, err := s.hasColumn("tasks", "round")
+	if err != nil {
+		return err
+	}
+	if hasRound {
+		return nil
+	}
+	_, err = s.db.Exec(`ALTER TABLE tasks ADD COLUMN round INTEGER NOT NULL DEFAULT 1`)
+	return err
 }
 
 func nullStrTx(s string) interface{} {
