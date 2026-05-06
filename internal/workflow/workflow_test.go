@@ -463,6 +463,78 @@ func TestReviewCycleLifecycle(t *testing.T) {
 	assert.Error(t, checkBranch.Run(), "feature branch must be deleted after merge")
 }
 
+func TestSubmitReview_FlushesAndTransitions(t *testing.T) {
+	s := newTestStore(t)
+
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
+
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	// Existing real thread (open).
+	th, err := s.CreateThread(task.ID)
+	require.NoError(t, err)
+
+	// Stage: draft new thread.
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID)
+	require.NoError(t, err)
+	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "please fix this")
+	require.NoError(t, err)
+
+	// Stage: resolve the open thread.
+	require.NoError(t, s.SetDraftAction(th.ID, ticket.ID, model.DraftActionResolve))
+
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
+
+	// Ticket should be ready.
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusReady, got.Status)
+
+	// Draft state cleared.
+	ds, err := s.GetDraftState(ticket.ID)
+	require.NoError(t, err)
+	assert.True(t, ds.IsEmpty())
+
+	// Real threads: open thread → resolved (staged); new draft thread → needs_attention.
+	threads, err := s.GetThreadsForTicket(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, threads, 2)
+
+	statuses := make(map[string]model.ThreadStatus)
+	for _, t := range threads {
+		statuses[t.ID] = t.Status
+	}
+	assert.Equal(t, model.ThreadResolved, statuses[th.ID])
+	// The newly created real thread (from draft) should be needs_attention.
+	for id, status := range statuses {
+		if id != th.ID {
+			assert.Equal(t, model.ThreadNeedsAttention, status, "new thread should be needs_attention")
+		}
+	}
+}
+
+func TestSubmitReview_EmptyDraftOK(t *testing.T) {
+	s := newTestStore(t)
+
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
+
+	// No draft state — submit should still work (ticket → ready).
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusReady, got.Status)
+}
+
 func TestClaim_AmendmentSkipsWorktreeCreation(t *testing.T) {
 	s := newTestStore(t)
 	repoPath := gitRepo(t)

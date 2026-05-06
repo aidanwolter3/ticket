@@ -334,6 +334,21 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.reloadCurrentDetail()
 			a.screen = screenList
 			return a, nil
+		case "ctrl+s":
+			if a.threadsView != nil {
+				id := a.threadsView.TicketID()
+				if err := workflow.SubmitReview(a.store, id, "human", io.Discard, io.Discard); err != nil {
+					a.setErr(err)
+				} else {
+					a.statusMsg = fmt.Sprintf("%s → ready (review submitted)", id)
+					a.statusErr = false
+					a.threadsView.Reload()
+					a.reloadCurrentDetail()
+					a.ticketsView.Refresh()
+					a.screen = screenList
+				}
+			}
+			return a, nil
 		case "r":
 			if a.threadsView != nil {
 				if th := a.threadsView.SelectedThread(); th != nil {

@@ -102,6 +102,21 @@ func Ready(s *store.Store, ticketID string, author string, stdout, stderr io.Wri
 	return nil
 }
 
+// SubmitReview flushes all staged draft actions to the store atomically and
+// transitions the ticket from in_review to ready. Draft threads with human
+// comments become needs_attention; staged resolves become resolved; staged
+// reopens become open. stdout and stderr are accepted for interface symmetry
+// but are unused; pass io.Discard.
+func SubmitReview(s *store.Store, ticketID string, author string, stdout, stderr io.Writer) error {
+	if err := s.FlushDraftState(ticketID); err != nil {
+		return fmt.Errorf("submit-review: flush draft: %w", err)
+	}
+	if err := s.TransitionTicket(ticketID, model.StatusReady, author); err != nil {
+		return fmt.Errorf("submit-review: transition ticket: %w", err)
+	}
+	return nil
+}
+
 // ReviewSubmit atomically flips all active threads to ready and transitions the
 // ticket from in_review to ready. Returns an error if there are no active
 // threads. stdout and stderr are accepted for interface symmetry but are unused;
