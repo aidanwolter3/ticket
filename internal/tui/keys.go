@@ -28,7 +28,6 @@ type ListKeys struct {
 	Status key.Binding
 	Thread key.Binding
 	Note   key.Binding
-	Edit   key.Binding
 	Review key.Binding
 	Stack  key.Binding
 }
@@ -41,7 +40,6 @@ var ListBindings = ListKeys{
 	Status: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "change status")),
 	Thread: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "threads")),
 	Note:   key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "add note")),
-	Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 	Review: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "review")),
 	Stack:  key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "stack view")),
 }

@@ -25,7 +25,6 @@ type appScreen int
 const (
 	screenList appScreen = iota // split-pane: list left, detail right
 	screenThreads
-	screenForm
 	screenNoteModal
 	screenReplyModal
 	screenNewThreadModal
@@ -59,7 +58,6 @@ type App struct {
 
 	// overlay screens
 	threadsView    *views.ThreadsView
-	formView       *views.FormView
 	noteModal      *views.NoteModal
 	replyModal     *views.ReplyModal
 	newThreadModal *views.NewThreadModal
@@ -184,8 +182,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateList(msg)
 	case screenThreads:
 		return a.updateThreads(msg)
-	case screenForm:
-		return a.updateForm(msg)
 	case screenConfirmDelete:
 		return a.updateConfirmDelete(msg)
 	case screenNoteModal:
@@ -204,17 +200,6 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok {
 		// Detail-panel hotkeys — act on the currently highlighted ticket
 		switch km.String() {
-		case "e":
-			id := a.currentTicketID()
-			if id != "" {
-				t, err := a.store.GetTicket(id)
-				if err == nil {
-					a.formView = views.NewFormView(t)
-					a.formView.SetSize(a.width, a.height)
-					a.screen = screenForm
-				}
-			}
-			return a, nil
 		case "t":
 			id := a.currentTicketID()
 			if id != "" {
@@ -371,52 +356,6 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	_, cmd := a.threadsView.Update(msg)
-	return a, cmd
-}
-
-// --- Form screen ---
-
-func (a *App) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if km, ok := msg.(tea.KeyMsg); ok {
-		switch km.String() {
-		case "esc":
-			a.screen = screenList
-			return a, nil
-		case "ctrl+s":
-			t := a.formView.ToTicket()
-			if t.Title == "" {
-				a.statusMsg = "Title is required"
-				a.statusErr = true
-				return a, nil
-			}
-			if a.formView.IsEdit() {
-				existing, err := a.store.GetTicket(a.formView.TicketID())
-				if err != nil {
-					a.setErr(err)
-					return a, nil
-				}
-				t.ID = existing.ID
-				t.Created = existing.Created
-				if err := a.store.UpdateTicket(t); err != nil {
-					a.setErr(err)
-					return a, nil
-				}
-				a.statusMsg = fmt.Sprintf("Updated %s", t.ID)
-			} else {
-				if err := a.store.CreateTicket(t); err != nil {
-					a.setErr(err)
-					return a, nil
-				}
-				a.statusMsg = fmt.Sprintf("Created %s", t.ID)
-			}
-			a.statusErr = false
-			a.ticketsView.Refresh()
-			a.reloadCurrentDetail()
-			a.screen = screenList
-			return a, nil
-		}
-	}
-	_, cmd := a.formView.Update(msg)
 	return a, cmd
 }
 
@@ -582,10 +521,6 @@ func (a *App) View() string {
 	case screenThreads:
 		if a.threadsView != nil {
 			sb.WriteString(a.threadsView.View())
-		}
-	case screenForm:
-		if a.formView != nil {
-			sb.WriteString(a.formView.View())
 		}
 	case screenNoteModal:
 		if a.noteModal != nil {

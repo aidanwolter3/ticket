@@ -108,7 +108,7 @@ func (v *TicketDetailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (v *TicketDetailView) View() string {
 	v.vp.SetContent(v.renderContent())
-	hint := "[e] edit · [t] threads · [n] note · [[/]] scroll"
+	hint := "[t] threads · [n] note · [[/]] scroll"
 	if v.ticket != nil {
 		switch v.ticket.Status {
 		case model.StatusDraft:
