@@ -146,7 +146,7 @@ func (f *FormView) View() string {
 	}
 
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"tab next · shift+tab prev · ctrl+s save · esc cancel"))
+		"[tab] next · [shift+tab] prev · [ctrl+s] save · [esc] cancel"))
 
 	return sb.String()
 }

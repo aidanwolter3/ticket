@@ -67,6 +67,6 @@ func (m *NoteModal) View() string {
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Text") + "\n")
 	sb.WriteString("  " + m.input.View() + "\n\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"tab switch · enter/ctrl+s save · esc cancel"))
+		"[tab] switch · [enter/ctrl+s] save · [esc] cancel"))
 	return sb.String()
 }
