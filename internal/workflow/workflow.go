@@ -9,16 +9,40 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/aidanwolter/ticket/internal/agent"
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 )
 
-// Promote transitions a draft ticket to ready. stdout and stderr are accepted
-// for interface symmetry but are unused; pass io.Discard.
+// Promote transitions a draft ticket to ready. If agent.auto_dispatch is true
+// and agent.command is set, an agent is launched automatically.
 func Promote(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
-	if _, err := s.PromoteTicket(ticketID, "human"); err != nil {
+	ticket, err := s.PromoteTicket(ticketID, "human")
+	if err != nil {
 		return fmt.Errorf("promote: %w", err)
 	}
+
+	autoDispatch, _, _ := s.ConfigGet("agent.auto_dispatch")
+	cmdTemplate, _, _ := s.ConfigGet("agent.command")
+	if autoDispatch == "true" && cmdTemplate != "" {
+		existing, _ := s.GetAgentSessionByTicket(ticketID)
+		if existing == nil {
+			prompt, err := agent.BuildPrompt(cmdTemplate)
+			if err != nil {
+				fmt.Fprintf(stderr, "auto-dispatch: build prompt: %v\n", err)
+			} else {
+				launcher := agent.NewLauncher(s)
+				if _, launchErr := launcher.Launch(ticketID, ticket.WorktreePath, prompt); launchErr != nil {
+					fmt.Fprintf(stderr, "auto-dispatch: launch failed: %v\n", launchErr)
+				} else {
+					if _, noteErr := s.AddNote(ticketID, "agent:claude", "Agent auto-dispatched"); noteErr != nil {
+						fmt.Fprintf(stderr, "auto-dispatch: add note: %v\n", noteErr)
+					}
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
