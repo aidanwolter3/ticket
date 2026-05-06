@@ -345,6 +345,56 @@ func TestWorktreeLifecycle(t *testing.T) {
 	assert.NoError(t, statErr, "worktree directory must still exist after requeue")
 }
 
+// TestClaim_AmendmentSkipsWorktreeCreation verifies that claiming amendment work
+// returns the existing worktree_path unchanged and does not create a duplicate.
+func TestClaim_AmendmentSkipsWorktreeCreation(t *testing.T) {
+	s := newTestStore(t)
+	repoPath := gitRepo(t)
+
+	ticket := &model.Ticket{
+		Title:    "Amendment ticket",
+		Type:     model.TypeTicket,
+		Status:   model.StatusReady,
+		RepoPath: repoPath,
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	// Initial claim creates the worktree.
+	item, err := Claim(s, "agent:test", io.Discard, io.Discard)
+	require.NoError(t, err)
+	require.NotNil(t, item)
+	assert.Equal(t, store.WorkTypeNew, item.Type)
+
+	claimed, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	originalWorktree := claimed.WorktreePath
+	require.NotEmpty(t, originalWorktree)
+
+	// Advance to in_review, then back to ready via ReviewSubmit (simulating review cycle).
+	// We need a task + thread for ReviewSubmit to work.
+	task := &model.Task{TicketID: ticket.ID, Title: "task", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	th, err := s.CreateThread(task.ID)
+	require.NoError(t, err)
+	_, err = s.AddMessage(th.ID, "human:reviewer", "please fix this")
+	require.NoError(t, err)
+
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:test"))
+	require.NoError(t, ReviewSubmit(s, ticket.ID, "human:reviewer", io.Discard, io.Discard))
+
+	// Ticket is now ready with a feature_branch — should be claimable as amendment.
+	item2, err := Claim(s, "agent:test", io.Discard, io.Discard)
+	require.NoError(t, err)
+	require.NotNil(t, item2)
+	assert.Equal(t, store.WorkTypeAmendment, item2.Type)
+	assert.Equal(t, ticket.ID, item2.Ticket.ID)
+	assert.Equal(t, originalWorktree, item2.Ticket.WorktreePath, "worktree_path must be unchanged for amendment")
+
+	// The original worktree directory must still exist (not removed, not duplicated).
+	_, statErr := os.Stat(originalWorktree)
+	assert.NoError(t, statErr, "original worktree must still exist")
+}
+
 func TestReady_PreservesWorktreeFromInReview(t *testing.T) {
 	s := newTestStore(t)
 	repoPath := gitRepo(t)
