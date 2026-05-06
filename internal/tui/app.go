@@ -17,8 +17,6 @@ type appTab int
 
 const (
 	tabTickets appTab = iota
-	tabReview
-	tabDraft
 )
 
 type appScreen int
@@ -54,8 +52,6 @@ type App struct {
 
 	// list views (left pane)
 	ticketsView *views.TicketsView
-	reviewView  *views.ReviewQueueView
-	draftView   *views.DraftReviewView
 
 	// detail view (right pane)
 	ticketDetail *views.TicketDetailView
@@ -78,8 +74,6 @@ func New(s *store.Store) *App {
 		leftW:       28,
 		rightW:      51,
 		ticketsView: views.NewTicketsView(s),
-		reviewView:  views.NewReviewQueueView(s),
-		draftView:   views.NewDraftReviewView(s),
 	}
 	a.loadCurrentDetail()
 	return a
@@ -98,17 +92,8 @@ func (a *App) bodyHeight() int {
 }
 
 func (a *App) selectedTicketID() string {
-	switch a.tab {
-	case tabTickets:
-		if t := a.ticketsView.SelectedTicket(); t != nil {
-			return t.ID
-		}
-	case tabReview:
-		return a.reviewView.FirstTicketID()
-	case tabDraft:
-		if t := a.draftView.SelectedTicket(); t != nil {
-			return t.ID
-		}
+	if t := a.ticketsView.SelectedTicket(); t != nil {
+		return t.ID
 	}
 	return ""
 }
@@ -142,8 +127,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case dbTickMsg:
 		a.ticketsView.Refresh()
-		a.reviewView.Refresh()
-		a.draftView.Refresh()
 		if a.ticketDetail != nil {
 			_ = a.ticketDetail.Reload()
 		}
@@ -165,8 +148,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		bodyH := a.bodyHeight()
 		a.ticketsView.SetSize(a.leftW, bodyH)
-		a.reviewView.SetSize(a.leftW, bodyH)
-		a.draftView.SetSize(a.leftW, bodyH)
 		if a.ticketDetail != nil {
 			a.ticketDetail.SetSize(a.rightW, bodyH)
 		}
@@ -192,42 +173,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q":
 				if a.screen == screenList {
 					return a, tea.Quit
-				}
-			case "tab":
-				if a.screen == screenList {
-					prev := a.tab
-					a.tab = (a.tab + 1) % 3
-					if a.tab != prev {
-						a.loadCurrentDetail()
-					}
-					return a, nil
-				}
-			case "shift+tab":
-				if a.screen == screenList {
-					prev := a.tab
-					a.tab = (a.tab + 2) % 3
-					if a.tab != prev {
-						a.loadCurrentDetail()
-					}
-					return a, nil
-				}
-			case "1":
-				if a.screen == screenList && a.tab != tabTickets {
-					a.tab = tabTickets
-					a.loadCurrentDetail()
-					return a, nil
-				}
-			case "2":
-				if a.screen == screenList && a.tab != tabReview {
-					a.tab = tabReview
-					a.loadCurrentDetail()
-					return a, nil
-				}
-			case "3":
-				if a.screen == screenList && a.tab != tabDraft {
-					a.tab = tabDraft
-					a.loadCurrentDetail()
-					return a, nil
 				}
 			}
 		}
@@ -306,7 +251,6 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → draft", id)
 					a.statusErr = false
-					a.draftView.Refresh()
 					a.ticketsView.Refresh()
 					a.loadCurrentDetail()
 				}
@@ -320,7 +264,6 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready", id)
 					a.statusErr = false
-					a.draftView.Refresh()
 					a.ticketsView.Refresh()
 					a.loadCurrentDetail()
 				}
@@ -353,7 +296,6 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → approved", id)
 					a.statusErr = false
-					a.reviewView.Refresh()
 					a.ticketsView.Refresh()
 					a.loadCurrentDetail()
 				}
@@ -371,8 +313,6 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.statusMsg = fmt.Sprintf("%s → merged", id)
 					a.statusErr = false
 					a.ticketsView.Refresh()
-					a.reviewView.Refresh()
-					a.draftView.Refresh()
 					a.loadCurrentDetail()
 				}
 			}
@@ -380,39 +320,19 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Tab-specific list actions
-		switch a.tab {
-		case tabTickets:
-			switch km.String() {
-			case "d":
-				if t := a.ticketsView.SelectedTicket(); t != nil {
-					a.pendingDeleteID = t.ID
-					a.screen = screenConfirmDelete
-				}
-				return a, nil
+		switch km.String() {
+		case "d":
+			if t := a.ticketsView.SelectedTicket(); t != nil {
+				a.pendingDeleteID = t.ID
+				a.screen = screenConfirmDelete
 			}
-		case tabDraft:
-			switch km.String() {
-			case "d":
-				if t := a.draftView.SelectedTicket(); t != nil {
-					a.pendingDeleteID = t.ID
-					a.screen = screenConfirmDelete
-				}
-				return a, nil
-			}
+			return a, nil
 		}
 	}
 
 	// Delegate navigation to the active list view; reload detail on cursor change
 	prevID := a.selectedTicketID()
-	var cmd tea.Cmd
-	switch a.tab {
-	case tabTickets:
-		_, cmd = a.ticketsView.Update(msg)
-	case tabReview:
-		_, cmd = a.reviewView.Update(msg)
-	case tabDraft:
-		_, cmd = a.draftView.Update(msg)
-	}
+	_, cmd := a.ticketsView.Update(msg)
 	if a.selectedTicketID() != prevID {
 		a.loadCurrentDetail()
 	}
@@ -490,7 +410,6 @@ func (a *App) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			a.statusErr = false
 			a.ticketsView.Refresh()
-			a.reviewView.Refresh()
 			a.reloadCurrentDetail()
 			a.screen = screenList
 			return a, nil
@@ -512,7 +431,6 @@ func (a *App) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.statusMsg = fmt.Sprintf("Deleted %s", a.pendingDeleteID)
 				a.statusErr = false
 				a.ticketsView.Refresh()
-				a.draftView.Refresh()
 				a.loadCurrentDetail()
 			}
 			a.pendingDeleteID = ""
@@ -631,18 +549,8 @@ func (a *App) View() string {
 	switch a.screen {
 	case screenList:
 		a.ticketsView.SetSize(a.leftW, bodyH)
-		a.reviewView.SetSize(a.leftW, bodyH)
-		a.draftView.SetSize(a.leftW, bodyH)
 
-		var leftContent string
-		switch a.tab {
-		case tabTickets:
-			leftContent = a.ticketsView.View()
-		case tabReview:
-			leftContent = a.reviewView.View()
-		case tabDraft:
-			leftContent = a.draftView.View()
-		}
+		leftContent := a.ticketsView.View()
 
 		leftPane := lipgloss.NewStyle().
 			Width(a.leftW).
@@ -710,17 +618,8 @@ func (a *App) View() string {
 }
 
 func (a *App) renderTabBar() string {
-	tabs := []string{"1 Tickets", "2 Review Queue", "3 Draft Review"}
-	var parts []string
-	for i, label := range tabs {
-		if appTab(i) == a.tab {
-			parts = append(parts, lipgloss.NewStyle().Bold(true).Underline(true).Padding(0, 1).Render(label))
-		} else {
-			parts = append(parts, lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("8")).Render(label))
-		}
-	}
-	return strings.Join(parts, "  ") + "   " +
-		lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? help")
+	label := lipgloss.NewStyle().Bold(true).Underline(true).Padding(0, 1).Render("Tickets")
+	return label + "   " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? help")
 }
 
 func (a *App) renderHelp() string {
@@ -732,8 +631,6 @@ func (a *App) renderHelp() string {
 		lines []string
 	}{
 		{"Global", []string{
-			"tab / shift+tab   switch tabs",
-			"1 / 2 / 3         jump to tab",
 			"?                 toggle help",
 			"q / ctrl+c        quit",
 		}},
