@@ -619,7 +619,7 @@ func (a *App) View() string {
 
 func (a *App) renderTabBar() string {
 	label := lipgloss.NewStyle().Bold(true).Underline(true).Padding(0, 1).Render("Tickets")
-	return label + "   " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? help")
+	return label + "   " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? help · q quit")
 }
 
 func (a *App) renderHelp() string {
