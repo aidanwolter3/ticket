@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -162,6 +163,18 @@ func (v *TicketDetailView) renderContent() string {
 		sb.WriteString("\n")
 	}
 
+	// Commits section (in_review only)
+	if t.Status == model.StatusInReview && t.FeatureBranch != "" && t.RepoPath != "" {
+		if commits := featureBranchCommits(t.RepoPath, t.FeatureBranch); len(commits) > 0 {
+			sb.WriteString(lipgloss.NewStyle().Bold(true).Render(
+				fmt.Sprintf("Commits (%d)", len(commits))) + "\n")
+			for _, c := range commits {
+				sb.WriteString("  " + c + "\n")
+			}
+			sb.WriteString("\n")
+		}
+	}
+
 	// Tasks section
 	completed := 0
 	for _, task := range t.Tasks {
@@ -263,6 +276,37 @@ func (v *TicketDetailView) renderContent() string {
 	}
 
 	return sb.String()
+}
+
+// featureBranchCommits returns one formatted line per commit on featureBranch
+// that is not reachable from the default branch (HEAD of the repo). Returns nil
+// on any error or if there are no such commits.
+func featureBranchCommits(repoPath, featureBranch string) []string {
+	// Determine the default branch name.
+	headOut, err := exec.Command("git", "-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err != nil {
+		return nil
+	}
+	defaultBranch := strings.TrimSpace(string(headOut))
+
+	ref := defaultBranch + ".." + featureBranch
+	out, err := exec.Command("git", "-C", repoPath, "log", "--no-merges", "--format=%h\t%s\t%an", ref).Output()
+	if err != nil || len(out) == 0 {
+		return nil
+	}
+
+	var lines []string
+	for _, raw := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(raw, "\t", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		hash := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(parts[0])
+		subject := parts[1]
+		author := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(parts[2])
+		lines = append(lines, fmt.Sprintf("%s  %s  %s", hash, subject, author))
+	}
+	return lines
 }
 
 func indent(s, prefix string) string {
