@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"encoding/json"
@@ -59,7 +59,7 @@ type importResult struct {
 	Created map[string]string `json:"created"` // ref → assigned ID (or title → ID if no ref)
 }
 
-func runImport(args []string, defaultDB string) {
+func RunImport(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(args)

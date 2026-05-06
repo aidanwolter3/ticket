@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -8,7 +8,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
-func runReady(args []string, defaultDB string) {
+func RunReady(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("ready", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(args)

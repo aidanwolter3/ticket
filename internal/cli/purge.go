@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func runPurge(args []string, defaultDB string) {
+func RunPurge(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("purge", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	yes := fs.Bool("yes", false, "skip confirmation prompt")

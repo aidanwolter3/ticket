@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 )
 
-func runTask(args []string, defaultDB string) {
+func RunTask(args []string, defaultDB string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket task <subcommand>")
 		fmt.Fprintln(os.Stderr, "  add        <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>]")

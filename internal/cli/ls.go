@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"encoding/json"
@@ -68,7 +68,7 @@ type noteJSON struct {
 	Created time.Time `json:"created"`
 }
 
-func runList(args []string, defaultDB string) {
+func RunList(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("ls", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	statusFilter := fs.String("status", "", "filter by status (draft|ready|in_progress|in_review|completed)")

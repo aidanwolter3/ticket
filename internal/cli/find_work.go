@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"encoding/json"
@@ -111,7 +111,7 @@ func buildTicketWorkJSON(s *store.Store, item *store.WorkItem) ticketWorkJSON {
 	return tw
 }
 
-func runFindWork(args []string, defaultDB string) {
+func RunFindWork(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("find-work", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	jsonOut := fs.Bool("json", false, "output raw JSON")

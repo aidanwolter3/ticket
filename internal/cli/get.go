@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func runGet(args []string, defaultDB string) {
+func RunGet(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("get", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	jsonOut := fs.Bool("json", false, "output raw JSON")

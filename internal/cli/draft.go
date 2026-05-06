@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bufio"
@@ -11,7 +11,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 )
 
-func runDraft(args []string, defaultDB string) {
+func RunDraft(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("draft", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	title := fs.String("title", "", "ticket title (required)")

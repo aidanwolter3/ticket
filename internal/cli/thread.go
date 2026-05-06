@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -8,7 +8,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 )
 
-func runThread(args []string, defaultDB string) {
+func RunThread(args []string, defaultDB string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket thread <subcommand>")
 		fmt.Fprintln(os.Stderr, "  reply <thread-id> <author> <text>")

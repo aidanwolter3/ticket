@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func runBlock(args []string, defaultDB string) {
+func RunBlock(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("block", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(args)
@@ -29,7 +29,7 @@ func runBlock(args []string, defaultDB string) {
 	fmt.Printf("%s blocked by %s\n", ticketID, blockerID)
 }
 
-func runUnblock(args []string, defaultDB string) {
+func RunUnblock(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("unblock", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(args)

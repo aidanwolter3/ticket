@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aidanwolter/ticket/internal/cli"
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,78 +21,57 @@ func main() {
 	if len(os.Args) >= 2 {
 		switch os.Args[1] {
 		case "draft":
-			runDraft(os.Args[2:], defaultDB)
-			return
+			cli.RunDraft(os.Args[2:], defaultDB)
 		case "import":
-			runImport(os.Args[2:], defaultDB)
-			return
+			cli.RunImport(os.Args[2:], defaultDB)
 		case "ls":
-			runList(os.Args[2:], defaultDB)
-			return
+			cli.RunList(os.Args[2:], defaultDB)
 		case "get":
-			runGet(os.Args[2:], defaultDB)
-			return
+			cli.RunGet(os.Args[2:], defaultDB)
 		case "find-work":
-			runFindWork(os.Args[2:], defaultDB)
-			return
+			cli.RunFindWork(os.Args[2:], defaultDB)
 		case "claim-work":
-			runClaimWork(os.Args[2:], defaultDB)
-			return
+			cli.RunClaimWork(os.Args[2:], defaultDB)
 		case "peek-work":
-			runPeekWork(os.Args[2:], defaultDB)
-			return
+			cli.RunPeekWork(os.Args[2:], defaultDB)
 		case "transition":
-			runTransition(os.Args[2:], defaultDB)
-			return
+			cli.RunTransition(os.Args[2:], defaultDB)
 		case "ready":
-			runReady(os.Args[2:], defaultDB)
-			return
+			cli.RunReady(os.Args[2:], defaultDB)
 		case "redraft":
-			runRedraft(os.Args[2:], defaultDB)
-			return
+			cli.RunRedraft(os.Args[2:], defaultDB)
 		case "delete":
-			runDelete(os.Args[2:], defaultDB)
-			return
+			cli.RunDelete(os.Args[2:], defaultDB)
 		case "purge":
-			runPurge(os.Args[2:], defaultDB)
-			return
+			cli.RunPurge(os.Args[2:], defaultDB)
 		case "note":
-			runNote(os.Args[2:], defaultDB)
-			return
+			cli.RunNote(os.Args[2:], defaultDB)
 		case "thread":
-			runThread(os.Args[2:], defaultDB)
-			return
+			cli.RunThread(os.Args[2:], defaultDB)
 		case "task":
-			runTask(os.Args[2:], defaultDB)
-			return
+			cli.RunTask(os.Args[2:], defaultDB)
 		case "block":
-			runBlock(os.Args[2:], defaultDB)
-			return
+			cli.RunBlock(os.Args[2:], defaultDB)
 		case "unblock":
-			runUnblock(os.Args[2:], defaultDB)
-			return
+			cli.RunUnblock(os.Args[2:], defaultDB)
 		case "config":
-			runConfig(os.Args[2:], defaultDB)
-			return
+			cli.RunConfig(os.Args[2:], defaultDB)
 		case "review-submit":
-			runReviewSubmit(os.Args[2:], defaultDB)
-			return
+			cli.RunReviewSubmit(os.Args[2:], defaultDB)
 		case "approve":
-			runApprove(os.Args[2:], defaultDB)
-			return
+			cli.RunApprove(os.Args[2:], defaultDB)
 		case "merge":
-			runMerge(os.Args[2:], defaultDB)
-			return
+			cli.RunMerge(os.Args[2:], defaultDB)
 		case "help", "--help", "-h":
-			printUsage()
-			return
+			cli.PrintUsage()
 		default:
 			fmt.Fprintf(os.Stderr, "unknown command: %s\nRun 'ticket help' for usage.\n", os.Args[1])
 			os.Exit(1)
 		}
+		return
 	}
 
-	// Launch TUI when no arguments are provided
+	// Launch TUI when no arguments are provided.
 	fs := flag.NewFlagSet("ticket", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(os.Args[1:])
@@ -116,63 +96,4 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-func openStore(dbPath string) *store.Store {
-	s, err := store.Open(dbPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to open db: %v\n", err)
-		os.Exit(1)
-	}
-	return s
-}
-
-func printUsage() {
-	fmt.Print(`ticket — local-first ticket tracker
-
-Usage:
-  ticket [--db path]                          launch TUI
-  ticket draft [--db path] --title STR --repo STR [--description STR|-] [--branch STR] [--json]
-                                              create a draft ticket from flags; outputs assigned ID (or --json for full ticket)
-  ticket import [--db path] [file]            batch-create tickets from JSON (stdin if no file)
-  ticket ls [--db path] [--status s] [--json] list tickets
-  ticket get [--db path] <id>                 get a single ticket as JSON (includes tasks and threads)
-  ticket find-work [--db path]                find actionable work for agents (deprecated, use claim-work)
-  ticket claim-work [--db path] [--json]      atomically claim the next available work item
-  ticket peek-work [--db path] [--json]       view claimable work without claiming
-  ticket transition [--db path] <id> <status> <author>
-                                              transition a ticket's status
-  ticket note add [--db path] <ticket-id> <author> <text>
-                                              add a note to a ticket
-  ticket thread reply [--db path] <thread-id> <author> <text>
-                                              add a reply to a thread
-  ticket thread transition [--db path] <thread-id> <new-status> <author>
-                                              transition a thread's status (agents: ready→active only)
-  ticket task add [--db path] <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>]
-                                              add a new task to a ticket
-  ticket task ls [--db path] [--json] <ticket-id>
-                                              list tasks for a ticket
-  ticket task complete [--db path] <task-id>  mark a task complete
-  ticket task uncomplete [--db path] <task-id>
-                                              mark a task incomplete
-  ticket block [--db path] <ticket-id> <blocker-id>
-                                              record that <ticket-id> is blocked by <blocker-id>
-  ticket unblock [--db path] <ticket-id> <blocker-id>
-                                              remove that dependency
-  ticket ready [--db path] <ticket-id> <author>
-                                              promote a draft ticket to ready
-  ticket redraft [--db path] <ticket-id> <author>
-                                              destroy worktree+branch and move ticket back to draft (human only)
-
-  ticket review-submit [--db path] <id> <author>
-                                              flip all active threads→ready and ticket→ready (human only; requires ≥1 active thread)
-  ticket approve [--db path] <id> <author>    approve an in_review ticket (human only)
-  ticket merge [--db path] <id> <author>      ff-merge, delete branch, remove worktree (human only)
-  ticket config set [--db path] <key> <value> set a config value
-  ticket config get [--db path] <key>         get a config value (worktrees defaults to true)
-  ticket config ls  [--db path]               list all config settings with defaults
-  ticket delete [--db path] <id>              delete a ticket
-  ticket purge [--db path] --yes              delete the database file
-
-`)
 }

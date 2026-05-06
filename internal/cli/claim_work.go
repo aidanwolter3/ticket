@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
-func runClaimWork(args []string, defaultDB string) {
+func RunClaimWork(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("claim-work", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	jsonOut := fs.Bool("json", false, "output raw JSON")
@@ -59,7 +59,7 @@ func runClaimWork(args []string, defaultDB string) {
 	w.Flush()
 }
 
-func runPeekWork(args []string, defaultDB string) {
+func RunPeekWork(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("peek-work", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	jsonOut := fs.Bool("json", false, "output raw JSON")

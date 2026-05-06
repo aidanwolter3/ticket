@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -9,7 +9,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 )
 
-func runApprove(args []string, defaultDB string) {
+func RunApprove(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("approve", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(args)

@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -9,7 +9,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
-func runMerge(args []string, defaultDB string) {
+func RunMerge(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("merge", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(args)

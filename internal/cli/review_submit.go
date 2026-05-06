@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -9,7 +9,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
-func runReviewSubmit(args []string, defaultDB string) {
+func RunReviewSubmit(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("review-submit", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(args)

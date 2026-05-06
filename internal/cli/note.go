@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func runNote(args []string, defaultDB string) {
+func RunNote(args []string, defaultDB string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket note <subcommand>")
 		fmt.Fprintln(os.Stderr, "  add <ticket-id> <author> <text>")

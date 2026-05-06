@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func runDelete(args []string, defaultDB string) {
+func RunDelete(args []string, defaultDB string) {
 	fs := flag.NewFlagSet("delete", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(args)

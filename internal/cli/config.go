@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -7,7 +7,7 @@ import (
 	"sort"
 )
 
-func runConfig(args []string, defaultDB string) {
+func RunConfig(args []string, defaultDB string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket config <set|get|ls> [args...]")
 		os.Exit(1)

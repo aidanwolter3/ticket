@@ -141,3 +141,20 @@ ticket config set worktrees false   # disable automatic worktree creation
 ```
 
 Default config location: `~/.local/share/ticket/tickets.db` (same database, config table).
+
+## Repository layout
+
+```
+cmd/ticket/        entry point — dispatches to cli or tui, launches TUI when run with no args
+internal/
+  cli/             CLI interface — one file per subcommand (draft, approve, merge, …)
+  tui/             TUI interface — Bubbletea app, views, and reusable components
+    views/         full-screen views (ticket list, ticket detail, threads)
+    components/    reusable widgets (progress bar, status icon)
+  workflow/        orchestration layer — claim-work, merge, redraft, review-submit
+  store/           SQLite persistence — schema, migrations, per-entity CRUD
+  model/           data types and state machine rules
+  ids/             sequential ID generation (T1, T2, …)
+```
+
+`cli/` and `tui/` are parallel interfaces on top of the same `workflow/` and `store/` layer. Neither calls the other.
