@@ -332,20 +332,20 @@ func TestWorktreeLifecycle(t *testing.T) {
 	require.NoError(t, statErr, "dependent worktree must exist on disk")
 	dependentWorktree := d.WorktreePath
 
-	// --- requeue (in_review → ready): worktree torn down ---
+	// --- requeue (in_review → ready): worktree and branch survive ---
 	require.NoError(t, s.TransitionTicket(dependent.ID, model.StatusInReview, "agent:test"))
 	require.NoError(t, Ready(s, dependent.ID, "human:reviewer", io.Discard, io.Discard))
 
 	d, err = s.GetTicket(dependent.ID)
 	require.NoError(t, err)
 	assert.Equal(t, model.StatusReady, d.Status)
-	assert.Empty(t, d.WorktreePath, "worktree_path must be cleared after requeue")
-	assert.Empty(t, d.FeatureBranch, "feature_branch must be cleared after requeue")
+	assert.NotEmpty(t, d.WorktreePath, "worktree_path must survive requeue")
+	assert.NotEmpty(t, d.FeatureBranch, "feature_branch must survive requeue")
 	_, statErr = os.Stat(dependentWorktree)
-	assert.True(t, os.IsNotExist(statErr), "worktree directory must be removed after requeue")
+	assert.NoError(t, statErr, "worktree directory must still exist after requeue")
 }
 
-func TestReady_TearsDownWorktreeFromInReview(t *testing.T) {
+func TestReady_PreservesWorktreeFromInReview(t *testing.T) {
 	s := newTestStore(t)
 	repoPath := gitRepo(t)
 
@@ -372,14 +372,14 @@ func TestReady_TearsDownWorktreeFromInReview(t *testing.T) {
 	_, err = os.Stat(worktreeDir)
 	require.NoError(t, err, "worktree should exist before requeue")
 
-	// Requeue — should tear down worktree.
+	// Requeue — worktree and branch should survive.
 	require.NoError(t, Ready(s, ticket.ID, "human:reviewer", io.Discard, io.Discard))
 
 	requeued, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
 	assert.Equal(t, model.StatusReady, requeued.Status)
-	assert.Empty(t, requeued.WorktreePath, "worktree_path should be cleared")
-	assert.Empty(t, requeued.FeatureBranch, "feature_branch should be cleared")
+	assert.NotEmpty(t, requeued.WorktreePath, "worktree_path should survive requeue")
+	assert.NotEmpty(t, requeued.FeatureBranch, "feature_branch should survive requeue")
 	_, statErr := os.Stat(worktreeDir)
-	assert.True(t, os.IsNotExist(statErr), "worktree directory should be removed")
+	assert.NoError(t, statErr, "worktree directory should still exist after requeue")
 }
