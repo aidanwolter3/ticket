@@ -144,8 +144,8 @@ func (v *TicketsView) View() string {
 		barColWidth = 8 + 1 + maxFracWidth
 	}
 
-	// Layout: icon(1) SP id(maxIDLen) SP title(titleWidth) [SP bar(barColWidth)]
-	titleWidth := v.width - 3 - maxIDLen
+	// Layout: cursor(1) SP icon(1) SP id(maxIDLen) SP title(titleWidth) [SP bar(barColWidth)]
+	titleWidth := v.width - 5 - maxIDLen
 	if barColWidth > 0 {
 		titleWidth -= 1 + barColWidth
 	}
@@ -194,16 +194,18 @@ func (v *TicketsView) View() string {
 		// Pad ID before styling so ANSI codes don't skew column width.
 		paddedID := fmt.Sprintf("%-*s", maxIDLen, t.ID)
 
-		line := fmt.Sprintf("%s %s %s%s",
+		cursor := " "
+		if i == v.cursor {
+			cursor = ">"
+		}
+
+		line := fmt.Sprintf("%s %s %s %s%s",
+			cursor,
 			icon,
 			idStyle.Render(paddedID),
 			titleStyle.Render(title),
 			barStr,
 		)
-
-		if i == v.cursor {
-			line = lipgloss.NewStyle().Reverse(true).Render(line)
-		}
 		sb.WriteString(line + "\n")
 	}
 
