@@ -2,7 +2,6 @@ package agent
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -96,19 +95,25 @@ func (l *Launcher) Launch(ticketID, worktreePath string, args []string) (*model.
 // and cleans up when the process exits.
 func (l *Launcher) runAgent(sessionID string, cmd *exec.Cmd, ptym *os.File, logFile *os.File) {
 	defer func() {
-		ptym.Close()
 		logFile.Close()
 		l.mu.Lock()
 		delete(l.ptys, sessionID)
 		l.mu.Unlock()
 	}()
 
+	// Wait for process exit in a goroutine; close ptym to unblock ptym.Read.
+	exitCh := make(chan error, 1)
+	go func() {
+		err := cmd.Wait()
+		ptym.Close()
+		exitCh <- err
+	}()
+
+	// Silence monitor: transitions state running↔waiting.
 	silenceTimer := time.NewTimer(SilenceTimeout)
 	defer silenceTimer.Stop()
-
 	gotOutput := make(chan struct{}, 1)
 
-	// Goroutine: silence monitor.
 	go func() {
 		for {
 			select {
@@ -130,6 +135,7 @@ func (l *Launcher) runAgent(sessionID string, cmd *exec.Cmd, ptym *os.File, logF
 		}
 	}()
 
+	// Read PTY output and write to log.
 	buf := make([]byte, 4096)
 	for {
 		n, err := ptym.Read(buf)
@@ -147,9 +153,12 @@ func (l *Launcher) runAgent(sessionID string, cmd *exec.Cmd, ptym *os.File, logF
 
 	close(gotOutput)
 
-	if err := cmd.Wait(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			if exitErr.ExitCode() == 0 {
+	// Determine final state from process exit code.
+	waitErr := <-exitCh
+	if waitErr != nil {
+		if exitErr, ok := waitErr.(*exec.ExitError); ok {
+			if status, ok2 := exitErr.Sys().(syscall.WaitStatus); ok2 && status.Signaled() {
+				// Killed by signal (e.g. SIGTERM from Terminate) — treat as terminated.
 				l.store.UpdateAgentSessionState(sessionID, model.AgentTerminated)
 			} else {
 				l.store.UpdateAgentSessionState(sessionID, model.AgentCrashed)
@@ -181,16 +190,24 @@ func (l *Launcher) Terminate(ticketID string) error {
 }
 
 // TerminateAll terminates all active agent sessions. Called on TUI shutdown.
+// It sends SIGTERM to each known process and marks all active sessions terminated.
 func (l *Launcher) TerminateAll() error {
 	l.mu.Lock()
-	fds := make([]*os.File, 0, len(l.ptys))
-	for _, f := range l.ptys {
-		fds = append(fds, f)
+	ptys := make(map[string]*os.File, len(l.ptys))
+	for k, v := range l.ptys {
+		ptys[k] = v
 	}
 	l.mu.Unlock()
 
-	for _, f := range fds {
-		io.Copy(io.Discard, f)
+	// Send SIGTERM to all known active processes via the store.
+	sessions, err := l.store.ListActiveAgentSessions()
+	if err == nil {
+		for _, sess := range sessions {
+			proc, findErr := os.FindProcess(sess.PID)
+			if findErr == nil {
+				proc.Signal(syscall.SIGTERM)
+			}
+		}
 	}
 
 	return l.store.TerminateAllAgentSessions()

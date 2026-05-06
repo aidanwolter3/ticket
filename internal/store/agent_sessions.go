@@ -53,6 +53,29 @@ func (s *Store) TerminateAllAgentSessions() error {
 	return err
 }
 
+// ListActiveAgentSessions returns all running/waiting sessions.
+func (s *Store) ListActiveAgentSessions() ([]*model.AgentSession, error) {
+	rows, err := s.db.Query(`
+		SELECT id, ticket_id, pid, started_at, state, log_path
+		FROM agent_sessions
+		WHERE state IN ('running', 'waiting')`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sessions []*model.AgentSession
+	for rows.Next() {
+		sess, err := scanAgentSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		if sess != nil {
+			sessions = append(sessions, sess)
+		}
+	}
+	return sessions, rows.Err()
+}
+
 func scanAgentSession(r scanner) (*model.AgentSession, error) {
 	var (
 		sess      model.AgentSession
