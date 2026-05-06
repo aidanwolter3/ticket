@@ -230,7 +230,7 @@ func (v *ThreadsView) View() string {
 
 	sb.WriteString("\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑↓ navigate · c complete task · enter expand · r reply · → toggle ready · x resolve · ← reopen · n new thread · esc back"))
+		"[↑↓] navigate · [c] complete task · [enter] expand · [r] reply · [→] toggle ready · [x] resolve · [←] reopen · [n] new thread · [esc] back"))
 
 	return sb.String()
 }
