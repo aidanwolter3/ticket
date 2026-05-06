@@ -27,6 +27,7 @@ SELECT id, title, description, type, status, feature_branch,
        COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
 FROM tickets t
 WHERE t.status = 'ready'
+  AND (t.feature_branch IS NULL OR t.feature_branch = '')
   AND NOT EXISTS (
     SELECT 1 FROM blocked_by b
     JOIN tickets bt ON bt.id = b.blocker_id
@@ -40,7 +41,8 @@ SELECT DISTINCT t.id, t.title, t.description, t.type, t.status, t.feature_branch
 FROM tickets t
 JOIN tasks tk ON tk.ticket_id = t.id
 JOIN comment_threads ct ON ct.task_id = tk.id
-WHERE t.status = 'in_review'
+WHERE t.status = 'ready'
+  AND t.feature_branch != ''
   AND ct.status = 'ready'
 ORDER BY t.created ASC`
 
