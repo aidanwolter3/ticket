@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aidanwolter/ticket/internal/ids"
@@ -94,6 +95,40 @@ func (s *Store) GetTasksForTicket(ticketID string) ([]model.Task, error) {
 		tasks = append(tasks, *t)
 	}
 	return tasks, rows.Err()
+}
+
+// loadTasksForTickets populates Tasks on each ticket using a single batch query.
+func (s *Store) loadTasksForTickets(tickets []*model.Ticket) error {
+	if len(tickets) == 0 {
+		return nil
+	}
+	idx := make(map[string]*model.Ticket, len(tickets))
+	placeholders := make([]string, len(tickets))
+	args := make([]interface{}, len(tickets))
+	for i, t := range tickets {
+		idx[t.ID] = t
+		placeholders[i] = "?"
+		args[i] = t.ID
+	}
+	query := fmt.Sprintf(`
+		SELECT id, ticket_id, title, description, position,
+		       COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
+		FROM tasks WHERE ticket_id IN (%s) ORDER BY ticket_id, position`,
+		strings.Join(placeholders, ","))
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return err
+		}
+		ticket := idx[t.TicketID]
+		ticket.Tasks = append(ticket.Tasks, *t)
+	}
+	return rows.Err()
 }
 
 // CompleteTask sets completed_at to now. Called by the TUI threads view ("c" keybinding on a task row).

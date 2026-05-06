@@ -15,20 +15,22 @@ import (
 
 // ticketJSON is the JSON representation of a ticket for CLI output.
 type ticketJSON struct {
-	ID            string       `json:"id"`
-	Title         string       `json:"title"`
-	Type          string       `json:"type"`
-	Status        string       `json:"status"`
-	Description   string       `json:"description,omitempty"`
-	FeatureBranch string       `json:"feature_branch,omitempty"`
-	WorktreePath  string       `json:"worktree_path,omitempty"`
-	RepoPath      string       `json:"repo_path,omitempty"`
-	BlockedBy     []string     `json:"blocked_by,omitempty"`
-	Tasks         []taskJSON   `json:"tasks,omitempty"`
-	Threads       []threadJSON `json:"threads,omitempty"`
-	Notes         []noteJSON   `json:"notes,omitempty"`
-	Created       time.Time    `json:"created"`
-	Updated       time.Time    `json:"updated"`
+	ID                 string       `json:"id"`
+	Title              string       `json:"title"`
+	Type               string       `json:"type"`
+	Status             string       `json:"status"`
+	Description        string       `json:"description,omitempty"`
+	FeatureBranch      string       `json:"feature_branch,omitempty"`
+	WorktreePath       string       `json:"worktree_path,omitempty"`
+	RepoPath           string       `json:"repo_path,omitempty"`
+	BlockedBy          []string     `json:"blocked_by,omitempty"`
+	TaskCount          int          `json:"task_count"`
+	CompletedTaskCount int          `json:"completed_task_count"`
+	Tasks              []taskJSON   `json:"tasks,omitempty"`
+	Threads            []threadJSON `json:"threads,omitempty"`
+	Notes              []noteJSON   `json:"notes,omitempty"`
+	Created            time.Time    `json:"created"`
+	Updated            time.Time    `json:"updated"`
 }
 
 type taskJSON struct {
@@ -147,18 +149,26 @@ func truncateRunes(s string, max int) string {
 }
 
 func toTicketJSON(t *model.Ticket) ticketJSON {
+	completed := 0
+	for _, task := range t.Tasks {
+		if task.CompletedAt != nil {
+			completed++
+		}
+	}
 	tj := ticketJSON{
-		ID:            t.ID,
-		Title:         t.Title,
-		Type:          string(t.Type),
-		Status:        string(t.Status),
-		Description:   t.Description,
-		FeatureBranch: t.FeatureBranch,
-		WorktreePath:  t.WorktreePath,
-		RepoPath:      t.RepoPath,
-		BlockedBy:     t.BlockedBy,
-		Created:       t.Created,
-		Updated:       t.Updated,
+		ID:                 t.ID,
+		Title:              t.Title,
+		Type:               string(t.Type),
+		Status:             string(t.Status),
+		Description:        t.Description,
+		FeatureBranch:      t.FeatureBranch,
+		WorktreePath:       t.WorktreePath,
+		RepoPath:           t.RepoPath,
+		BlockedBy:          t.BlockedBy,
+		TaskCount:          len(t.Tasks),
+		CompletedTaskCount: completed,
+		Created:            t.Created,
+		Updated:            t.Updated,
 	}
 	for _, task := range t.Tasks {
 		tj.Tasks = append(tj.Tasks, toTaskJSON(&task))

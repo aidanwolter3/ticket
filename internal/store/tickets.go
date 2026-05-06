@@ -199,6 +199,9 @@ func (s *Store) ListTickets(filter ...model.Status) ([]*model.Ticket, error) {
 			return nil, err
 		}
 	}
+	if err := s.loadTasksForTickets(tickets); err != nil {
+		return nil, err
+	}
 	return tickets, nil
 }
 
