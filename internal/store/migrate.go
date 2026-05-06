@@ -66,6 +66,9 @@ func (s *Store) migration1() error {
 	}()
 
 	// ── Step 1: Create the tasks table if it doesn't exist yet ───────────────
+	// Intentionally no FOREIGN KEY here: foreign_keys pragma was not yet enabled
+	// at this migration's creation time, so CASCADE would be silently ignored.
+	// DeleteTicket uses explicit child-row deletion instead of relying on cascade.
 	if _, err = tx.Exec(`
 		CREATE TABLE IF NOT EXISTS tasks (
 		  id                TEXT PRIMARY KEY,
