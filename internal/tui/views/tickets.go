@@ -123,29 +123,65 @@ func (v *TicketsView) View() string {
 		start = v.cursor - visible + 1
 	}
 
+	// Compute max ID length and max task count for column alignment.
+	maxIDLen := 0
+	maxTaskCount := 0
+	for _, t := range tickets {
+		if l := len(t.ID); l > maxIDLen {
+			maxIDLen = l
+		}
+		if l := len(t.Tasks); l > maxTaskCount {
+			maxTaskCount = l
+		}
+	}
+
+	// Reserve a fixed right column for the progress bar when any ticket has tasks.
+	// Bar format: "████████ N/M" — blocks are fixed width=8, fraction padded to maxFracWidth.
+	barColWidth := 0
+	maxFracWidth := 0
+	if maxTaskCount > 0 {
+		maxFracWidth = len(fmt.Sprintf("%d/%d", maxTaskCount, maxTaskCount))
+		barColWidth = 8 + 1 + maxFracWidth
+	}
+
+	// Layout: icon(1) SP id(maxIDLen) SP title(titleWidth) [SP bar(barColWidth)]
+	titleWidth := v.width - 3 - maxIDLen
+	if barColWidth > 0 {
+		titleWidth -= 1 + barColWidth
+	}
+	if titleWidth < 5 {
+		titleWidth = 5
+	}
+
 	for i := start; i < len(tickets) && i < start+visible; i++ {
 		t := tickets[i]
 		icon := components.TicketStatusIcon(t.Status)
 
-		taskCount := len(t.Tasks)
-		taskTag := ""
-		if taskCount > 0 {
-			done := 0
-			for _, task := range t.Tasks {
-				if task.CompletedAt != nil {
-					done++
-				}
-			}
-			taskTag = " " + components.ProgressBar(done, taskCount, 8)
-		}
-
-		maxTitle := v.width - len(t.ID) - 3
-		if maxTitle < 5 {
-			maxTitle = 5
-		}
+		// Truncate title then right-pad to titleWidth so bars stay column-aligned.
+		titleRunes := []rune(t.Title)
 		title := t.Title
-		if len([]rune(title)) > maxTitle {
-			title = string([]rune(title)[:maxTitle-1]) + "…"
+		if len(titleRunes) > titleWidth {
+			title = string(titleRunes[:titleWidth-1]) + "…"
+			titleRunes = []rune(title)
+		}
+		title += strings.Repeat(" ", titleWidth-len(titleRunes))
+
+		// Build progress bar with a fixed-width fraction for column alignment.
+		barStr := ""
+		if barColWidth > 0 {
+			taskCount := len(t.Tasks)
+			if taskCount > 0 {
+				done := 0
+				for _, task := range t.Tasks {
+					if task.CompletedAt != nil {
+						done++
+					}
+				}
+				fracLen := len(fmt.Sprintf("%d/%d", done, taskCount))
+				barStr = " " + components.ProgressBar(done, taskCount, 8) + strings.Repeat(" ", maxFracWidth-fracLen)
+			} else {
+				barStr = " " + strings.Repeat(" ", barColWidth)
+			}
 		}
 
 		merged := t.Status == "merged"
@@ -155,11 +191,14 @@ func (v *TicketsView) View() string {
 			titleStyle = titleStyle.Foreground(lipgloss.Color("8"))
 		}
 
+		// Pad ID before styling so ANSI codes don't skew column width.
+		paddedID := fmt.Sprintf("%-*s", maxIDLen, t.ID)
+
 		line := fmt.Sprintf("%s %s %s%s",
 			icon,
-			idStyle.Render(t.ID),
+			idStyle.Render(paddedID),
 			titleStyle.Render(title),
-			taskTag,
+			barStr,
 		)
 
 		if i == v.cursor {
