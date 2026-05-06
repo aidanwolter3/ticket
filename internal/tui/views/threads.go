@@ -115,10 +115,10 @@ func (v *ThreadsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				th := v.items[v.cursor].thread
 				var to model.ThreadStatus
 				switch th.Status {
-				case model.ThreadActive:
-					to = model.ThreadReady
-				case model.ThreadReady:
-					to = model.ThreadActive
+				case model.ThreadOpen:
+					to = model.ThreadNeedsAttention
+				case model.ThreadNeedsAttention:
+					to = model.ThreadOpen
 				default:
 					return v, nil
 				}
@@ -135,7 +135,7 @@ func (v *ThreadsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if v.cursor < len(v.items) && v.items[v.cursor].kind == itemThread {
 				th := v.items[v.cursor].thread
 				if th.Status == model.ThreadResolved {
-					v.err = v.store.TransitionThread(th.ID, model.ThreadActive, "human")
+					v.err = v.store.TransitionThread(th.ID, model.ThreadOpen, "human")
 					v.load()
 				}
 			}

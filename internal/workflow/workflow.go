@@ -112,18 +112,18 @@ func ReviewSubmit(s *store.Store, ticketID string, author string, stdout, stderr
 		return fmt.Errorf("review-submit: load threads: %w", err)
 	}
 
-	var activeIDs []string
+	var openIDs []string
 	for _, th := range threads {
-		if th.Status == model.ThreadActive {
-			activeIDs = append(activeIDs, th.ID)
+		if th.Status == model.ThreadOpen {
+			openIDs = append(openIDs, th.ID)
 		}
 	}
-	if len(activeIDs) == 0 {
+	if len(openIDs) == 0 {
 		return fmt.Errorf("review-submit requires at least one open thread")
 	}
 
-	for _, id := range activeIDs {
-		if err := s.TransitionThread(id, model.ThreadReady, author); err != nil {
+	for _, id := range openIDs {
+		if err := s.TransitionThread(id, model.ThreadNeedsAttention, author); err != nil {
 			return fmt.Errorf("review-submit: transition thread %s: %w", id, err)
 		}
 	}
@@ -197,7 +197,7 @@ func Merge(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 			return fmt.Errorf("merge: load threads: %w", err)
 		}
 		for _, th := range threads {
-			if th.Status == "active" || th.Status == "ready" {
+			if th.Status == model.ThreadOpen || th.Status == model.ThreadNeedsAttention {
 				return fmt.Errorf("merge: ticket %s has open thread %s — resolve all threads before merging", ticketID, th.ID)
 			}
 		}

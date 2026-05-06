@@ -420,7 +420,7 @@ func TestReviewCycleLifecycle(t *testing.T) {
 	threads, err := s.GetThreadsForTicket(ticket.ID)
 	require.NoError(t, err)
 	require.Len(t, threads, 1)
-	assert.Equal(t, model.ThreadReady, threads[0].Status, "thread must be ready after ReviewSubmit")
+	assert.Equal(t, model.ThreadNeedsAttention, threads[0].Status, "thread must be needs_attention after ReviewSubmit")
 
 	// --- 5. Claim (amendment work) — worktree_path unchanged, same branch, WorkTypeAmendment ---
 	item2, err := Claim(s, "agent:test", io.Discard, io.Discard)
@@ -436,7 +436,7 @@ func TestReviewCycleLifecycle(t *testing.T) {
 	// --- 6. Reply to thread, transition thread ready → active ---
 	_, err = s.AddMessage(th.ID, "agent:test", "renamed the file")
 	require.NoError(t, err)
-	require.NoError(t, s.TransitionThread(th.ID, model.ThreadActive, "agent:test"))
+	require.NoError(t, s.TransitionThread(th.ID, model.ThreadOpen, "agent:test"))
 
 	// Reviewer resolves the thread before approving.
 	require.NoError(t, s.TransitionThread(th.ID, model.ThreadResolved, "human:reviewer"))

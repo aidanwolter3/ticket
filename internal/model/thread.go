@@ -5,9 +5,9 @@ import "time"
 type ThreadStatus string
 
 const (
-	ThreadActive   ThreadStatus = "active"
-	ThreadReady    ThreadStatus = "ready"
-	ThreadResolved ThreadStatus = "resolved"
+	ThreadOpen           ThreadStatus = "open"
+	ThreadNeedsAttention ThreadStatus = "needs_attention"
+	ThreadResolved       ThreadStatus = "resolved"
 )
 
 type Thread struct {

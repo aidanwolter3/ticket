@@ -31,10 +31,10 @@ func runReviewSubmit(args []string, defaultDB string) {
 		fmt.Fprintf(os.Stderr, "review-submit: %v\n", err)
 		os.Exit(1)
 	}
-	var activeIDs []string
+	var openIDs []string
 	for _, th := range threads {
-		if th.Status == model.ThreadActive {
-			activeIDs = append(activeIDs, th.ID)
+		if th.Status == model.ThreadOpen {
+			openIDs = append(openIDs, th.ID)
 		}
 	}
 
@@ -43,8 +43,8 @@ func runReviewSubmit(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	for _, id := range activeIDs {
-		fmt.Printf("  thread %s → ready\n", id)
+	for _, id := range openIDs {
+		fmt.Printf("  thread %s → needs_attention\n", id)
 	}
 	fmt.Printf("%s → ready\n", ticketID)
 }

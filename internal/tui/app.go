@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/views"
 	"github.com/aidanwolter/ticket/internal/workflow"
@@ -244,7 +245,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		case "R":
-			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == "ready" {
+			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == model.StatusReady {
 				id := a.currentTicketID()
 				if err := a.store.TransitionTicket(id, "draft", "human"); err != nil {
 					a.setErr(err)
@@ -282,7 +283,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					threads, err := a.store.GetThreadsForTask(task.ID)
 					if err == nil {
 						for _, th := range threads {
-							if th.Status == "active" || th.Status == "ready" {
+							if th.Status == model.ThreadOpen || th.Status == model.ThreadNeedsAttention {
 								hasOpen = true
 							}
 						}

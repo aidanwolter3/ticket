@@ -204,21 +204,21 @@ func (v *TicketDetailView) renderContent() string {
 				taskLine += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(task.CommitHash[:7])
 			}
 			if len(task.Threads) > 0 {
-				active, ready := 0, 0
+				open, needsAttention := 0, 0
 				for _, th := range task.Threads {
 					switch th.Status {
-					case model.ThreadActive:
-						active++
-					case model.ThreadReady:
-						ready++
+					case model.ThreadOpen:
+						open++
+					case model.ThreadNeedsAttention:
+						needsAttention++
 					}
 				}
 				var parts []string
-				if active > 0 {
-					parts = append(parts, fmt.Sprintf("%d active", active))
+				if open > 0 {
+					parts = append(parts, fmt.Sprintf("%d open", open))
 				}
-				if ready > 0 {
-					parts = append(parts, lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(fmt.Sprintf("%d ready", ready)))
+				if needsAttention > 0 {
+					parts = append(parts, lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(fmt.Sprintf("%d needs attention", needsAttention)))
 				}
 				if len(parts) > 0 {
 					taskLine += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("("+strings.Join(parts, " · ")+")")
@@ -236,28 +236,28 @@ func (v *TicketDetailView) renderContent() string {
 	sb.WriteString("\n")
 
 	// Thread summary (aggregated across all tasks)
-	active, ready, resolved := 0, 0, 0
+	open, needsAttention, resolved := 0, 0, 0
 	for _, task := range t.Tasks {
 		for _, th := range task.Threads {
 			switch th.Status {
-			case model.ThreadActive:
-				active++
-			case model.ThreadReady:
-				ready++
+			case model.ThreadOpen:
+				open++
+			case model.ThreadNeedsAttention:
+				needsAttention++
 			case model.ThreadResolved:
 				resolved++
 			}
 		}
 	}
-	total := active + ready + resolved
+	total := open + needsAttention + resolved
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render(
 		fmt.Sprintf("Threads (%d)", total)) + "\n")
 	if total == 0 {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  no threads") + "\n")
 	} else {
-		sb.WriteString(fmt.Sprintf("  %s active  %s ready  %s resolved\n",
-			lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(fmt.Sprintf("%d", active)),
-			lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(fmt.Sprintf("%d", ready)),
+		sb.WriteString(fmt.Sprintf("  %s open  %s needs attention  %s resolved\n",
+			lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(fmt.Sprintf("%d", open)),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(fmt.Sprintf("%d", needsAttention)),
 			lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(fmt.Sprintf("%d", resolved)),
 		))
 	}

@@ -34,9 +34,9 @@ func TicketStatusIcon(s model.Status) string {
 
 func ThreadStatusIcon(s model.ThreadStatus) string {
 	switch s {
-	case model.ThreadActive:
+	case model.ThreadOpen:
 		return lipgloss.NewStyle().Foreground(colorMagenta).Render("●")
-	case model.ThreadReady:
+	case model.ThreadNeedsAttention:
 		return lipgloss.NewStyle().Foreground(colorYellow).Render("◆")
 	case model.ThreadResolved:
 		return lipgloss.NewStyle().Foreground(colorGreen).Render("✓")

@@ -55,8 +55,8 @@ CREATE TABLE IF NOT EXISTS blocked_by (
 CREATE TABLE IF NOT EXISTS comment_threads (
   id       TEXT PRIMARY KEY,
   task_id  TEXT NOT NULL,
-  status   TEXT NOT NULL DEFAULT 'active'
-           CHECK(status IN ('active','ready','resolved')),
+  status   TEXT NOT NULL DEFAULT 'open'
+           CHECK(status IN ('open','needs_attention','resolved')),
   created  INTEGER NOT NULL,
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );

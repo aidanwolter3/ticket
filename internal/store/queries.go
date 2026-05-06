@@ -43,7 +43,7 @@ JOIN tasks tk ON tk.ticket_id = t.id
 JOIN comment_threads ct ON ct.task_id = tk.id
 WHERE t.status = 'ready'
   AND t.feature_branch != ''
-  AND ct.status = 'ready'
+  AND ct.status = 'needs_attention'
 ORDER BY t.created ASC`
 
 // ClaimWork atomically finds and claims the first available work item using a

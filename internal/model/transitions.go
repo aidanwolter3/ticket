@@ -48,33 +48,33 @@ func ValidateThreadTransition(from, to ThreadStatus, author string) error {
 	isHuman := author == "human" || strings.HasPrefix(author, "human:")
 
 	switch from {
-	case ThreadActive:
-		if to == ThreadReady {
+	case ThreadOpen:
+		if to == ThreadNeedsAttention {
 			if !isHuman {
-				return fmt.Errorf("transition active → ready requires a human actor")
+				return fmt.Errorf("transition open → needs_attention requires a human actor")
 			}
 			return nil
 		}
 		if to == ThreadResolved {
 			if !isHuman {
-				return fmt.Errorf("transition active → resolved requires a human actor")
+				return fmt.Errorf("transition open → resolved requires a human actor")
 			}
 			return nil
 		}
-	case ThreadReady:
-		if to == ThreadActive {
+	case ThreadNeedsAttention:
+		if to == ThreadOpen {
 			return nil // human or agent (agent posts amendment reply)
 		}
 		if to == ThreadResolved {
 			if !isHuman {
-				return fmt.Errorf("transition ready → resolved requires a human actor")
+				return fmt.Errorf("transition needs_attention → resolved requires a human actor")
 			}
 			return nil
 		}
 	case ThreadResolved:
-		if to == ThreadActive {
+		if to == ThreadOpen {
 			if !isHuman {
-				return fmt.Errorf("transition resolved → active requires a human actor")
+				return fmt.Errorf("transition resolved → open requires a human actor")
 			}
 			return nil
 		}

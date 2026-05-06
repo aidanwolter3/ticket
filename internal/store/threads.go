@@ -12,7 +12,7 @@ import (
 func (s *Store) CreateThread(taskID string) (*model.Thread, error) {
 	id := ids.NewUUID()
 	now := time.Now().UnixMilli()
-	_, err := s.db.Exec(`INSERT INTO comment_threads (id, task_id, status, created) VALUES (?, ?, 'active', ?)`,
+	_, err := s.db.Exec(`INSERT INTO comment_threads (id, task_id, status, created) VALUES (?, ?, 'open', ?)`,
 		id, taskID, now)
 	if err != nil {
 		return nil, fmt.Errorf("create thread: %w", err)
@@ -20,7 +20,7 @@ func (s *Store) CreateThread(taskID string) (*model.Thread, error) {
 	return &model.Thread{
 		ID:      id,
 		TaskID:  taskID,
-		Status:  model.ThreadActive,
+		Status:  model.ThreadOpen,
 		Created: time.UnixMilli(now),
 	}, nil
 }

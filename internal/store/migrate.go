@@ -37,6 +37,14 @@ func (s *Store) runMigrations() error {
 			return fmt.Errorf("record migration 2: %w", err)
 		}
 	}
+	if current < 3 {
+		if err := s.migration3(); err != nil {
+			return fmt.Errorf("migration 3: %w", err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO schema_migrations (version, applied) VALUES (3, ?)`, time.Now().UnixMilli()); err != nil {
+			return fmt.Errorf("record migration 3: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -546,6 +554,65 @@ func (s *Store) migration2() error {
 		if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type)`); err != nil {
 			return fmt.Errorf("recreate idx_tickets_type: %w", err)
 		}
+	}
+
+	return tx.Commit()
+}
+
+// migration3 renames thread statuses: active→open, ready→needs_attention.
+// Recreates comment_threads with the updated CHECK constraint and maps old values.
+func (s *Store) migration3() error {
+	threadsExists, err := s.hasTable("comment_threads")
+	if err != nil {
+		return err
+	}
+	if !threadsExists {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(`
+		CREATE TABLE comment_threads_new (
+		  id       TEXT PRIMARY KEY,
+		  task_id  TEXT NOT NULL,
+		  status   TEXT NOT NULL DEFAULT 'open'
+		           CHECK(status IN ('open','needs_attention','resolved')),
+		  created  INTEGER NOT NULL
+		)`); err != nil {
+		return fmt.Errorf("create comment_threads_new: %w", err)
+	}
+
+	if _, err = tx.Exec(`
+		INSERT INTO comment_threads_new (id, task_id, status, created)
+		SELECT id, task_id,
+		  CASE status
+		    WHEN 'active' THEN 'open'
+		    WHEN 'ready'  THEN 'needs_attention'
+		    ELSE status
+		  END,
+		  created
+		FROM comment_threads`); err != nil {
+		return fmt.Errorf("migrate thread statuses: %w", err)
+	}
+
+	if _, err = tx.Exec(`DROP TABLE comment_threads`); err != nil {
+		return fmt.Errorf("drop old comment_threads: %w", err)
+	}
+	if _, err = tx.Exec(`ALTER TABLE comment_threads_new RENAME TO comment_threads`); err != nil {
+		return fmt.Errorf("rename comment_threads: %w", err)
+	}
+
+	if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_threads_task ON comment_threads(task_id)`); err != nil {
+		return fmt.Errorf("recreate idx_threads_task: %w", err)
 	}
 
 	return tx.Commit()

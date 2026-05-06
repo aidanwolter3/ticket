@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/aidanwolter/ticket/internal/model"
 )
 
 func runApprove(args []string, defaultDB string) {
@@ -47,7 +49,7 @@ func runApprove(args []string, defaultDB string) {
 			os.Exit(1)
 		}
 		for _, th := range threads {
-			if th.Status == "active" || th.Status == "ready" {
+			if th.Status == model.ThreadOpen || th.Status == model.ThreadNeedsAttention {
 				fmt.Fprintf(os.Stderr, "approve: ticket %s has open thread %s (status: %s) — resolve all threads before approving\n",
 					ticketID, th.ID, th.Status)
 				os.Exit(1)
