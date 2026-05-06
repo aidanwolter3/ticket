@@ -136,8 +136,7 @@ func (v *TicketsView) View() string {
 					done++
 				}
 			}
-			taskTag = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).
-				Render(fmt.Sprintf("[%d/%d]", done, taskCount))
+			taskTag = " " + components.ProgressBar(done, taskCount, 8)
 		}
 
 		maxTitle := v.width - len(t.ID) - 3
