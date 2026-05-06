@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 )
 
@@ -88,6 +89,43 @@ func Claim(s *store.Store, author string, stdout, stderr io.Writer) (*store.Work
 	}
 	item.Ticket = updated
 	return item, nil
+}
+
+// Ready transitions a ticket to ready. When the source status is in_review
+// (requeue path), it tears down the worktree and clears feature_branch so the
+// next claim gets a fresh worktree on top of current main. stdout and stderr
+// control where git output goes; pass io.Discard to suppress.
+func Ready(s *store.Store, ticketID string, author string, stdout, stderr io.Writer) error {
+	ticket, err := s.GetTicket(ticketID)
+	if err != nil {
+		return fmt.Errorf("ready: %w", err)
+	}
+
+	if ticket.Status == model.StatusInReview && ticket.WorktreePath != "" {
+		repoPath := ticket.RepoPath
+		wtCmd := exec.Command("git", "-C", repoPath, "worktree", "remove", "--force", ticket.WorktreePath)
+		wtCmd.Stdout = stdout
+		wtCmd.Stderr = stderr
+		if err := wtCmd.Run(); err != nil {
+			fmt.Fprintf(stderr, "ready: warning: could not remove worktree: %v\n", err)
+		}
+
+		delCmd := exec.Command("git", "-C", repoPath, "branch", "-D", ticket.FeatureBranch)
+		delCmd.Stdout = stdout
+		delCmd.Stderr = stderr
+		if err := delCmd.Run(); err != nil {
+			fmt.Fprintf(stderr, "ready: warning: could not delete branch %s: %v\n", ticket.FeatureBranch, err)
+		}
+
+		if err := s.SetWorktreePath(ticketID, "", "", ""); err != nil {
+			return fmt.Errorf("ready: clear worktree_path: %w", err)
+		}
+	}
+
+	if err := s.TransitionTicket(ticketID, model.StatusReady, author); err != nil {
+		return fmt.Errorf("ready: transition: %w", err)
+	}
+	return nil
 }
 
 // Merge ff-merges the feature branch into main, removes the worktree, deletes

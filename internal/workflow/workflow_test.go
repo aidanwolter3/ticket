@@ -259,3 +259,42 @@ func TestClaim_WorktreesDisabled(t *testing.T) {
 	assert.Empty(t, got.WorktreePath)
 	assert.Empty(t, got.FeatureBranch)
 }
+
+func TestReady_TearsDownWorktreeFromInReview(t *testing.T) {
+	s := newTestStore(t)
+	repoPath := newTestRepo(t)
+
+	ticket := &model.Ticket{
+		Title:    "Test ticket",
+		Type:     model.TypeTicket,
+		Status:   model.StatusReady,
+		RepoPath: repoPath,
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	// Claim to create the worktree.
+	item, err := Claim(s, "agent:test", io.Discard, io.Discard)
+	require.NoError(t, err)
+	require.NotNil(t, item)
+
+	// Advance to in_review.
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:test"))
+
+	claimed, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	worktreeDir := claimed.WorktreePath
+	require.NotEmpty(t, worktreeDir)
+	_, err = os.Stat(worktreeDir)
+	require.NoError(t, err, "worktree should exist before requeue")
+
+	// Requeue — should tear down worktree.
+	require.NoError(t, Ready(s, ticket.ID, "human:reviewer", io.Discard, io.Discard))
+
+	requeued, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusReady, requeued.Status)
+	assert.Empty(t, requeued.WorktreePath, "worktree_path should be cleared")
+	assert.Empty(t, requeued.FeatureBranch, "feature_branch should be cleared")
+	_, statErr := os.Stat(worktreeDir)
+	assert.True(t, os.IsNotExist(statErr), "worktree directory should be removed")
+}
