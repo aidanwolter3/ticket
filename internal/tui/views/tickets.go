@@ -175,7 +175,7 @@ func (v *TicketsView) View() string {
 		mergedHint = "[h] hide merged"
 	}
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑↓/jk · d delete · " + mergedHint))
+		"[↑↓/jk] · [d] delete · " + mergedHint))
 
 	return sb.String()
 }
