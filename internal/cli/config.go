@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 )
 
 func RunConfig(args []string, defaultDB string) {
@@ -34,6 +35,11 @@ func runConfigSet(args []string, defaultDB string) {
 	}
 	key := fs.Arg(0)
 	value := fs.Arg(1)
+
+	if key == "agent.command" && !strings.Contains(value, "{}") {
+		fmt.Fprintln(os.Stderr, "config set: agent.command must contain '{}' as the prompt placeholder")
+		os.Exit(1)
+	}
 
 	if err := s.ConfigSet(key, value); err != nil {
 		fmt.Fprintf(os.Stderr, "config set: %v\n", err)

@@ -137,8 +137,18 @@ ticket config ls
 ## Configuration
 
 ```sh
-ticket config set worktrees false   # disable automatic worktree creation
+ticket config set worktrees false         # disable automatic worktree creation
+ticket config set agent.command 'claude --prompt {}'   # command used to dispatch agents
+ticket config set agent.auto_dispatch true             # auto-dispatch agents when a ticket becomes ready
 ```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `worktrees` | `true` | Create a git worktree when claiming work |
+| `agent.command` | _(unset)_ | Command to run as an agent; `{}` is replaced with the /work skill file contents |
+| `agent.auto_dispatch` | `false` | If `true`, automatically dispatch an agent whenever a ticket is promoted to `ready` |
+
+`agent.command` must contain `{}` — the system substitutes the /work skill file contents (`~/.claude/skills/work/SKILL.md`) in its place. Setting it without `{}` is a validation error.
 
 Default config location: `~/.local/share/ticket/tickets.db` (same database, config table).
 
