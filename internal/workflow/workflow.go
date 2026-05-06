@@ -12,58 +12,12 @@ import (
 	"github.com/aidanwolter/ticket/internal/store"
 )
 
-// Promote transitions a draft ticket to ready and creates a git worktree for it
-// if worktrees are enabled in config. stdout and stderr control where git output
-// goes; pass io.Discard to suppress (e.g. from a TUI).
+// Promote transitions a draft ticket to ready. stdout and stderr are accepted
+// for interface symmetry but are unused; pass io.Discard.
 func Promote(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
-	ticket, err := s.PromoteTicket(ticketID, "human")
-	if err != nil {
+	if _, err := s.PromoteTicket(ticketID, "human"); err != nil {
 		return fmt.Errorf("promote: %w", err)
 	}
-
-	worktreesEnabled, err := s.ConfigGetDefault("worktrees", "true")
-	if err != nil || worktreesEnabled != "true" {
-		return nil
-	}
-
-	repoPath := ticket.RepoPath
-	if repoPath == "" {
-		return fmt.Errorf("promote: ticket %s has no repo_path set — re-import or re-draft with repo_path pointing to the git repo", ticketID)
-	}
-
-	featureBranch := ticket.FeatureBranch
-	if featureBranch == "" {
-		featureBranch = "feat/" + strings.ToLower(ticketID)
-	}
-
-	worktreeAbs := filepath.Join(repoPath, ".worktrees", ticketID)
-
-	checkBranch := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", featureBranch)
-	checkBranch.Stdout = io.Discard
-	checkBranch.Stderr = io.Discard
-	branchExists := checkBranch.Run() == nil
-
-	var wtCmd *exec.Cmd
-	if branchExists {
-		wtCmd = exec.Command("git", "-C", repoPath, "worktree", "add", worktreeAbs, featureBranch)
-	} else {
-		wtCmd = exec.Command("git", "-C", repoPath, "worktree", "add", "-b", featureBranch, worktreeAbs)
-	}
-	var wtStderr bytes.Buffer
-	wtCmd.Stdout = stdout
-	wtCmd.Stderr = io.MultiWriter(stderr, &wtStderr)
-
-	if err := wtCmd.Run(); err != nil {
-		if msg := strings.TrimSpace(wtStderr.String()); msg != "" {
-			return fmt.Errorf("promote: worktree creation failed: %s", msg)
-		}
-		return fmt.Errorf("promote: worktree creation failed: %w", err)
-	}
-
-	if err := s.SetWorktreePath(ticketID, worktreeAbs, repoPath, featureBranch); err != nil {
-		return fmt.Errorf("promote: could not save worktree_path: %w", err)
-	}
-
 	return nil
 }
 

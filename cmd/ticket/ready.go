@@ -29,8 +29,4 @@ func runReady(args []string, defaultDB string) {
 	}
 
 	fmt.Printf("%s → ready\n", ticketID)
-
-	if t, err := s.GetTicket(ticketID); err == nil && t.WorktreePath != "" {
-		fmt.Printf("worktree: %s (branch: %s)\n", t.WorktreePath, t.FeatureBranch)
-	}
 }
