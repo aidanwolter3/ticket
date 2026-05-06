@@ -61,7 +61,13 @@ Walk through the tasks below in order. For each task:
 4. Amend the task's existing commit (do not create a new one). Rebase subsequent task commits on top.
 5. For each ready thread you addressed: reply with a brief description of the fix, then transition the thread from ready → active.
 
-When all ready threads across all tasks have been addressed, transition the ticket back to in_review.`
+Before transitioning back to in_review, verify commit cleanliness:
+1. No commits with 'fixup!' or 'squash!' prefixes — eliminate by amending or rebasing.
+2. Review the full commit log with judgment: if a commit touches only a handful of lines and clearly extends a sibling task's commit, fold it in.
+3. Exactly one commit per task, message format '<ticket-id> <task-id>: <task-title>'.
+4. Feature branch rebased onto current main — no divergence.
+5. No merge commits in the branch history.
+6. Every ready thread has been replied to and transitioned back to active.`
 
 // buildTicketWorkJSON converts a WorkItem into its JSON representation.
 func buildTicketWorkJSON(s *store.Store, item *store.WorkItem) ticketWorkJSON {
