@@ -175,65 +175,105 @@ func (v *TicketDetailView) renderContent() string {
 		}
 	}
 
-	// Tasks section
-	completed := 0
-	for _, task := range t.Tasks {
-		if task.CompletedAt != nil {
-			completed++
-		}
-	}
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Render(
-		fmt.Sprintf("Tasks (%d/%d)", completed, len(t.Tasks))) + "\n")
+	// Tasks section — grouped by round.
 	if len(t.Tasks) == 0 {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  no tasks") + "\n")
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Tasks") + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  no tasks") + "\n\n")
 	} else {
-		sb.WriteString("  " + comp.ProgressBar(completed, len(t.Tasks), 20) + "\n")
+		// Collect unique rounds in order.
+		roundsSeen := make(map[int]bool)
+		var rounds []int
 		for _, task := range t.Tasks {
-			icon := "○"
-			col := lipgloss.Color("8")
-			if task.CompletedAt != nil {
-				icon = "●"
-				col = lipgloss.Color("2")
+			r := task.Round
+			if r == 0 {
+				r = 1
 			}
-			taskLine := fmt.Sprintf("  %s %s. %s",
-				lipgloss.NewStyle().Foreground(col).Render(icon),
-				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("%d", task.Position)),
-				task.Title,
-			)
-			if task.CommitHash != "" {
-				taskLine += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(task.CommitHash[:7])
+			if !roundsSeen[r] {
+				roundsSeen[r] = true
+				rounds = append(rounds, r)
 			}
-			if len(task.Threads) > 0 {
-				open, needsAttention := 0, 0
-				for _, th := range task.Threads {
-					switch th.Status {
-					case model.ThreadOpen:
-						open++
-					case model.ThreadNeedsAttention:
-						needsAttention++
+		}
+
+		multiRound := len(rounds) > 1
+		for _, round := range rounds {
+			var roundTasks []model.Task
+			for _, task := range t.Tasks {
+				r := task.Round
+				if r == 0 {
+					r = 1
+				}
+				if r == round {
+					roundTasks = append(roundTasks, task)
+				}
+			}
+
+			rdone := 0
+			for _, task := range roundTasks {
+				if task.CompletedAt != nil {
+					rdone++
+				}
+			}
+
+			var header string
+			if multiRound {
+				label := fmt.Sprintf("Round %d", round)
+				if round > 1 {
+					label += " — amendments"
+				}
+				header = fmt.Sprintf("%s (%d/%d)", label, rdone, len(roundTasks))
+			} else {
+				header = fmt.Sprintf("Tasks (%d/%d)", rdone, len(roundTasks))
+			}
+			sb.WriteString(lipgloss.NewStyle().Bold(true).Render(header) + "\n")
+			sb.WriteString("  " + comp.ProgressBar(rdone, len(roundTasks), 20) + "\n")
+
+			for _, task := range roundTasks {
+				icon := "○"
+				col := lipgloss.Color("8")
+				if task.CompletedAt != nil {
+					icon = "●"
+					col = lipgloss.Color("2")
+				}
+				taskLine := fmt.Sprintf("  %s %s. %s",
+					lipgloss.NewStyle().Foreground(col).Render(icon),
+					lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("%d", task.Position)),
+					task.Title,
+				)
+				if task.CommitHash != "" {
+					taskLine += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(task.CommitHash[:7])
+				}
+				if len(task.Threads) > 0 {
+					open, needsAttention := 0, 0
+					for _, th := range task.Threads {
+						switch th.Status {
+						case model.ThreadOpen:
+							open++
+						case model.ThreadNeedsAttention:
+							needsAttention++
+						}
+					}
+					var parts []string
+					if open > 0 {
+						parts = append(parts, fmt.Sprintf("%d open", open))
+					}
+					if needsAttention > 0 {
+						parts = append(parts, lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(fmt.Sprintf("%d needs attention", needsAttention)))
+					}
+					if len(parts) > 0 {
+						taskLine += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("("+strings.Join(parts, " · ")+")")
 					}
 				}
-				var parts []string
-				if open > 0 {
-					parts = append(parts, fmt.Sprintf("%d open", open))
+				sb.WriteString(taskLine + "\n")
+				if task.Description != "" {
+					sb.WriteString(indent(wrapText(task.Description, wrapWidth-4), "      ") + "\n")
 				}
-				if needsAttention > 0 {
-					parts = append(parts, lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(fmt.Sprintf("%d needs attention", needsAttention)))
-				}
-				if len(parts) > 0 {
-					taskLine += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("("+strings.Join(parts, " · ")+")")
+				if task.VerifiableResult != "" {
+					sb.WriteString("      " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("✓ "+task.VerifiableResult) + "\n")
 				}
 			}
-			sb.WriteString(taskLine + "\n")
-			if task.Description != "" {
-				sb.WriteString(indent(wrapText(task.Description, wrapWidth-4), "      ") + "\n")
-			}
-			if task.VerifiableResult != "" {
-				sb.WriteString("      " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("✓ "+task.VerifiableResult) + "\n")
-			}
+			sb.WriteString("\n")
 		}
 	}
-	sb.WriteString("\n")
 
 	// Thread summary (aggregated across all tasks)
 	open, needsAttention, resolved := 0, 0, 0
