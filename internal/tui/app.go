@@ -422,10 +422,14 @@ func (a *App) updateReplyModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case "ctrl+s":
 			if a.replyModal.Text() != "" {
-				if _, err := a.store.AddMessage(a.replyModal.ThreadID(), a.replyModal.Author(), a.replyModal.Text()); err != nil {
+				ticketID := ""
+				if a.threadsView != nil {
+					ticketID = a.threadsView.TicketID()
+				}
+				if _, err := a.store.AddDraftMessage(a.replyModal.ThreadID(), ticketID, true, a.replyModal.Author(), a.replyModal.Text()); err != nil {
 					a.setErr(err)
 				} else {
-					a.statusMsg = "Reply added"
+					a.statusMsg = "Reply staged (submit with ctrl+s in threads view)"
 					a.statusErr = false
 					a.threadsView.Reload()
 				}
@@ -448,16 +452,20 @@ func (a *App) updateNewThreadModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case "ctrl+s":
 			if a.newThreadModal.Text() != "" {
-				thread, err := a.store.CreateThread(a.newThreadModal.TaskID())
+				ticketID := ""
+				if a.threadsView != nil {
+					ticketID = a.threadsView.TicketID()
+				}
+				dt, err := a.store.CreateDraftThread(ticketID, a.newThreadModal.TaskID())
 				if err != nil {
 					a.setErr(err)
 					a.screen = screenThreads
 					return a, nil
 				}
-				if _, err := a.store.AddMessage(thread.ID, a.newThreadModal.Author(), a.newThreadModal.Text()); err != nil {
+				if _, err := a.store.AddDraftMessage(dt.ID, ticketID, false, a.newThreadModal.Author(), a.newThreadModal.Text()); err != nil {
 					a.setErr(err)
 				} else {
-					a.statusMsg = "Thread created"
+					a.statusMsg = "Thread staged (submit with ctrl+s in threads view)"
 					a.statusErr = false
 					a.threadsView.Reload()
 				}
