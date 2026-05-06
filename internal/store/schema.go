@@ -87,4 +87,33 @@ CREATE INDEX IF NOT EXISTS idx_blocked_by_blocker     ON blocked_by(blocker_id);
 CREATE INDEX IF NOT EXISTS idx_threads_task           ON comment_threads(task_id);
 CREATE INDEX IF NOT EXISTS idx_thread_messages_thread ON thread_messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_notes_ticket           ON notes(ticket_id);
+
+CREATE TABLE IF NOT EXISTS draft_threads (
+  id        TEXT PRIMARY KEY,
+  ticket_id TEXT NOT NULL,
+  task_id   TEXT NOT NULL,
+  created   INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS draft_messages (
+  id             TEXT PRIMARY KEY,
+  thread_id      TEXT NOT NULL,
+  ticket_id      TEXT NOT NULL,
+  is_real_thread INTEGER NOT NULL DEFAULT 0,
+  author         TEXT NOT NULL,
+  text           TEXT NOT NULL,
+  created        INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS draft_actions (
+  thread_id TEXT PRIMARY KEY,
+  ticket_id TEXT NOT NULL,
+  action    TEXT NOT NULL CHECK(action IN ('resolve', 'reopen')),
+  created   INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_draft_threads_ticket  ON draft_threads(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_draft_messages_thread ON draft_messages(thread_id);
+CREATE INDEX IF NOT EXISTS idx_draft_messages_ticket ON draft_messages(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_draft_actions_ticket  ON draft_actions(ticket_id);
 `

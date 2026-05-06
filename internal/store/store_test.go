@@ -392,6 +392,149 @@ func TestConfigList(t *testing.T) {
 	assert.Equal(t, map[string]string{"worktrees": "false", "other": "val"}, m)
 }
 
+func TestDraftStatePersists(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "persist.db")
+
+	s1, err := Open(dbPath)
+	require.NoError(t, err)
+
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s1.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s1.CreateTask(task))
+
+	// Real thread for staged action/reply.
+	realThread, err := s1.CreateThread(task.ID)
+	require.NoError(t, err)
+
+	// Draft thread with a message.
+	dt, err := s1.CreateDraftThread(ticket.ID, task.ID)
+	require.NoError(t, err)
+	_, err = s1.AddDraftMessage(dt.ID, ticket.ID, false, "human", "review comment")
+	require.NoError(t, err)
+
+	// Draft reply to the real thread.
+	_, err = s1.AddDraftMessage(realThread.ID, ticket.ID, true, "human", "reply text")
+	require.NoError(t, err)
+
+	// Staged resolve.
+	err = s1.SetDraftAction(realThread.ID, ticket.ID, model.DraftActionResolve)
+	require.NoError(t, err)
+
+	s1.Close()
+
+	// Reopen the store.
+	s2, err := Open(dbPath)
+	require.NoError(t, err)
+	defer s2.Close()
+
+	state, err := s2.GetDraftState(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, state.NewThreads, 1)
+	require.Len(t, state.NewThreads[0].Messages, 1)
+	assert.Equal(t, "review comment", state.NewThreads[0].Messages[0].Text)
+	require.Len(t, state.Replies, 1)
+	assert.Equal(t, "reply text", state.Replies[0].Text)
+	require.Len(t, state.Actions, 1)
+	assert.Equal(t, model.DraftActionResolve, state.Actions[0].Action)
+	assert.Equal(t, realThread.ID, state.Actions[0].ThreadID)
+}
+
+func TestFlushDraftState(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusInReview}
+	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	// Real threads.
+	openThread, err := s.CreateThread(task.ID)
+	require.NoError(t, err)
+	resolvedThread, err := s.CreateThread(task.ID)
+	require.NoError(t, err)
+	_, err = s.db.Exec(`UPDATE comment_threads SET status='resolved' WHERE id=?`, resolvedThread.ID)
+	require.NoError(t, err)
+
+	// Draft new thread.
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID)
+	require.NoError(t, err)
+	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "new comment")
+	require.NoError(t, err)
+
+	// Draft reply to open thread.
+	_, err = s.AddDraftMessage(openThread.ID, ticket.ID, true, "human", "this needs work")
+	require.NoError(t, err)
+
+	// Stage reopen on resolved thread.
+	err = s.SetDraftAction(resolvedThread.ID, ticket.ID, model.DraftActionReopen)
+	require.NoError(t, err)
+
+	require.NoError(t, s.FlushDraftState(ticket.ID))
+
+	// Draft state must be cleared.
+	state, err := s.GetDraftState(ticket.ID)
+	require.NoError(t, err)
+	assert.True(t, state.IsEmpty())
+
+	// Real threads: open thread → needs_attention (got a reply).
+	threads, err := s.GetThreadsForTask(task.ID)
+	require.NoError(t, err)
+	assert.Len(t, threads, 3) // openThread + resolvedThread + newly created
+
+	statuses := make(map[string]model.ThreadStatus)
+	for _, th := range threads {
+		statuses[th.ID] = th.Status
+	}
+	assert.Equal(t, model.ThreadNeedsAttention, statuses[openThread.ID])
+	assert.Equal(t, model.ThreadOpen, statuses[resolvedThread.ID])
+}
+
+func TestDraftActionToggle(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	thread, err := s.CreateThread(task.ID)
+	require.NoError(t, err)
+
+	// Set resolve, then clear it.
+	require.NoError(t, s.SetDraftAction(thread.ID, ticket.ID, model.DraftActionResolve))
+	state, err := s.GetDraftState(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.DraftActionResolve, state.ActionFor(thread.ID))
+
+	require.NoError(t, s.ClearDraftAction(thread.ID))
+	state, err = s.GetDraftState(ticket.ID)
+	require.NoError(t, err)
+	assert.Empty(t, state.ActionFor(thread.ID))
+}
+
+func TestDraftMessageEditDelete(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID)
+	require.NoError(t, err)
+
+	msg, err := s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "original text")
+	require.NoError(t, err)
+
+	require.NoError(t, s.UpdateDraftMessage(msg.ID, "edited text"))
+	state, err := s.GetDraftState(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, state.NewThreads[0].Messages, 1)
+	assert.Equal(t, "edited text", state.NewThreads[0].Messages[0].Text)
+
+	require.NoError(t, s.DeleteDraftMessage(msg.ID))
+	state, err = s.GetDraftState(ticket.ID)
+	require.NoError(t, err)
+	assert.Empty(t, state.NewThreads[0].Messages)
+}
+
 func ticketIDs(tickets []*model.Ticket) []string {
 	ids := make([]string, len(tickets))
 	for i, t := range tickets {
