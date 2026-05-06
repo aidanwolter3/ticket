@@ -347,6 +347,122 @@ func TestWorktreeLifecycle(t *testing.T) {
 
 // TestClaim_AmendmentSkipsWorktreeCreation verifies that claiming amendment work
 // returns the existing worktree_path unchanged and does not create a duplicate.
+// TestReviewCycleLifecycle exercises the complete work→review→work→review→merge loop.
+func TestReviewCycleLifecycle(t *testing.T) {
+	s := newTestStore(t)
+	repoPath := gitRepo(t)
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+		return strings.TrimSpace(string(out))
+	}
+
+	// --- 1. Draft → ready → Claim (new work) → worktree created, in_progress ---
+	ticket := &model.Ticket{
+		Title:    "Review cycle ticket",
+		Type:     model.TypeTicket,
+		Status:   model.StatusDraft,
+		RepoPath: repoPath,
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, Promote(s, ticket.ID, io.Discard, io.Discard))
+
+	item, err := Claim(s, "agent:test", io.Discard, io.Discard)
+	require.NoError(t, err)
+	require.NotNil(t, item)
+	assert.Equal(t, store.WorkTypeNew, item.Type)
+	assert.Equal(t, ticket.ID, item.Ticket.ID)
+
+	claimed, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusInProgress, claimed.Status)
+	require.NotEmpty(t, claimed.WorktreePath, "worktree must be created on first claim")
+	originalWorktree := claimed.WorktreePath
+	originalBranch := claimed.FeatureBranch
+	_, statErr := os.Stat(originalWorktree)
+	require.NoError(t, statErr, "worktree directory must exist on disk")
+
+	// Create a task and mark it complete (required for Merge).
+	task := &model.Task{TicketID: ticket.ID, Title: "do the work", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.CompleteTask(task.ID))
+
+	// Add a commit on the feature branch.
+	git(originalWorktree, "config", "user.email", "test@example.com")
+	git(originalWorktree, "config", "user.name", "Test")
+	require.NoError(t, os.WriteFile(filepath.Join(originalWorktree, "feature.txt"), []byte("feature\n"), 0644))
+	git(originalWorktree, "add", ".")
+	git(originalWorktree, "commit", "-m", ticket.ID+" "+task.ID+": do the work")
+
+	// --- 2. Transition to in_review ---
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:test"))
+
+	// --- 3. Open a thread on the task, add a message ---
+	th, err := s.CreateThread(task.ID)
+	require.NoError(t, err)
+	_, err = s.AddMessage(th.ID, "human:reviewer", "please rename this file")
+	require.NoError(t, err)
+
+	// --- 4. ReviewSubmit → ticket back to ready, thread now ready, worktree still on disk ---
+	require.NoError(t, ReviewSubmit(s, ticket.ID, "human:reviewer", io.Discard, io.Discard))
+
+	afterSubmit, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusReady, afterSubmit.Status)
+	assert.Equal(t, originalWorktree, afterSubmit.WorktreePath, "worktree must survive ReviewSubmit")
+	assert.Equal(t, originalBranch, afterSubmit.FeatureBranch, "feature_branch must survive ReviewSubmit")
+	_, statErr = os.Stat(originalWorktree)
+	assert.NoError(t, statErr, "worktree directory must still exist on disk after ReviewSubmit")
+
+	threads, err := s.GetThreadsForTicket(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, threads, 1)
+	assert.Equal(t, model.ThreadReady, threads[0].Status, "thread must be ready after ReviewSubmit")
+
+	// --- 5. Claim (amendment work) — worktree_path unchanged, same branch, WorkTypeAmendment ---
+	item2, err := Claim(s, "agent:test", io.Discard, io.Discard)
+	require.NoError(t, err)
+	require.NotNil(t, item2)
+	assert.Equal(t, store.WorkTypeAmendment, item2.Type)
+	assert.Equal(t, ticket.ID, item2.Ticket.ID)
+	assert.Equal(t, originalWorktree, item2.Ticket.WorktreePath, "worktree_path must be unchanged for amendment")
+	assert.Equal(t, originalBranch, item2.Ticket.FeatureBranch, "feature_branch must be unchanged for amendment")
+	_, statErr = os.Stat(originalWorktree)
+	assert.NoError(t, statErr, "original worktree must still exist")
+
+	// --- 6. Reply to thread, transition thread ready → active ---
+	_, err = s.AddMessage(th.ID, "agent:test", "renamed the file")
+	require.NoError(t, err)
+	require.NoError(t, s.TransitionThread(th.ID, model.ThreadActive, "agent:test"))
+
+	// Reviewer resolves the thread before approving.
+	require.NoError(t, s.TransitionThread(th.ID, model.ThreadResolved, "human:reviewer"))
+
+	// --- 7. Transition ticket back to in_review ---
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:test"))
+
+	// --- 8. Approve → Merge — worktree removed, branch deleted, ticket merged ---
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusApproved, "human:reviewer"))
+
+	err = Merge(s, ticket.ID, io.Discard, io.Discard)
+	require.NoError(t, err)
+
+	merged, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusMerged, merged.Status)
+	assert.Empty(t, merged.WorktreePath, "worktree_path must be cleared after merge")
+	assert.Empty(t, merged.FeatureBranch, "feature_branch must be cleared after merge")
+	_, statErr = os.Stat(originalWorktree)
+	assert.True(t, os.IsNotExist(statErr), "worktree directory must be removed after merge")
+
+	// Feature branch must be deleted.
+	checkBranch := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", originalBranch)
+	assert.Error(t, checkBranch.Run(), "feature branch must be deleted after merge")
+}
+
 func TestClaim_AmendmentSkipsWorktreeCreation(t *testing.T) {
 	s := newTestStore(t)
 	repoPath := gitRepo(t)
