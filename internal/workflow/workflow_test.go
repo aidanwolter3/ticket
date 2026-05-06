@@ -214,3 +214,48 @@ func TestMerge_AutoRebase_Conflicts(t *testing.T) {
 	// Abort the rebase so the repo is clean after the test.
 	exec.Command("git", "-C", repoPath, "rebase", "--abort").Run()
 }
+
+func TestClaim_CreatesWorktree(t *testing.T) {
+	s := newTestStore(t)
+	repoPath := gitRepo(t)
+
+	ticket := &model.Ticket{
+		Title:    "Test ticket",
+		Type:     model.TypeTicket,
+		Status:   model.StatusReady,
+		RepoPath: repoPath,
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	item, err := Claim(s, "agent:test", io.Discard, io.Discard)
+	require.NoError(t, err)
+	require.NotNil(t, item)
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.NotEmpty(t, got.WorktreePath, "worktree_path should be set")
+	assert.NotEmpty(t, got.FeatureBranch, "feature_branch should be set")
+	_, statErr := os.Stat(got.WorktreePath)
+	assert.NoError(t, statErr, "worktree directory should exist on disk")
+}
+
+func TestClaim_WorktreesDisabled(t *testing.T) {
+	s := newTestStore(t)
+	require.NoError(t, s.ConfigSet("worktrees", "false"))
+
+	ticket := &model.Ticket{
+		Title:  "Test ticket",
+		Type:   model.TypeTicket,
+		Status: model.StatusReady,
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	item, err := Claim(s, "agent:test", io.Discard, io.Discard)
+	require.NoError(t, err)
+	require.NotNil(t, item)
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got.WorktreePath)
+	assert.Empty(t, got.FeatureBranch)
+}
