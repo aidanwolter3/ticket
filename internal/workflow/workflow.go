@@ -116,10 +116,49 @@ func Merge(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 	mergeCmd.Stdout = stdout
 	mergeCmd.Stderr = io.MultiWriter(stderr, &mergeStderr)
 	if err := mergeCmd.Run(); err != nil {
-		if msg := strings.TrimSpace(mergeStderr.String()); msg != "" {
-			return fmt.Errorf("merge: %s", msg)
+		// Check if divergence is the cause (feature branch is not an ancestor of HEAD).
+		isAncestorCmd := exec.Command("git", "-C", repoPath, "merge-base", "--is-ancestor", featureBranch, "HEAD")
+		if isAncestorCmd.Run() != nil {
+			// Feature branch has diverged — auto-rebase onto current HEAD branch.
+			headBranchOut, hbErr := exec.Command("git", "-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD").Output()
+			if hbErr != nil {
+				return fmt.Errorf("merge: branch has diverged from main — rebase manually then retry")
+			}
+			headBranch := strings.TrimSpace(string(headBranchOut))
+
+			var rebaseCmd *exec.Cmd
+			if ticket.WorktreePath != "" {
+				rebaseCmd = exec.Command("git", "-C", ticket.WorktreePath, "rebase", headBranch)
+			} else {
+				rebaseCmd = exec.Command("git", "-C", repoPath, "rebase", headBranch, featureBranch)
+			}
+			rebaseCmd.Stdout = stdout
+			rebaseCmd.Stderr = stderr
+			if rbErr := rebaseCmd.Run(); rbErr != nil {
+				location := ticket.WorktreePath
+				if location == "" {
+					location = repoPath
+				}
+				return fmt.Errorf("merge: rebase produced conflicts — resolve them in %s and retry ticket merge", location)
+			}
+
+			// Retry ff-merge after successful rebase.
+			var retryStderr bytes.Buffer
+			retryCmd := exec.Command("git", "-C", repoPath, "merge", "--ff-only", featureBranch)
+			retryCmd.Stdout = stdout
+			retryCmd.Stderr = io.MultiWriter(stderr, &retryStderr)
+			if err := retryCmd.Run(); err != nil {
+				if msg := strings.TrimSpace(retryStderr.String()); msg != "" {
+					return fmt.Errorf("merge: %s", msg)
+				}
+				return fmt.Errorf("merge: merge failed after rebase")
+			}
+		} else {
+			if msg := strings.TrimSpace(mergeStderr.String()); msg != "" {
+				return fmt.Errorf("merge: %s", msg)
+			}
+			return fmt.Errorf("merge: branch has diverged from main — rebase manually then retry")
 		}
-		return fmt.Errorf("merge: branch has diverged from main — rebase manually then retry")
 	}
 
 	if ticket.WorktreePath != "" {
