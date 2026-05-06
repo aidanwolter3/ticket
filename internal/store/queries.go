@@ -30,7 +30,7 @@ WHERE t.status = 'ready'
   AND NOT EXISTS (
     SELECT 1 FROM blocked_by b
     JOIN tickets bt ON bt.id = b.blocker_id
-    WHERE b.ticket_id = t.id AND bt.status NOT IN ('approved', 'merged')
+    WHERE b.ticket_id = t.id AND bt.status != 'merged'
   )
 ORDER BY t.created ASC`
 

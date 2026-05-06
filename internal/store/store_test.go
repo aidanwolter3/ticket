@@ -212,7 +212,7 @@ func TestInvalidThreadTransition(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestBlockerSatisfiedByApprovedOrMerged(t *testing.T) {
+func TestBlockerSatisfiedByMergedOnly(t *testing.T) {
 	s := newTestStore(t)
 
 	blocker := &model.Ticket{Title: "Blocker", Type: model.TypeTicket, Status: model.StatusReady}
@@ -230,15 +230,15 @@ func TestBlockerSatisfiedByApprovedOrMerged(t *testing.T) {
 	_, err = s.db.Exec(`UPDATE tickets SET status='ready' WHERE id=?`, blocker.ID)
 	require.NoError(t, err)
 
-	// approved blocker unblocks dependent.
+	// approved blocker does NOT unblock dependent — must be merged.
 	_, err = s.db.Exec(`UPDATE tickets SET status='approved' WHERE id=?`, blocker.ID)
 	require.NoError(t, err)
 	work, err := s.PeekWork()
 	require.NoError(t, err)
 	workIDs := workItemIDs(work)
-	assert.Contains(t, workIDs, blocked.ID, "approved blocker should unblock")
+	assert.NotContains(t, workIDs, blocked.ID, "approved blocker should not unblock")
 
-	// merged blocker also unblocks dependent.
+	// merged blocker unblocks dependent.
 	_, err = s.db.Exec(`UPDATE tickets SET status='merged' WHERE id=?`, blocker.ID)
 	require.NoError(t, err)
 	work, err = s.PeekWork()
