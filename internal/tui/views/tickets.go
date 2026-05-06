@@ -13,16 +13,17 @@ import (
 )
 
 type TicketsView struct {
-	store   *store.Store
-	tickets []*model.Ticket
-	cursor  int
-	width   int
-	height  int
-	err     error
+	store      *store.Store
+	tickets    []*model.Ticket
+	hideMerged bool
+	cursor     int
+	width      int
+	height     int
+	err        error
 }
 
 func NewTicketsView(s *store.Store) *TicketsView {
-	v := &TicketsView{store: s}
+	v := &TicketsView{store: s, hideMerged: true}
 	v.load()
 	return v
 }
@@ -36,9 +37,22 @@ func (v *TicketsView) load() {
 	v.err = nil
 	v.tickets = tickets
 
-	if v.cursor >= len(v.tickets) {
-		v.cursor = max(0, len(v.tickets)-1)
+	if v.cursor >= len(v.visible()) {
+		v.cursor = max(0, len(v.visible())-1)
 	}
+}
+
+func (v *TicketsView) visible() []*model.Ticket {
+	if !v.hideMerged {
+		return v.tickets
+	}
+	filtered := make([]*model.Ticket, 0, len(v.tickets))
+	for _, t := range v.tickets {
+		if t.Status != model.StatusMerged {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
 }
 
 func (v *TicketsView) SetSize(w, h int) {
@@ -51,10 +65,11 @@ func (v *TicketsView) Refresh() {
 }
 
 func (v *TicketsView) SelectedTicket() *model.Ticket {
-	if len(v.tickets) == 0 || v.cursor >= len(v.tickets) {
+	vis := v.visible()
+	if len(vis) == 0 || v.cursor >= len(vis) {
 		return nil
 	}
-	return v.tickets[v.cursor]
+	return vis[v.cursor]
 }
 
 func (v *TicketsView) Init() tea.Cmd { return nil }
@@ -68,8 +83,13 @@ func (v *TicketsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				v.cursor--
 			}
 		case key.Matches(msg, downBinding):
-			if v.cursor < len(v.tickets)-1 {
+			if v.cursor < len(v.visible())-1 {
 				v.cursor++
+			}
+		case key.Matches(msg, toggleMergedBinding):
+			v.hideMerged = !v.hideMerged
+			if v.cursor >= len(v.visible()) {
+				v.cursor = max(0, len(v.visible())-1)
 			}
 		}
 	case tea.WindowSizeMsg:
@@ -87,22 +107,24 @@ func (v *TicketsView) View() string {
 		return sb.String()
 	}
 
-	if len(v.tickets) == 0 {
+	tickets := v.visible()
+
+	if len(tickets) == 0 {
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("No tickets.") + "\n")
 		return sb.String()
 	}
 
 	visible := v.height - 2
 	if visible < 1 {
-		visible = len(v.tickets)
+		visible = len(tickets)
 	}
 	start := 0
 	if v.cursor >= visible {
 		start = v.cursor - visible + 1
 	}
 
-	for i := start; i < len(v.tickets) && i < start+visible; i++ {
-		t := v.tickets[i]
+	for i := start; i < len(tickets) && i < start+visible; i++ {
+		t := tickets[i]
 		icon := components.TicketStatusIcon(t.Status)
 
 		taskCount := len(t.Tasks)
@@ -148,15 +170,20 @@ func (v *TicketsView) View() string {
 	}
 
 	sb.WriteString("\n")
+	mergedHint := "[h] show merged"
+	if !v.hideMerged {
+		mergedHint = "[h] hide merged"
+	}
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"↑↓/jk · d delete · m merge · tab tabs · q quit"))
+		"↑↓/jk · d delete · m merge · " + mergedHint + " · tab tabs · q quit"))
 
 	return sb.String()
 }
 
 var (
-	upBinding   = key.NewBinding(key.WithKeys("up", "k"))
-	downBinding = key.NewBinding(key.WithKeys("down", "j"))
+	upBinding            = key.NewBinding(key.WithKeys("up", "k"))
+	downBinding          = key.NewBinding(key.WithKeys("down", "j"))
+	toggleMergedBinding  = key.NewBinding(key.WithKeys("h"))
 )
 
 func max(a, b int) int {
