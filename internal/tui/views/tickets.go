@@ -13,13 +13,14 @@ import (
 )
 
 type TicketsView struct {
-	store      *store.Store
-	tickets    []*model.Ticket
-	hideMerged bool
-	cursor     int
-	width      int
-	height     int
-	err        error
+	store         *store.Store
+	tickets       []*model.Ticket
+	agentSessions map[string]*model.AgentSession // ticketID → active session
+	hideMerged    bool
+	cursor        int
+	width         int
+	height        int
+	err           error
 }
 
 func NewTicketsView(s *store.Store) *TicketsView {
@@ -36,6 +37,16 @@ func (v *TicketsView) load() {
 	}
 	v.err = nil
 	v.tickets = tickets
+
+	// Load agent sessions for all tickets.
+	sessions := make(map[string]*model.AgentSession, len(tickets))
+	for _, t := range tickets {
+		sess, err := v.store.GetAgentSessionByTicket(t.ID)
+		if err == nil && sess != nil {
+			sessions[t.ID] = sess
+		}
+	}
+	v.agentSessions = sessions
 
 	if v.cursor >= len(v.visible()) {
 		v.cursor = max(0, len(v.visible())-1)
@@ -144,8 +155,8 @@ func (v *TicketsView) View() string {
 		barColWidth = 8 + 1 + maxFracWidth
 	}
 
-	// Layout: cursor(1) SP icon(1) SP id(maxIDLen) SP title(titleWidth) [SP bar(barColWidth)]
-	titleWidth := v.width - 5 - maxIDLen
+	// Layout: cursor(1) SP agentPrefix(2) icon(1) SP id(maxIDLen) SP title(titleWidth) [SP bar(barColWidth)]
+	titleWidth := v.width - 7 - maxIDLen
 	if barColWidth > 0 {
 		titleWidth -= 1 + barColWidth
 	}
@@ -156,6 +167,17 @@ func (v *TicketsView) View() string {
 	for i := start; i < len(tickets) && i < start+visible; i++ {
 		t := tickets[i]
 		icon := components.TicketStatusIcon(t.Status)
+
+		// Agent indicator prefix.
+		agentPrefix := "  "
+		if sess, ok := v.agentSessions[t.ID]; ok {
+			switch sess.State {
+			case model.AgentRunning:
+				agentPrefix = "⚙ "
+			case model.AgentWaiting:
+				agentPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("? ") + ""
+			}
+		}
 
 		// Truncate title then right-pad to titleWidth so bars stay column-aligned.
 		titleRunes := []rune(t.Title)
@@ -199,8 +221,9 @@ func (v *TicketsView) View() string {
 			cursor = ">"
 		}
 
-		line := fmt.Sprintf("%s %s %s %s%s",
+		line := fmt.Sprintf("%s %s%s %s %s%s",
 			cursor,
+			agentPrefix,
 			icon,
 			idStyle.Render(paddedID),
 			titleStyle.Render(title),

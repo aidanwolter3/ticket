@@ -17,14 +17,15 @@ import (
 )
 
 type TicketDetailView struct {
-	store    *store.Store
-	ticket   *model.Ticket
-	notes    []*model.Note
-	blockers []*model.Ticket
-	vp       viewport.Model
-	width    int
-	height   int
-	err      error
+	store        *store.Store
+	ticket       *model.Ticket
+	notes        []*model.Note
+	blockers     []*model.Ticket
+	agentSession *model.AgentSession
+	vp           viewport.Model
+	width        int
+	height       int
+	err          error
 }
 
 func NewTicketDetailView(s *store.Store, ticketID string) (*TicketDetailView, error) {
@@ -67,6 +68,9 @@ func (v *TicketDetailView) loadTicket(id string) error {
 			v.blockers = append(v.blockers, blocker)
 		}
 	}
+
+	// Load active agent session (nil if none).
+	v.agentSession, _ = v.store.GetAgentSessionByTicket(id)
 	return nil
 }
 
@@ -142,6 +146,21 @@ func (v *TicketDetailView) renderContent() string {
 		components.TicketStatusIcon(t.Status)+" "+string(t.Status),
 		lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Updated: "+t.Updated.Format(time.RFC1123)),
 	))
+
+	if v.agentSession != nil {
+		switch v.agentSession.State {
+		case model.AgentRunning:
+			sb.WriteString(fmt.Sprintf("  Agent: %s\n",
+				lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(
+					fmt.Sprintf("running (pid %d)", v.agentSession.PID)),
+			))
+		case model.AgentWaiting:
+			sb.WriteString(fmt.Sprintf("  Agent: %s\n",
+				lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(
+					fmt.Sprintf("waiting for input (pid %d) — press enter to attach", v.agentSession.PID)),
+			))
+		}
+	}
 
 	if t.FeatureBranch != "" {
 		sb.WriteString(fmt.Sprintf("  Branch: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(t.FeatureBranch)))
