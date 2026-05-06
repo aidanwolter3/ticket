@@ -73,6 +73,9 @@ func main() {
 		case "config":
 			runConfig(os.Args[2:], defaultDB)
 			return
+		case "review-submit":
+			runReviewSubmit(os.Args[2:], defaultDB)
+			return
 		case "approve":
 			runApprove(os.Args[2:], defaultDB)
 			return
@@ -161,6 +164,8 @@ Usage:
   ticket redraft [--db path] <ticket-id> <author>
                                               destroy worktree+branch and move ticket back to draft (human only)
 
+  ticket review-submit [--db path] <id> <author>
+                                              flip all active threads→ready and ticket→ready (human only; requires ≥1 active thread)
   ticket approve [--db path] <id> <author>    approve an in_review ticket (human only)
   ticket merge [--db path] <id> <author>      ff-merge, delete branch, remove worktree (human only)
   ticket config set [--db path] <key> <value> set a config value
