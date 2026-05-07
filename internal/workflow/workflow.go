@@ -104,18 +104,22 @@ func Ready(s *store.Store, ticketID string, author string, stdout, stderr io.Wri
 
 // SubmitReview flushes all staged draft actions to the store atomically,
 // auto-generates amendment tasks for each needs_attention thread, and
-// transitions the ticket from in_review to ready. stdout and stderr are
-// accepted for interface symmetry but are unused; pass io.Discard.
+// transitions the ticket from in_review to ready only when at least one
+// needs_attention thread exists. If all actions were resolutions, the ticket
+// stays in_review. stdout and stderr are accepted for interface symmetry but
+// are unused; pass io.Discard.
 func SubmitReview(s *store.Store, ticketID string, author string, stdout, stderr io.Writer) error {
 	naThreadIDs, err := s.FlushDraftState(ticketID)
 	if err != nil {
 		return fmt.Errorf("submit-review: flush draft: %w", err)
 	}
 
-	if len(naThreadIDs) > 0 {
-		if err := createAmendmentTasks(s, ticketID, naThreadIDs); err != nil {
-			return fmt.Errorf("submit-review: create amendment tasks: %w", err)
-		}
+	if len(naThreadIDs) == 0 {
+		return nil
+	}
+
+	if err := createAmendmentTasks(s, ticketID, naThreadIDs); err != nil {
+		return fmt.Errorf("submit-review: create amendment tasks: %w", err)
 	}
 
 	if err := s.TransitionTicket(ticketID, model.StatusReady, author); err != nil {

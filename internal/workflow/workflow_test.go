@@ -571,12 +571,12 @@ func TestSubmitReview_EmptyDraftOK(t *testing.T) {
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
 
-	// No draft state — submit should still work (ticket → ready).
+	// No draft state — no needs_attention threads, so ticket stays in_review.
 	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
 
 	got, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
-	assert.Equal(t, model.StatusReady, got.Status)
+	assert.Equal(t, model.StatusInReview, got.Status)
 }
 
 func TestClaim_AmendmentSkipsWorktreeCreation(t *testing.T) {
