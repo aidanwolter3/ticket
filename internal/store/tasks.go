@@ -200,9 +200,3 @@ func scanTask(r scanner) (*model.Task, error) {
 	return &t, nil
 }
 
-func nullTime(t *time.Time) interface{} {
-	if t == nil {
-		return nil
-	}
-	return t.UnixMilli()
-}

@@ -271,10 +271,6 @@ func (s *Store) loadBlockedBy(t *model.Ticket) error {
 	return rows.Err()
 }
 
-type scanner interface {
-	Scan(dest ...interface{}) error
-}
-
 func scanTicket(r scanner) (*model.Ticket, error) {
 	var (
 		t         model.Ticket
@@ -344,9 +340,3 @@ func (s *Store) RemoveBlocker(ticketID, blockerID string) error {
 	return nil
 }
 
-func nullStr(s string) interface{} {
-	if s == "" {
-		return nil
-	}
-	return s
-}
