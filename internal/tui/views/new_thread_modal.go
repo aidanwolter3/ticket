@@ -3,6 +3,7 @@ package views
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -10,25 +11,39 @@ import (
 
 type NewThreadModal struct {
 	authorIn textinput.Model
-	textIn   textinput.Model
+	textIn   textarea.Model
 	focused  int
 	taskID   string
+	width    int
 }
 
-func NewNewThreadModal(taskID string) *NewThreadModal {
+func NewNewThreadModal(taskID string, width int) *NewThreadModal {
 	author := textinput.New()
 	author.Placeholder = "Author (e.g., human:aidan)"
 	author.SetValue("human:aidan")
 	author.Focus()
 
-	text := textinput.New()
+	text := textarea.New()
 	text.Placeholder = "First message"
 	text.CharLimit = 500
+	text.ShowLineNumbers = false
+	text.SetWidth(max(width-4, 20))
+	text.SetHeight(4)
+	// Remove default cursor-line background which clashes with terminal colors.
+	focusedStyle, blurredStyle := textarea.DefaultStyles()
+	focusedStyle.CursorLine = lipgloss.NewStyle()
+	text.FocusedStyle = focusedStyle
+	text.BlurredStyle = blurredStyle
 
-	return &NewThreadModal{authorIn: author, textIn: text, taskID: taskID}
+	return &NewThreadModal{authorIn: author, textIn: text, taskID: taskID, width: width}
 }
 
-func (m *NewThreadModal) Init() tea.Cmd { return textinput.Blink }
+func (m *NewThreadModal) SetWidth(w int) {
+	m.width = w
+	m.textIn.SetWidth(max(w-4, 20))
+}
+
+func (m *NewThreadModal) Init() tea.Cmd { return textarea.Blink }
 
 func (m *NewThreadModal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -37,12 +52,11 @@ func (m *NewThreadModal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focused == 0 {
 				m.authorIn.Blur()
 				m.focused = 1
-				m.textIn.Focus()
-			} else {
-				m.textIn.Blur()
-				m.focused = 0
-				m.authorIn.Focus()
+				return m, m.textIn.Focus()
 			}
+			m.textIn.Blur()
+			m.focused = 0
+			m.authorIn.Focus()
 			return m, nil
 		}
 	}
@@ -63,7 +77,7 @@ func (m *NewThreadModal) View() string {
 	var sb strings.Builder
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("New Thread") + "\n\n")
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Author") + "\n  " + m.authorIn.View() + "\n\n")
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Message") + "\n  " + m.textIn.View() + "\n\n")
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Message") + "\n" + m.textIn.View() + "\n\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
 		"[tab] switch · [ctrl+s] create · [esc] cancel"))
 	return sb.String()

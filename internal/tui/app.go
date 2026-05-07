@@ -155,6 +155,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.threadsView != nil {
 			a.threadsView.SetSize(a.width, a.height)
 		}
+		if a.replyModal != nil {
+			a.replyModal.SetWidth(a.width)
+		}
+		if a.newThreadModal != nil {
+			a.newThreadModal.SetWidth(a.width)
+		}
 		return a, nil
 
 	case tea.KeyMsg:
@@ -377,7 +383,7 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if a.threadsView != nil {
 				if th := a.threadsView.SelectedThread(); th != nil {
-					a.replyModal = views.NewReplyModal(th.ID)
+					a.replyModal = views.NewReplyModal(th.ID, a.width)
 					a.screen = screenReplyModal
 				}
 			}
@@ -389,7 +395,7 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.setErr(fmt.Errorf("no task selected"))
 					return a, nil
 				}
-				a.newThreadModal = views.NewNewThreadModal(taskID)
+				a.newThreadModal = views.NewNewThreadModal(taskID, a.width)
 				a.screen = screenNewThreadModal
 			}
 			return a, nil
