@@ -9,19 +9,17 @@ import (
 )
 
 func RunGet(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("get", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	jsonOut := fs.Bool("json", false, "output raw JSON")
-	fs.Parse(args)
+	var jsonOut *bool
+	s, fs := parseAndOpen("get", args, defaultDB, func(f *flag.FlagSet) {
+		jsonOut = f.Bool("json", false, "output raw JSON")
+	})
+	defer s.Close()
 
 	if fs.NArg() == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket get [--db path] [--json] <id>")
 		os.Exit(1)
 	}
 	id := fs.Arg(0)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	t, err := s.GetTicket(id)
 	if err != nil {

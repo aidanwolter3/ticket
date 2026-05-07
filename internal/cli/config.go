@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"sort"
@@ -26,9 +25,8 @@ func RunConfig(args []string, defaultDB string) {
 }
 
 func runConfigSet(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("config set", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("config set", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 2 {
 		fmt.Fprintln(os.Stderr, "usage: ticket config set [--db path] <key> <value>")
@@ -36,9 +34,6 @@ func runConfigSet(args []string, defaultDB string) {
 	}
 	key := fs.Arg(0)
 	value := fs.Arg(1)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	if err := s.ConfigSet(key, value); err != nil {
 		fmt.Fprintf(os.Stderr, "config set: %v\n", err)
@@ -48,11 +43,7 @@ func runConfigSet(args []string, defaultDB string) {
 }
 
 func runConfigList(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("config ls", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
-
-	s := openStore(*dbPath)
+	s, _ := parseAndOpen("config ls", args, defaultDB, nil)
 	defer s.Close()
 
 	stored, err := s.ConfigList()
@@ -83,18 +74,14 @@ func runConfigList(args []string, defaultDB string) {
 }
 
 func runConfigGet(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("config get", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("config get", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "usage: ticket config get [--db path] <key>")
 		os.Exit(1)
 	}
 	key := fs.Arg(0)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	// Apply defaults for known keys.
 	defaults := map[string]string{

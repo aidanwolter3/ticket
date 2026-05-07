@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
@@ -10,9 +9,8 @@ import (
 )
 
 func RunTransition(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("transition", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("transition", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 3 {
 		fmt.Fprintln(os.Stderr, "usage: ticket transition [--db path] <id> <status> <author>")
@@ -23,9 +21,6 @@ func RunTransition(args []string, defaultDB string) {
 	id := fs.Arg(0)
 	status := model.Status(fs.Arg(1))
 	author := fs.Arg(2)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	var transErr error
 	if status == model.StatusReady {

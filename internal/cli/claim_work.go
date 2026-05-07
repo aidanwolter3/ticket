@@ -11,12 +11,10 @@ import (
 )
 
 func RunClaimWork(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("claim-work", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	jsonOut := fs.Bool("json", false, "output raw JSON")
-	fs.Parse(args)
-
-	s := openStore(*dbPath)
+	var jsonOut *bool
+	s, _ := parseAndOpen("claim-work", args, defaultDB, func(f *flag.FlagSet) {
+		jsonOut = f.Bool("json", false, "output raw JSON")
+	})
 	defer s.Close()
 
 	item, err := workflow.Claim(s, "agent:claude", os.Stderr, os.Stderr)
@@ -60,12 +58,10 @@ func RunClaimWork(args []string, defaultDB string) {
 }
 
 func RunPeekWork(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("peek-work", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	jsonOut := fs.Bool("json", false, "output raw JSON")
-	fs.Parse(args)
-
-	s := openStore(*dbPath)
+	var jsonOut *bool
+	s, _ := parseAndOpen("peek-work", args, defaultDB, func(f *flag.FlagSet) {
+		jsonOut = f.Bool("json", false, "output raw JSON")
+	})
 	defer s.Close()
 
 	items, err := s.PeekWork()

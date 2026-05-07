@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
@@ -10,9 +9,8 @@ import (
 )
 
 func RunReviewSubmit(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("review-submit", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("review-submit", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 2 {
 		fmt.Fprintln(os.Stderr, "usage: ticket review-submit [--db path] <ticket-id> <author>")
@@ -21,9 +19,6 @@ func RunReviewSubmit(args []string, defaultDB string) {
 	}
 	ticketID := fs.Arg(0)
 	author := fs.Arg(1)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	// Snapshot active threads before the transition so we can report them.
 	threads, err := s.GetThreadsForTicket(ticketID)

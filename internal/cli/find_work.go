@@ -112,12 +112,10 @@ func buildTicketWorkJSON(s *store.Store, item *store.WorkItem) ticketWorkJSON {
 }
 
 func RunFindWork(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("find-work", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	jsonOut := fs.Bool("json", false, "output raw JSON")
-	fs.Parse(args)
-
-	s := openStore(*dbPath)
+	var jsonOut *bool
+	s, _ := parseAndOpen("find-work", args, defaultDB, func(f *flag.FlagSet) {
+		jsonOut = f.Bool("json", false, "output raw JSON")
+	})
 	defer s.Close()
 
 	items, err := s.FindWork()

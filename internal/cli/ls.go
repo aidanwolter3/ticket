@@ -69,13 +69,12 @@ type noteJSON struct {
 }
 
 func RunList(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("ls", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	statusFilter := fs.String("status", "", "filter by status (draft|ready|in_progress|in_review|completed)")
-	jsonOut := fs.Bool("json", false, "output full ticket data as JSON")
-	fs.Parse(args)
-
-	s := openStore(*dbPath)
+	var statusFilter *string
+	var jsonOut *bool
+	s, _ := parseAndOpen("ls", args, defaultDB, func(f *flag.FlagSet) {
+		statusFilter = f.String("status", "", "filter by status (draft|ready|in_progress|in_review|completed)")
+		jsonOut = f.Bool("json", false, "output full ticket data as JSON")
+	})
 	defer s.Close()
 
 	var tickets []*model.Ticket

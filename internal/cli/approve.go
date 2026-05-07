@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -10,9 +9,8 @@ import (
 )
 
 func RunApprove(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("approve", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("approve", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 2 {
 		fmt.Fprintln(os.Stderr, "usage: ticket approve [--db path] <id> <author>")
@@ -26,9 +24,6 @@ func RunApprove(args []string, defaultDB string) {
 		fmt.Fprintf(os.Stderr, "approve: only humans may approve tickets (got %q)\n", author)
 		os.Exit(1)
 	}
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	ticket, err := s.GetTicket(ticketID)
 	if err != nil {

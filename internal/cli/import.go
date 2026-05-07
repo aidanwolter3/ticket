@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -60,9 +59,8 @@ type importResult struct {
 }
 
 func RunImport(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("import", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("import", args, defaultDB, nil)
+	defer s.Close()
 
 	var r io.Reader = os.Stdin
 	if fs.NArg() > 0 {
@@ -85,9 +83,6 @@ func RunImport(args []string, defaultDB string) {
 		fmt.Fprintln(os.Stderr, "no tickets in input")
 		os.Exit(1)
 	}
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	result, err := importTickets(s, input.Tickets)
 	if err != nil {

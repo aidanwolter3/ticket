@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
@@ -9,9 +8,8 @@ import (
 )
 
 func RunRedraft(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("redraft", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("redraft", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 2 {
 		fmt.Fprintln(os.Stderr, "usage: ticket redraft [--db path] <ticket-id> <author>")
@@ -20,9 +18,6 @@ func RunRedraft(args []string, defaultDB string) {
 	}
 	ticketID := fs.Arg(0)
 	author := fs.Arg(1)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	if err := workflow.Redraft(s, ticketID, author, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "redraft: %v\n", err)

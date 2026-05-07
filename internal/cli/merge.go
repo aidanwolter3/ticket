@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -10,9 +9,8 @@ import (
 )
 
 func RunMerge(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("merge", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("merge", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 2 {
 		fmt.Fprintln(os.Stderr, "usage: ticket merge [--db path] <id> <author>")
@@ -26,9 +24,6 @@ func RunMerge(args []string, defaultDB string) {
 		fmt.Fprintf(os.Stderr, "merge: only humans may merge tickets (got %q)\n", author)
 		os.Exit(1)
 	}
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	if err := workflow.Merge(s, ticketID, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

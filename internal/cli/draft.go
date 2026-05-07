@@ -12,14 +12,16 @@ import (
 )
 
 func RunDraft(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("draft", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	title := fs.String("title", "", "ticket title (required)")
-	description := fs.String("description", "", "ticket description (use - to read from stdin)")
-	branch := fs.String("branch", "", "feature branch name")
-	repo := fs.String("repo", "", "repository path (required)")
-	jsonOut := fs.Bool("json", false, "output full ticket JSON instead of just the ID")
-	fs.Parse(args)
+	var title, description, branch, repo *string
+	var jsonOut *bool
+	s, _ := parseAndOpen("draft", args, defaultDB, func(f *flag.FlagSet) {
+		title = f.String("title", "", "ticket title (required)")
+		description = f.String("description", "", "ticket description (use - to read from stdin)")
+		branch = f.String("branch", "", "feature branch name")
+		repo = f.String("repo", "", "repository path (required)")
+		jsonOut = f.Bool("json", false, "output full ticket JSON instead of just the ID")
+	})
+	defer s.Close()
 
 	if *title == "" || *repo == "" {
 		fmt.Fprintln(os.Stderr, "error: --title and --repo are required")
@@ -40,9 +42,6 @@ func RunDraft(args []string, defaultDB string) {
 		}
 		desc = strings.Join(lines, "\n")
 	}
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	t := &model.Ticket{
 		Title:         *title,

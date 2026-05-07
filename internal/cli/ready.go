@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
@@ -9,9 +8,8 @@ import (
 )
 
 func RunReady(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("ready", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("ready", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 2 {
 		fmt.Fprintln(os.Stderr, "usage: ticket ready [--db path] <ticket-id> <author>")
@@ -19,9 +17,6 @@ func RunReady(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 	ticketID := fs.Arg(0)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	if err := workflow.Promote(s, ticketID, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

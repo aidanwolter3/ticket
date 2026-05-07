@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
@@ -27,9 +26,8 @@ func RunThread(args []string, defaultDB string) {
 }
 
 func runThreadReply(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("thread reply", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("thread reply", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 3 {
 		fmt.Fprintln(os.Stderr, "usage: ticket thread reply [--db path] <thread-id> <author> <text>")
@@ -38,9 +36,6 @@ func runThreadReply(args []string, defaultDB string) {
 	threadID := fs.Arg(0)
 	author := fs.Arg(1)
 	text := fs.Arg(2)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	msg, err := s.AddMessage(threadID, author, text)
 	if err != nil {
@@ -51,9 +46,8 @@ func runThreadReply(args []string, defaultDB string) {
 }
 
 func runThreadTransition(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("thread transition", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("thread transition", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 3 {
 		fmt.Fprintln(os.Stderr, "usage: ticket thread transition [--db path] <thread-id> <new-status> <author>")
@@ -63,9 +57,6 @@ func runThreadTransition(args []string, defaultDB string) {
 	threadID := fs.Arg(0)
 	newStatus := model.ThreadStatus(fs.Arg(1))
 	author := fs.Arg(2)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	if err := s.TransitionThread(threadID, newStatus, author); err != nil {
 		fmt.Fprintf(os.Stderr, "thread transition failed: %v\n", err)

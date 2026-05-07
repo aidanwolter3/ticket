@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"os"
 )
@@ -22,9 +21,8 @@ func RunNote(args []string, defaultDB string) {
 }
 
 func runNoteAdd(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("note add", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("note add", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 3 {
 		fmt.Fprintln(os.Stderr, "usage: ticket note add [--db path] <ticket-id> <author> <text>")
@@ -33,9 +31,6 @@ func runNoteAdd(args []string, defaultDB string) {
 	ticketID := fs.Arg(0)
 	author := fs.Arg(1)
 	text := fs.Arg(2)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	note, err := s.AddNote(ticketID, author, text)
 	if err != nil {

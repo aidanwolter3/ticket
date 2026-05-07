@@ -44,20 +44,18 @@ func runTaskAdd(args []string, defaultDB string) {
 	}
 	ticketID := args[0]
 
-	fs := flag.NewFlagSet("task add", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	title := fs.String("title", "", "task title (required)")
-	description := fs.String("description", "", "task description")
-	verifiableResult := fs.String("verifiable-result", "", "verifiable result")
-	fs.Parse(args[1:])
+	var title, description, verifiableResult *string
+	s, _ := parseAndOpen("task add", args[1:], defaultDB, func(f *flag.FlagSet) {
+		title = f.String("title", "", "task title (required)")
+		description = f.String("description", "", "task description")
+		verifiableResult = f.String("verifiable-result", "", "verifiable result")
+	})
+	defer s.Close()
 
 	if *title == "" {
 		fmt.Fprintln(os.Stderr, "error: --title is required")
 		os.Exit(1)
 	}
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	position := 1
 	last, err := s.LastTaskForTicket(ticketID)
@@ -84,19 +82,17 @@ func runTaskAdd(args []string, defaultDB string) {
 }
 
 func runTaskList(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("task ls", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	jsonOut := fs.Bool("json", false, "output tasks as JSON")
-	fs.Parse(args)
+	var jsonOut *bool
+	s, fs := parseAndOpen("task ls", args, defaultDB, func(f *flag.FlagSet) {
+		jsonOut = f.Bool("json", false, "output tasks as JSON")
+	})
+	defer s.Close()
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "usage: ticket task ls [--db path] [--json] <ticket-id>")
 		os.Exit(1)
 	}
 	ticketID := fs.Arg(0)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	tasks, err := s.GetTasksForTicket(ticketID)
 	if err != nil {
@@ -132,18 +128,14 @@ func runTaskList(args []string, defaultDB string) {
 }
 
 func runTaskDelete(args []string, defaultDB string) {
-	fs := flag.NewFlagSet("task delete", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("task delete", args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "usage: ticket task delete [--db path] <task-id>")
 		os.Exit(1)
 	}
 	taskID := fs.Arg(0)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	if err := s.DeleteTask(taskID); err != nil {
 		fmt.Fprintf(os.Stderr, "delete task: %v\n", err)
@@ -157,18 +149,14 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 	if undo {
 		subCmd = "uncomplete"
 	}
-	fs := flag.NewFlagSet("task "+subCmd, flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to SQLite database")
-	fs.Parse(args)
+	s, fs := parseAndOpen("task "+subCmd, args, defaultDB, nil)
+	defer s.Close()
 
 	if fs.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "usage: ticket task %s [--db path] <task-id>\n", subCmd)
 		os.Exit(1)
 	}
 	taskID := fs.Arg(0)
-
-	s := openStore(*dbPath)
-	defer s.Close()
 
 	var err error
 	if undo {
