@@ -146,6 +146,9 @@ func (v *TicketDetailView) renderContent() string {
 	if t.WorktreePath != "" {
 		sb.WriteString(fmt.Sprintf("  Worktree: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(t.WorktreePath)))
 	}
+	if t.RepoPath != "" {
+		sb.WriteString(fmt.Sprintf("  Repo: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(t.RepoPath)))
+	}
 	sb.WriteString("\n")
 
 	wrapWidth := v.width - 2
