@@ -314,7 +314,7 @@ func scanDraftThread(r scanner) (*model.DraftThread, error) {
 	if err := r.Scan(&dt.ID, &dt.TicketID, &dt.TaskID, &createdMs); err != nil {
 		return nil, err
 	}
-	dt.Created = time.UnixMilli(createdMs)
+	dt.Created = fromMs(createdMs)
 	return &dt, nil
 }
 
@@ -328,6 +328,6 @@ func scanDraftMessage(r scanner) (*model.DraftMessage, error) {
 		return nil, err
 	}
 	m.IsRealThread = isReal == 1
-	m.Created = time.UnixMilli(createdMs)
+	m.Created = fromMs(createdMs)
 	return &m, nil
 }

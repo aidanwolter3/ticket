@@ -191,12 +191,9 @@ func scanTask(r scanner) (*model.Task, error) {
 	if t.Round == 0 {
 		t.Round = 1
 	}
-	if completedMs.Valid {
-		ts := time.UnixMilli(completedMs.Int64)
-		t.CompletedAt = &ts
-	}
-	t.Created = time.UnixMilli(createdMs)
-	t.Updated = time.UnixMilli(updatedMs)
+	t.CompletedAt = fromNullMs(completedMs)
+	t.Created = fromMs(createdMs)
+	t.Updated = fromMs(updatedMs)
 	return &t, nil
 }
 

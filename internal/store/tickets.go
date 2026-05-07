@@ -286,8 +286,8 @@ func scanTicket(r scanner) (*model.Ticket, error) {
 	}
 	t.Type = model.TicketType(typeStr)
 	t.Status = model.Status(statusStr)
-	t.Created = time.UnixMilli(createdMs)
-	t.Updated = time.UnixMilli(updatedMs)
+	t.Created = fromMs(createdMs)
+	t.Updated = fromMs(updatedMs)
 	return &t, nil
 }
 

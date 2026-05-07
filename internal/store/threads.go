@@ -165,6 +165,6 @@ func scanThread(r scanner) (*model.Thread, error) {
 		return nil, err
 	}
 	t.Status = model.ThreadStatus(statusStr)
-	t.Created = time.UnixMilli(createdMs)
+	t.Created = fromMs(createdMs)
 	return &t, nil
 }
