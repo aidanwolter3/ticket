@@ -579,6 +579,68 @@ func TestSubmitReview_EmptyDraftOK(t *testing.T) {
 	assert.Equal(t, model.StatusInReview, got.Status)
 }
 
+// newInReviewTicket creates a ticket in in_review status with one task.
+func newInReviewTicket(t *testing.T, s *store.Store) (*model.Ticket, *model.Task) {
+	t.Helper()
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	return ticket, task
+}
+
+// TestSubmitReview_OnlyResolutionsStaysInReview verifies that when all staged
+// draft actions are resolutions (no new needs_attention threads), the ticket
+// stays in_review.
+func TestSubmitReview_OnlyResolutionsStaysInReview(t *testing.T) {
+	s := newTestStore(t)
+	ticket, task := newInReviewTicket(t, s)
+
+	// Open thread exists; stage only a resolution for it.
+	th, err := s.CreateThread(task.ID)
+	require.NoError(t, err)
+	require.NoError(t, s.SetDraftAction(th.ID, ticket.ID, model.DraftActionResolve))
+
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusInReview, got.Status, "resolving comments only must not transition to ready")
+
+	// The resolved thread should be resolved.
+	threads, err := s.GetThreadsForTicket(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, threads, 1)
+	assert.Equal(t, model.ThreadResolved, threads[0].Status)
+}
+
+// TestSubmitReview_NewThreadTransitionsToReady verifies that when at least one
+// staged action creates a needs_attention thread, the ticket transitions to ready.
+func TestSubmitReview_NewThreadTransitionsToReady(t *testing.T) {
+	s := newTestStore(t)
+	ticket, task := newInReviewTicket(t, s)
+
+	// Stage a new draft thread (will become needs_attention on flush).
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID)
+	require.NoError(t, err)
+	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "please rename this")
+	require.NoError(t, err)
+
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusReady, got.Status, "new change request thread must transition ticket to ready")
+
+	threads, err := s.GetThreadsForTicket(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, threads, 1)
+	assert.Equal(t, model.ThreadNeedsAttention, threads[0].Status)
+}
+
 func TestClaim_AmendmentSkipsWorktreeCreation(t *testing.T) {
 	s := newTestStore(t)
 	repoPath := gitRepo(t)
