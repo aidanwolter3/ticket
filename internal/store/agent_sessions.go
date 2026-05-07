@@ -40,6 +40,18 @@ func (s *Store) GetAgentSessionByTicket(ticketID string) (*model.AgentSession, e
 	return scanAgentSession(row)
 }
 
+// GetLatestAgentSessionByTicket returns the most recent session for a ticket
+// regardless of state, for log viewing after the session has ended.
+func (s *Store) GetLatestAgentSessionByTicket(ticketID string) (*model.AgentSession, error) {
+	row := s.db.QueryRow(`
+		SELECT id, ticket_id, pid, started_at, state, log_path
+		FROM agent_sessions
+		WHERE ticket_id = ?
+		ORDER BY started_at DESC
+		LIMIT 1`, ticketID)
+	return scanAgentSession(row)
+}
+
 func (s *Store) UpdateAgentSessionState(id string, state model.AgentState) error {
 	_, err := s.db.Exec(`UPDATE agent_sessions SET state = ? WHERE id = ?`, string(state), id)
 	return err
@@ -50,6 +62,12 @@ func (s *Store) TerminateAllAgentSessions() error {
 	_, err := s.db.Exec(`
 		UPDATE agent_sessions SET state = 'terminated'
 		WHERE state IN ('running', 'waiting')`)
+	return err
+}
+
+// DeleteAgentSessionsByTicket removes all agent sessions for the given ticket.
+func (s *Store) DeleteAgentSessionsByTicket(ticketID string) error {
+	_, err := s.db.Exec(`DELETE FROM agent_sessions WHERE ticket_id = ?`, ticketID)
 	return err
 }
 

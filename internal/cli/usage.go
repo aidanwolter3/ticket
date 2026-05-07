@@ -48,6 +48,7 @@ Usage:
   ticket config ls  [--db path]               list all config settings with defaults
   ticket delete [--db path] <id>              delete a ticket
   ticket purge [--db path] --yes              delete the database file
+  ticket agent clear [--db path] <ticket-id>  remove all agent sessions for a ticket
 
 `)
 }

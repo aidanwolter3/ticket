@@ -19,25 +19,90 @@ import (
 // transitions to "waiting". Exposed as a package-level var so tests can shorten it.
 var SilenceTimeout = 5 * time.Second
 
+// PTYCols and PTYRows are the fixed PTY dimensions used when launching agents.
+// The attach view creates a vt10x terminal with these exact same dimensions so
+// cursor-positioning sequences are interpreted correctly.
+const PTYCols = 220
+const PTYRows = 50
+
 // Launcher manages agent sessions for a store.
 type Launcher struct {
-	store *store.Store
-	mu    sync.Mutex
-	ptys  map[string]*os.File // sessionID → PTY master fd
+	store     *store.Store
+	mu        sync.Mutex
+	ptys      map[string]*os.File        // sessionID → PTY master fd
+	followers map[string][]chan []byte    // sessionID → live-output subscribers
 }
 
 func NewLauncher(s *store.Store) *Launcher {
 	return &Launcher{
-		store: s,
-		ptys:  make(map[string]*os.File),
+		store:     s,
+		ptys:      make(map[string]*os.File),
+		followers: make(map[string][]chan []byte),
 	}
 }
 
-// PTYMaster returns the PTY master file for the given session (for attach).
+// PTYMaster returns the PTY master file for the given session (for stdin forwarding).
 func (l *Launcher) PTYMaster(sessionID string) *os.File {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.ptys[sessionID]
+}
+
+// Subscribe registers a channel that receives live PTY output for sessionID.
+// The returned cancel func must be called to unsubscribe; the channel is closed
+// when the session ends. If the session is no longer active (already terminated),
+// a pre-closed channel is returned so callers fall through to log-only view.
+func (l *Launcher) Subscribe(sessionID string) (<-chan []byte, func()) {
+	l.mu.Lock()
+	if _, active := l.ptys[sessionID]; !active {
+		// Session already gone — return a closed channel; no unsub needed.
+		l.mu.Unlock()
+		ch := make(chan []byte)
+		close(ch)
+		return ch, func() {}
+	}
+
+	ch := make(chan []byte, 64)
+	l.followers[sessionID] = append(l.followers[sessionID], ch)
+	l.mu.Unlock()
+
+	cancel := func() {
+		l.mu.Lock()
+		followers := l.followers[sessionID]
+		for i, c := range followers {
+			if c == ch {
+				l.followers[sessionID] = append(followers[:i], followers[i+1:]...)
+				break
+			}
+		}
+		l.mu.Unlock()
+		close(ch) // unblock any goroutine waiting on this channel
+	}
+	return ch, cancel
+}
+
+// broadcast sends a copy of data to all live subscribers of sessionID.
+// Must NOT be called with l.mu held.
+func (l *Launcher) broadcast(sessionID string, data []byte) {
+	l.mu.Lock()
+	followers := l.followers[sessionID]
+	l.mu.Unlock()
+
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	for _, ch := range followers {
+		broadcastSend(ch, cp)
+	}
+}
+
+// broadcastSend sends data to ch without blocking. If ch was concurrently closed
+// (e.g. by Subscribe's cancel func), the recovered panic is silently discarded.
+func broadcastSend(ch chan []byte, data []byte) {
+	defer func() { recover() }()
+	select {
+	case ch <- data:
+	default:
+	}
 }
 
 // Launch forks args under a PTY, streams output to {worktreePath}/.agent/output.log,
@@ -60,15 +125,15 @@ func (l *Launcher) Launch(ticketID, worktreePath string, args []string) (*model.
 	}
 	logPath := filepath.Join(logDir, "output.log")
 
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("open agent log: %w", err)
 	}
 
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), "TICKET_AGENT_PROMPT="+workSkill)
 
-	ptym, err := pty.Start(cmd)
+	ptym, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: PTYRows, Cols: PTYCols})
 	if err != nil {
 		logFile.Close()
 		return nil, fmt.Errorf("start agent pty: %w", err)
@@ -91,13 +156,18 @@ func (l *Launcher) Launch(ticketID, worktreePath string, args []string) (*model.
 	return sess, nil
 }
 
-// runAgent reads PTY output, writes to logFile, drives state transitions,
-// and cleans up when the process exits.
+// runAgent reads PTY output, writes to logFile, broadcasts to subscribers,
+// drives state transitions, and cleans up when the process exits.
 func (l *Launcher) runAgent(sessionID string, cmd *exec.Cmd, ptym *os.File, logFile *os.File) {
 	defer func() {
 		logFile.Close()
 		l.mu.Lock()
 		delete(l.ptys, sessionID)
+		// Close all subscriber channels so attached viewers know the session ended.
+		for _, ch := range l.followers[sessionID] {
+			close(ch)
+		}
+		delete(l.followers, sessionID)
 		l.mu.Unlock()
 	}()
 
@@ -135,12 +205,13 @@ func (l *Launcher) runAgent(sessionID string, cmd *exec.Cmd, ptym *os.File, logF
 		}
 	}()
 
-	// Read PTY output and write to log.
+	// Read PTY output, write to log, and broadcast to any attached viewers.
 	buf := make([]byte, 4096)
 	for {
 		n, err := ptym.Read(buf)
 		if n > 0 {
 			logFile.Write(buf[:n])
+			l.broadcast(sessionID, buf[:n])
 			select {
 			case gotOutput <- struct{}{}:
 			default:

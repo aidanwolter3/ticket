@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -67,32 +66,40 @@ func pollState(t *testing.T, s *store.Store, ticketID string, want model.AgentSt
 	return sess.State
 }
 
-// TestBuildPrompt verifies that BuildPrompt substitutes the embedded skill
-// content correctly for various command template forms.
+// TestBuildPrompt verifies that BuildPrompt produces a bash -c invocation with a
+// $TICKET_AGENT_PROMPT reference, and returns errors for invalid templates so
+// that an empty prompt is never silently sent to the agent.
 func TestBuildPrompt(t *testing.T) {
-	cases := []struct {
-		name      string
-		template  string
-		wantLen   int
-		promptIdx int
-	}{
-		{"bare placeholder", "claude -p {}", 3, 2},
-		{"double-quoted placeholder", `claude -p "{}"`, 3, 2},
-		{"single-quoted placeholder", "claude -p '{}'", 3, 2},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			args, err := BuildPrompt(tc.template)
-			require.NoError(t, err)
-			require.Len(t, args, tc.wantLen)
-			assert.Equal(t, "claude", args[0])
-			assert.Equal(t, "-p", args[1])
-			prompt := args[tc.promptIdx]
-			assert.NotEmpty(t, prompt, "substituted prompt must not be empty")
-			assert.Contains(t, prompt, "claim-work", "prompt should contain work skill content")
-			assert.False(t, strings.HasPrefix(prompt, "---"), "prompt must not start with YAML frontmatter")
-		})
-	}
+	t.Run("success cases", func(t *testing.T) {
+		cases := []struct {
+			name      string
+			template  string
+			wantShell string // expected shell command (args[2])
+		}{
+			{"bare placeholder", "claude -p {}", `claude -p "$TICKET_AGENT_PROMPT"`},
+			{"double-quoted placeholder", `claude -p "{}"`, `claude -p "$TICKET_AGENT_PROMPT"`},
+			{"single-quoted placeholder", "claude -p '{}'", `claude -p "$TICKET_AGENT_PROMPT"`},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				args, err := BuildPrompt(tc.template)
+				require.NoError(t, err)
+				// BuildPrompt wraps the command in bash -c so the shell handles quoting.
+				require.Len(t, args, 3)
+				assert.Equal(t, "/bin/bash", args[0])
+				assert.Equal(t, "-c", args[1])
+				assert.Equal(t, tc.wantShell, args[2], "shell command should reference env var")
+			})
+		}
+	})
+
+	t.Run("error: missing placeholder", func(t *testing.T) {
+		// If {} is absent, BuildPrompt must return an error so the caller never
+		// dispatches claude without a prompt (which would produce "empty message").
+		_, err := BuildPrompt("claude -p somestaticprompt")
+		require.Error(t, err, "expected error when placeholder is missing")
+		assert.Contains(t, err.Error(), "no '{}' placeholder")
+	})
 }
 
 // TestLaunchStateTransitions verifies:
