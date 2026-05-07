@@ -98,6 +98,16 @@ func (s *Store) SetWorktreePath(ticketID, worktreePath, repoPath, featureBranch 
 	return err
 }
 
+// ClearWorktree clears worktree_path and feature_branch while preserving repo_path.
+func (s *Store) ClearWorktree(ticketID string) error {
+	now := time.Now().UnixMilli()
+	_, err := s.db.Exec(`
+		UPDATE tickets SET worktree_path=NULL, feature_branch='', updated=?
+		WHERE id=?`,
+		now, ticketID)
+	return err
+}
+
 func (s *Store) DeleteTicket(id string) error {
 	tx, err := s.db.Begin()
 	if err != nil {

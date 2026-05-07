@@ -231,7 +231,7 @@ func Redraft(s *store.Store, ticketID string, author string, stdout, stderr io.W
 			}
 		}
 
-		if err := s.SetWorktreePath(ticketID, "", "", ""); err != nil {
+		if err := s.ClearWorktree(ticketID); err != nil {
 			return fmt.Errorf("redraft: clear worktree_path: %w", err)
 		}
 	}
