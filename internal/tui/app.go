@@ -8,72 +8,20 @@ import (
 	"time"
 
 	"github.com/aidanwolter/ticket/internal/agent"
+	"github.com/aidanwolter/ticket/internal/bubbleterm/emulator"
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/views"
 	"github.com/aidanwolter/ticket/internal/workflow"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/hinshun/vt10x"
 )
 
-// attachTermCols/Rows must match agent.PTYCols/PTYRows exactly so that cursor-
-// positioning sequences from the PTY are interpreted at the correct coordinates.
-const attachTermCols = agent.PTYCols
-const attachTermRows = agent.PTYRows
-
-// renderTermViewport returns exactly avail lines from the terminal.
-//
-// Claude Code (Ink-based) does not clear lines below the new render area when
-// the UI shrinks, leaving stale content in those rows. We detect this by
-// scanning from cursor+footerRows downward for the first blank row: that blank
-// row marks the end of active content. Everything from there down is excluded
-// from the viewport, preventing stale/duplicate UI elements from being shown.
-func renderTermViewport(term vt10x.Terminal, avail int) []string {
-	if avail < 1 {
-		avail = 1
-	}
-	cursorRow := term.Cursor().Y
-	raw := strings.Split(term.String(), "\n")
-
-	// Claude Code's footer sits ~4 rows below the cursor (separator, status).
-	// Start scanning for a blank gap just past that.
-	const footerRows = 4
-	maxRow := len(raw) - 1
-	for i := cursorRow + footerRows; i < len(raw); i++ {
-		if strings.TrimSpace(raw[i]) == "" {
-			maxRow = i - 1 // stop before the blank gap
-			break
-		}
-	}
-
-	// Viewport: show avail rows ending at maxRow, cursor near the bottom.
-	startRow := maxRow - avail + 1
-	if startRow < 0 {
-		startRow = 0
-	}
-
-	result := make([]string, avail)
-	for i := 0; i < avail; i++ {
-		row := startRow + i
-		if row <= maxRow && row < len(raw) {
-			result[i] = strings.TrimRight(raw[row], " ")
-		}
-	}
-	return result
-}
-
-// agentChunkMsg carries a broadcast chunk from the attach channel.
-type agentChunkMsg struct{ data []byte }
+// agentChunkMsg carries rendered lines from the emulator broadcast channel.
+type agentChunkMsg struct{ lines []string }
 
 // agentDoneMsg is sent when the attach channel closes (session ended).
 type agentDoneMsg struct{}
-
-// agentRenderMsg is a debounced snapshot trigger. Each agentChunkMsg schedules
-// one 30 ms after the chunk; only the most-recent seq fires a real snapshot.
-// This ensures a multi-read PTY redraw (e.g. Ink clearing and redrawing the full
-// screen across several 4096-byte reads) is always captured in its final state.
-type agentRenderMsg struct{ seq int }
 
 type appTab int
 
@@ -130,14 +78,12 @@ type App struct {
 	editDraftModal  *views.EditDraftModal
 
 	// agent attach overlay
-	attachFollow     <-chan []byte
-	attachUnsub      func()
-	attachTerm       vt10x.Terminal // virtual screen fed from PTY output
-	attachLines      []string       // rendered snapshot of attachTerm
-	attachTicketID   string
-	attachSessionID  string
-	attachEnded      bool // true once the session's channel closed
-	attachRenderSeq  int  // incremented on each chunk; debounces render ticks
+	attachFollow    <-chan []string
+	attachUnsub     func()
+	attachLines     []string // latest rendered lines from the emulator
+	attachTicketID  string
+	attachSessionID string
+	attachEnded     bool // true once the session's channel closed
 }
 
 func New(s *store.Store) *App {
@@ -285,18 +231,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// waitAgentChunk returns a Cmd that blocks until the next broadcast chunk arrives.
+// waitAgentChunk returns a Cmd that blocks until the next broadcast frame arrives.
 func (a *App) waitAgentChunk() tea.Cmd {
 	ch := a.attachFollow
 	if ch == nil {
 		return nil
 	}
 	return func() tea.Msg {
-		data, ok := <-ch
+		lines, ok := <-ch
 		if !ok {
 			return agentDoneMsg{}
 		}
-		return agentChunkMsg{data: data}
+		return agentChunkMsg{lines: lines}
 	}
 }
 
@@ -898,30 +844,38 @@ func (a *App) renderHelp() string {
 	return sb.String()
 }
 
-// enterAttachView subscribes to the session's broadcast channel, loads the log
-// as initial content, and transitions to the agent-attach overlay screen.
+// enterAttachView subscribes to the session's broadcast channel, renders the log
+// for initial content via the bubbleterm emulator, and transitions to the
+// agent-attach overlay screen.
 func (a *App) enterAttachView(sess *model.AgentSession) tea.Cmd {
 	follow, unsub := a.launcher.Subscribe(sess.ID)
 
-	term := vt10x.New(vt10x.WithSize(attachTermCols, attachTermRows))
-	if data, err := os.ReadFile(sess.LogPath); err == nil && len(data) > 0 {
-		term.Write(data)
+	// Render log history via a one-shot emulator for correct VT interpretation.
+	var initialLines []string
+	if em, err := emulator.New(agent.PTYCols, agent.PTYRows); err == nil {
+		if logData, err := os.ReadFile(sess.LogPath); err == nil && len(logData) > 0 {
+			em.FeedBytes(logData)
+			frame := em.GetScreen()
+			initialLines = frame.Rows
+		}
+		em.Close()
 	}
 
-	a.attachFollow = follow
-	a.attachUnsub = unsub
-	a.attachTerm = term
 	avail := a.bodyHeight() - 2
 	if avail < 1 {
 		avail = 1
 	}
-	a.attachLines = renderTermViewport(term, avail)
+	if len(initialLines) > avail {
+		initialLines = initialLines[len(initialLines)-avail:]
+	}
+
+	a.attachFollow = follow
+	a.attachUnsub = unsub
+	a.attachLines = initialLines
 	a.attachTicketID = sess.TicketID
 	a.attachSessionID = sess.ID
 	a.attachEnded = false
-	a.attachRenderSeq = 0
 	a.screen = screenAgentAttach
-	// waitAgentChunk is the only driver; each chunk schedules its own render tick.
 	return a.waitAgentChunk()
 }
 
@@ -938,42 +892,14 @@ func (a *App) updateAgentAttach(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		// Forward all other keys to the agent PTY.
-		if ptym := a.launcher.PTYMaster(a.attachSessionID); ptym != nil {
-			ptym.Write(keyMsgBytes(msg))
-		}
+		a.launcher.WriteToAgent(a.attachSessionID, keyMsgBytes(msg)) //nolint:errcheck
 	case agentChunkMsg:
-		if a.attachTerm != nil {
-			a.attachTerm.Write(msg.data)
-		}
-		// Schedule a snapshot 30 ms after this chunk. If more chunks arrive
-		// before the timer fires, this seq is replaced and the old tick is
-		// ignored — ensuring we always snapshot after the last chunk in a burst.
-		a.attachRenderSeq++
-		seq := a.attachRenderSeq
-		renderCmd := tea.Tick(30*time.Millisecond, func(time.Time) tea.Msg {
-			return agentRenderMsg{seq: seq}
-		})
-		return a, tea.Batch(a.waitAgentChunk(), renderCmd)
-	case agentRenderMsg:
-		if msg.seq != a.attachRenderSeq {
-			return a, nil // stale tick from an earlier chunk burst — ignore
-		}
-		if a.attachTerm != nil {
-			avail := a.bodyHeight() - 2
-			if avail < 1 {
-				avail = 1
-			}
-			a.attachLines = renderTermViewport(a.attachTerm, avail)
-		}
+		// The emulator broadcasts pre-rendered line slices — assign directly.
+		a.attachLines = msg.lines
+		return a, a.waitAgentChunk()
 	case agentDoneMsg:
 		a.attachEnded = true
-		if a.attachTerm != nil {
-			avail := a.bodyHeight() - 2
-			if avail < 1 {
-				avail = 1
-			}
-			a.attachLines = renderTermViewport(a.attachTerm, avail)
-		}
+		_ = msg
 	}
 	return a, nil
 }
