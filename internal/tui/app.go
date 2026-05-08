@@ -572,10 +572,23 @@ func (a *App) updateConfirmDispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 
-			if t.WorktreePath == "" && t.RepoPath != "" && t.FeatureBranch != "" {
+			if t.WorktreePath == "" && t.RepoPath != "" {
+				featureBranch := t.FeatureBranch
+				if featureBranch == "" {
+					featureBranch = "feat/" + strings.ToLower(id)
+				}
 				worktreeAbs := filepath.Join(t.RepoPath, ".worktrees", id)
+				checkBranch := exec.Command("git", "-C", t.RepoPath, "rev-parse", "--verify", featureBranch)
+				checkBranch.Stdout = io.Discard
+				checkBranch.Stderr = io.Discard
+				branchExists := checkBranch.Run() == nil
+				var wtCmd *exec.Cmd
+				if branchExists {
+					wtCmd = exec.Command("git", "-C", t.RepoPath, "worktree", "add", worktreeAbs, featureBranch)
+				} else {
+					wtCmd = exec.Command("git", "-C", t.RepoPath, "worktree", "add", "-b", featureBranch, worktreeAbs)
+				}
 				var wtStderr bytes.Buffer
-				wtCmd := exec.Command("git", "-C", t.RepoPath, "worktree", "add", worktreeAbs, t.FeatureBranch)
 				wtCmd.Stderr = &wtStderr
 				if wtErr := wtCmd.Run(); wtErr != nil {
 					msg := strings.TrimSpace(wtStderr.String())
@@ -585,7 +598,7 @@ func (a *App) updateConfirmDispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.setErr(fmt.Errorf("create worktree: %s", msg))
 					return a, nil
 				}
-				if saveErr := a.store.SetWorktreePath(id, worktreeAbs, t.RepoPath, t.FeatureBranch); saveErr != nil {
+				if saveErr := a.store.SetWorktreePath(id, worktreeAbs, t.RepoPath, featureBranch); saveErr != nil {
 					exec.Command("git", "-C", t.RepoPath, "worktree", "remove", "--force", worktreeAbs).Run() //nolint:errcheck
 					a.setErr(fmt.Errorf("save worktree_path: %w", saveErr))
 					return a, nil
