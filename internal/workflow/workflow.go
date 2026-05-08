@@ -30,10 +30,23 @@ func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, 
 	if autoDispatch == "true" && cmdTemplate != "" {
 		existing, _ := s.GetAgentSessionByTicket(ticketID)
 		if existing == nil {
-			if ticket.WorktreePath == "" && ticket.RepoPath != "" && ticket.FeatureBranch != "" {
+			if ticket.WorktreePath == "" && ticket.RepoPath != "" {
+				featureBranch := ticket.FeatureBranch
+				if featureBranch == "" {
+					featureBranch = "feat/" + strings.ToLower(ticketID)
+				}
 				worktreeAbs := filepath.Join(ticket.RepoPath, ".worktrees", ticketID)
+				checkBranch := exec.Command("git", "-C", ticket.RepoPath, "rev-parse", "--verify", featureBranch)
+				checkBranch.Stdout = io.Discard
+				checkBranch.Stderr = io.Discard
+				branchExists := checkBranch.Run() == nil
+				var wtCmd *exec.Cmd
+				if branchExists {
+					wtCmd = exec.Command("git", "-C", ticket.RepoPath, "worktree", "add", worktreeAbs, featureBranch)
+				} else {
+					wtCmd = exec.Command("git", "-C", ticket.RepoPath, "worktree", "add", "-b", featureBranch, worktreeAbs)
+				}
 				var wtStderr bytes.Buffer
-				wtCmd := exec.Command("git", "-C", ticket.RepoPath, "worktree", "add", worktreeAbs, ticket.FeatureBranch)
 				wtCmd.Stdout = stdout
 				wtCmd.Stderr = io.MultiWriter(stderr, &wtStderr)
 				if err := wtCmd.Run(); err != nil {
@@ -44,7 +57,7 @@ func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, 
 					fmt.Fprintf(stderr, "auto-dispatch: worktree creation failed: %s\n", msg)
 					return nil
 				}
-				if err := s.SetWorktreePath(ticketID, worktreeAbs, ticket.RepoPath, ticket.FeatureBranch); err != nil {
+				if err := s.SetWorktreePath(ticketID, worktreeAbs, ticket.RepoPath, featureBranch); err != nil {
 					fmt.Fprintf(stderr, "auto-dispatch: save worktree_path: %v\n", err)
 					exec.Command("git", "-C", ticket.RepoPath, "worktree", "remove", "--force", worktreeAbs).Run() //nolint:errcheck
 					return nil
