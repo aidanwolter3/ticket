@@ -203,18 +203,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
-	case agentChunkMsg:
-		if a.agentTermView != nil {
-			a.agentTermView.SetLines(msg.lines)
-			a.agentTermView.SetState(true, false)
-		}
-		return a, a.waitAgentChunk()
-
-	case agentDoneMsg:
-		if a.agentTermView != nil {
-			a.agentTermView.SetState(false, false)
-		}
-
 	case tea.KeyMsg:
 		// Global shortcuts (only when not in a modal/form)
 		if a.screen == screenList || a.screen == screenThreads {
@@ -233,16 +221,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if a.screen == screenList {
 					return a, tea.Quit
 				}
-			}
-		}
-		// Forward keys to the agent PTY when agent pane is active.
-		if a.screen == screenList && a.rightPaneMode == "agent" {
-			switch msg.String() {
-			case "ctrl+]", "?", "q", "ctrl+c":
-				// These are handled by the list/global handlers — don't forward.
-			default:
-				a.launcher.WriteToAgent(a.attachSessionID, keyMsgBytes(msg)) //nolint:errcheck
-				return a, nil
 			}
 		}
 	}
@@ -288,7 +266,32 @@ func (a *App) waitAgentChunk() tea.Cmd {
 // --- List screen (split-pane) ---
 
 func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case agentChunkMsg:
+		if a.agentTermView != nil {
+			a.agentTermView.SetLines(msg.lines)
+			a.agentTermView.SetState(true, false)
+		}
+		return a, a.waitAgentChunk()
+
+	case agentDoneMsg:
+		if a.agentTermView != nil {
+			a.agentTermView.SetState(false, false)
+		}
+		return a, nil
+	}
+
 	if km, ok := msg.(tea.KeyMsg); ok {
+		// Forward keys to the agent PTY when agent pane is active.
+		if a.rightPaneMode == "agent" {
+			switch km.String() {
+			case "ctrl+]", "?", "q", "ctrl+c":
+				// handled by global/list handlers — don't forward
+			default:
+				a.launcher.WriteToAgent(a.attachSessionID, keyMsgBytes(km)) //nolint:errcheck
+				return a, nil
+			}
+		}
 		// Detail-panel hotkeys — act on the currently highlighted ticket
 		switch km.String() {
 		case "t":
