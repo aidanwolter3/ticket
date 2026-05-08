@@ -30,6 +30,27 @@ func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, 
 	if autoDispatch == "true" && cmdTemplate != "" {
 		existing, _ := s.GetAgentSessionByTicket(ticketID)
 		if existing == nil {
+			if ticket.WorktreePath == "" && ticket.RepoPath != "" && ticket.FeatureBranch != "" {
+				worktreeAbs := filepath.Join(ticket.RepoPath, ".worktrees", ticketID)
+				var wtStderr bytes.Buffer
+				wtCmd := exec.Command("git", "-C", ticket.RepoPath, "worktree", "add", worktreeAbs, ticket.FeatureBranch)
+				wtCmd.Stdout = stdout
+				wtCmd.Stderr = io.MultiWriter(stderr, &wtStderr)
+				if err := wtCmd.Run(); err != nil {
+					msg := strings.TrimSpace(wtStderr.String())
+					if msg == "" {
+						msg = err.Error()
+					}
+					fmt.Fprintf(stderr, "auto-dispatch: worktree creation failed: %s\n", msg)
+					return nil
+				}
+				if err := s.SetWorktreePath(ticketID, worktreeAbs, ticket.RepoPath, ticket.FeatureBranch); err != nil {
+					fmt.Fprintf(stderr, "auto-dispatch: save worktree_path: %v\n", err)
+					exec.Command("git", "-C", ticket.RepoPath, "worktree", "remove", "--force", worktreeAbs).Run() //nolint:errcheck
+					return nil
+				}
+				ticket.WorktreePath = worktreeAbs
+			}
 			prompt, err := agent.BuildPrompt(cmdTemplate)
 			if err != nil {
 				fmt.Fprintf(stderr, "auto-dispatch: build prompt: %v\n", err)

@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -554,6 +557,27 @@ func (a *App) updateConfirmDispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if err != nil {
 				a.setErr(fmt.Errorf("agent: build prompt: %w", err))
 				return a, nil
+			}
+
+			if t.WorktreePath == "" && t.RepoPath != "" && t.FeatureBranch != "" {
+				worktreeAbs := filepath.Join(t.RepoPath, ".worktrees", id)
+				var wtStderr bytes.Buffer
+				wtCmd := exec.Command("git", "-C", t.RepoPath, "worktree", "add", worktreeAbs, t.FeatureBranch)
+				wtCmd.Stderr = &wtStderr
+				if wtErr := wtCmd.Run(); wtErr != nil {
+					msg := strings.TrimSpace(wtStderr.String())
+					if msg == "" {
+						msg = wtErr.Error()
+					}
+					a.setErr(fmt.Errorf("create worktree: %s", msg))
+					return a, nil
+				}
+				if saveErr := a.store.SetWorktreePath(id, worktreeAbs, t.RepoPath, t.FeatureBranch); saveErr != nil {
+					exec.Command("git", "-C", t.RepoPath, "worktree", "remove", "--force", worktreeAbs).Run() //nolint:errcheck
+					a.setErr(fmt.Errorf("save worktree_path: %w", saveErr))
+					return a, nil
+				}
+				t.WorktreePath = worktreeAbs
 			}
 
 			_, err = a.launcher.Launch(id, t.WorktreePath, prompt)
