@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aidanwolter/ticket/internal/cli"
 	"github.com/aidanwolter/ticket/internal/store"
@@ -18,7 +19,9 @@ func main() {
 	defaultDB := filepath.Join(home, ".local", "share", "ticket", "tickets.db")
 	defaultLog := filepath.Join(home, ".local", "share", "ticket", "ticket.log")
 
-	if len(os.Args) >= 2 {
+	// If the first argument looks like a flag (starts with -), skip subcommand
+	// dispatch and fall through to TUI with flag parsing.
+	if len(os.Args) >= 2 && !strings.HasPrefix(os.Args[1], "-") {
 		switch os.Args[1] {
 		case "draft":
 			cli.RunDraft(os.Args[2:], defaultDB)

@@ -861,16 +861,10 @@ func (a *App) enterAttachView(sess *model.AgentSession) tea.Cmd {
 		em.Close()
 	}
 
-	avail := a.bodyHeight() - 2
-	if avail < 1 {
-		avail = 1
-	}
-	if len(initialLines) > avail {
-		initialLines = initialLines[len(initialLines)-avail:]
-	}
-
 	a.attachFollow = follow
 	a.attachUnsub = unsub
+	// The emulator renders a full PTYRows-tall screen; View() shows the first
+	// avail rows so content at the top is visible. No trimming here.
 	a.attachLines = initialLines
 	a.attachTicketID = sess.TicketID
 	a.attachSessionID = sess.ID
