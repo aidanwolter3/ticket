@@ -275,8 +275,8 @@ func TestWorktreeLifecycle(t *testing.T) {
 	require.NoError(t, s.AddBlocker(dependent.ID, blocker.ID))
 
 	// --- promote: no worktrees should be created ---
-	require.NoError(t, Promote(s, blocker.ID, io.Discard, io.Discard))
-	require.NoError(t, Promote(s, dependent.ID, io.Discard, io.Discard))
+	require.NoError(t, Promote(s, blocker.ID, nil, io.Discard, io.Discard))
+	require.NoError(t, Promote(s, dependent.ID, nil, io.Discard, io.Discard))
 
 	b, err := s.GetTicket(blocker.ID)
 	require.NoError(t, err)
@@ -370,7 +370,7 @@ func TestReviewCycleLifecycle(t *testing.T) {
 		RepoPath: repoPath,
 	}
 	require.NoError(t, s.CreateTicket(ticket))
-	require.NoError(t, Promote(s, ticket.ID, io.Discard, io.Discard))
+	require.NoError(t, Promote(s, ticket.ID, nil, io.Discard, io.Discard))
 
 	item, err := Claim(s, "agent:test", io.Discard, io.Discard)
 	require.NoError(t, err)

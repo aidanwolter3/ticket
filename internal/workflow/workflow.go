@@ -16,8 +16,10 @@ import (
 )
 
 // Promote transitions a draft ticket to ready. If agent.auto_dispatch is true
-// and agent.command is set, an agent is launched automatically.
-func Promote(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
+// and agent.command is set, an agent is launched automatically using launcher.
+// If launcher is nil, a new one is created (suitable for CLI use where no TUI
+// attach is expected).
+func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, stderr io.Writer) error {
 	ticket, err := s.PromoteTicket(ticketID, "human")
 	if err != nil {
 		return fmt.Errorf("promote: %w", err)
@@ -32,7 +34,9 @@ func Promote(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 			if err != nil {
 				fmt.Fprintf(stderr, "auto-dispatch: build prompt: %v\n", err)
 			} else {
-				launcher := agent.NewLauncher(s)
+				if launcher == nil {
+					launcher = agent.NewLauncher(s)
+				}
 				if _, launchErr := launcher.Launch(ticketID, ticket.WorktreePath, prompt); launchErr != nil {
 					fmt.Fprintf(stderr, "auto-dispatch: launch failed: %v\n", launchErr)
 				} else {

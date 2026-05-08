@@ -301,7 +301,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == "draft" {
 				id := a.currentTicketID()
-				if err := workflow.Promote(a.store, id, io.Discard, io.Discard); err != nil {
+				if err := workflow.Promote(a.store, id, a.launcher, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready", id)
