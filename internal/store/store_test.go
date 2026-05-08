@@ -281,12 +281,12 @@ func TestAmendmentWorkIncludesOpenTasks(t *testing.T) {
 	// A ready ticket with a feature branch and an incomplete task but no
 	// needs_attention threads should appear in the amendment work queue.
 	ticket := &model.Ticket{
-		Title:         "Needs more work",
-		Type:          model.TypeTicket,
-		Status:        model.StatusReady,
-		FeatureBranch: "feat/t-000",
+		Title:  "Needs more work",
+		Type:   model.TypeTicket,
+		Status: model.StatusReady,
 	}
 	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.SetWorktreePath(ticket.ID, "", "", "feat/t-000"))
 
 	task := &model.Task{TicketID: ticket.ID, Title: "Open task", Position: 1}
 	require.NoError(t, s.CreateTask(task))
@@ -668,6 +668,18 @@ func ticketIDs(tickets []*model.Ticket) []string {
 		ids[i] = t.ID
 	}
 	return ids
+}
+
+func TestCreateTicket_RejectsFeatureBranch(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{
+		Title:         "should fail",
+		Type:          model.TypeTicket,
+		Status:        model.StatusDraft,
+		FeatureBranch: "feat/t-001",
+	}
+	err := s.CreateTicket(ticket)
+	require.Error(t, err, "CreateTicket with non-empty FeatureBranch must return an error")
 }
 
 func workItemIDs(items []*WorkItem) []string {

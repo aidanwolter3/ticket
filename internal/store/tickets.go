@@ -25,6 +25,9 @@ func (s *Store) nextTicketID() (string, error) {
 }
 
 func (s *Store) CreateTicket(t *model.Ticket) error {
+	if t.FeatureBranch != "" {
+		return fmt.Errorf("feature_branch must not be set on ticket creation; it is assigned by the claim workflow")
+	}
 	id, err := s.nextTicketID()
 	if err != nil {
 		return fmt.Errorf("generate id: %w", err)

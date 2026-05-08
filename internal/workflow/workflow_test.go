@@ -55,12 +55,10 @@ func gitRepo(t *testing.T) string {
 func approvedTicket(t *testing.T, s *store.Store, repoPath, featureBranch, worktreePath string) *model.Ticket {
 	t.Helper()
 	ticket := &model.Ticket{
-		Title:         "test",
-		Type:          model.TypeTicket,
-		Status:        model.StatusDraft,
-		RepoPath:      repoPath,
-		FeatureBranch: featureBranch,
-		WorktreePath:  worktreePath,
+		Title:    "test",
+		Type:     model.TypeTicket,
+		Status:   model.StatusDraft,
+		RepoPath: repoPath,
 	}
 	require.NoError(t, s.CreateTicket(ticket))
 	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreePath, repoPath, featureBranch))
@@ -749,12 +747,10 @@ func TestRedraft_KillsAgentSession(t *testing.T) {
 
 	s := newTestStore(t)
 	ticket := &model.Ticket{
-		Title:         "agent session cleanup test",
-		Type:          model.TypeTicket,
-		Status:        model.StatusDraft,
-		RepoPath:      repoPath,
-		FeatureBranch: "feat/t-999",
-		WorktreePath:  worktreePath,
+		Title:    "agent session cleanup test",
+		Type:     model.TypeTicket,
+		Status:   model.StatusDraft,
+		RepoPath: repoPath,
 	}
 	require.NoError(t, s.CreateTicket(ticket))
 	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreePath, repoPath, "feat/t-999"))
@@ -819,11 +815,10 @@ func TestPromote_CreatesWorktreeForMissingPath(t *testing.T) {
 
 	s := newTestStore(t)
 	ticket := &model.Ticket{
-		Title:         "worktree creation test",
-		Type:          model.TypeTicket,
-		Status:        model.StatusDraft,
-		RepoPath:      repoPath,
-		FeatureBranch: "feat/t-999",
+		Title:    "worktree creation test",
+		Type:     model.TypeTicket,
+		Status:   model.StatusDraft,
+		RepoPath: repoPath,
 	}
 	require.NoError(t, s.CreateTicket(ticket))
 	require.NoError(t, s.SetWorktreePath(ticket.ID, "", repoPath, "feat/t-999"))
@@ -847,11 +842,10 @@ func TestPromote_CreatesWorktreeForMissingPath(t *testing.T) {
 func TestPromote_SkipsLaunchOnWorktreeCreationFailure(t *testing.T) {
 	s := newTestStore(t)
 	ticket := &model.Ticket{
-		Title:         "bad repo test",
-		Type:          model.TypeTicket,
-		Status:        model.StatusDraft,
-		RepoPath:      "/nonexistent/repo/path",
-		FeatureBranch: "feat/t-999",
+		Title:    "bad repo test",
+		Type:     model.TypeTicket,
+		Status:   model.StatusDraft,
+		RepoPath: "/nonexistent/repo/path",
 	}
 	require.NoError(t, s.CreateTicket(ticket))
 	require.NoError(t, s.SetWorktreePath(ticket.ID, "", "/nonexistent/repo/path", "feat/t-999"))
