@@ -153,6 +153,9 @@ func (l *Launcher) Launch(ticketID, worktreePath string, args []string) (*model.
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = append(os.Environ(), "TICKET_AGENT_PROMPT="+workSkill)
+	if worktreePath != "" {
+		cmd.Dir = worktreePath
+	}
 
 	if err := em.StartCommand(cmd); err != nil {
 		em.Close()
