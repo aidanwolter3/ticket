@@ -12,6 +12,27 @@ import (
 //go:embed work_skill.md
 var workSkill string
 
+// dispatchedSkill is the pre-assigned agent skill embedded at compile time.
+// It contains {{TICKET_ID}} and {{WORKTREE_CONTEXT}} placeholders that
+// BuildTicketPrompt replaces at runtime.
+//
+//go:embed dispatched_skill.md
+var dispatchedSkill string
+
+// BuildTicketPrompt builds a ticket-specific prompt from the dispatched skill
+// template, substituting the ticket ID and worktree context. The result is a
+// self-contained prompt that starts at "Read full context" — it omits the
+// claim-work and enter-worktree steps since the agent is already positioned.
+func BuildTicketPrompt(ticketID, worktreePath string) string {
+	worktreeCtx := ""
+	if worktreePath != "" {
+		worktreeCtx = " and are already inside the correct worktree at " + worktreePath
+	}
+	result := strings.ReplaceAll(dispatchedSkill, "{{TICKET_ID}}", ticketID)
+	result = strings.ReplaceAll(result, "{{WORKTREE_CONTEXT}}", worktreeCtx)
+	return result
+}
+
 // BuildPrompt builds the command args to run an agent. It replaces the {}
 // placeholder (or "{}" / '{}') in the template with a reference to the
 // TICKET_AGENT_PROMPT environment variable, then wraps the whole command in

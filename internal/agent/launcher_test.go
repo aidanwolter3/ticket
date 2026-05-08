@@ -98,6 +98,26 @@ func waitLines(t *testing.T, ch <-chan []string, timeout time.Duration, pred fun
 	return false
 }
 
+// TestBuildTicketPrompt verifies that BuildTicketPrompt produces the exact full
+// context sent to a dispatched agent — substituting the ticket ID and worktree
+// path into the dispatched skill template.
+func TestBuildTicketPrompt(t *testing.T) {
+	ticketID := "T-042"
+	worktreePath := "/some/worktree/path"
+
+	t.Run("with worktree path", func(t *testing.T) {
+		want := strings.ReplaceAll(dispatchedSkill, "{{TICKET_ID}}", ticketID)
+		want = strings.ReplaceAll(want, "{{WORKTREE_CONTEXT}}", " and are already inside the correct worktree at "+worktreePath)
+		assert.Equal(t, want, BuildTicketPrompt(ticketID, worktreePath))
+	})
+
+	t.Run("no worktree path", func(t *testing.T) {
+		want := strings.ReplaceAll(dispatchedSkill, "{{TICKET_ID}}", ticketID)
+		want = strings.ReplaceAll(want, "{{WORKTREE_CONTEXT}}", "")
+		assert.Equal(t, want, BuildTicketPrompt(ticketID, ""))
+	})
+}
+
 // TestBuildPrompt verifies that BuildPrompt produces a bash -c invocation with a
 // $TICKET_AGENT_PROMPT reference, and returns errors for invalid templates.
 func TestBuildPrompt(t *testing.T) {
