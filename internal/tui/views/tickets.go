@@ -238,12 +238,18 @@ func (v *TicketsView) View() string {
 	}
 
 	sb.WriteString("\n")
-	mergedHint := "[h] show merged"
-	if !v.hideMerged {
-		mergedHint = "[h] hide merged"
+	if v.agentFocused {
+		agentHint := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true).Render("● agent focused") +
+			lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  ctrl+] to detach")
+		sb.WriteString(agentHint)
+	} else {
+		mergedHint := "[h] show merged"
+		if !v.hideMerged {
+			mergedHint = "[h] hide merged"
+		}
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
+			"[↑↓/jk] · [D] delete · " + mergedHint))
 	}
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"[↑↓/jk] · [D] delete · " + mergedHint))
 
 	return sb.String()
 }

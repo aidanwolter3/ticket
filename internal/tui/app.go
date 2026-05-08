@@ -872,11 +872,6 @@ func (a *App) View() string {
 func (a *App) renderTabBar() string {
 	label := lipgloss.NewStyle().Bold(true).Underline(true).Padding(0, 1).Render("Tickets")
 	hints := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? help · q quit")
-	if a.rightPaneMode == "agent" {
-		agentHint := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true).Render("● agent focused") +
-			lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  ctrl+] to detach")
-		return label + "   " + hints + "   " + agentHint
-	}
 	return label + "   " + hints
 }
 
