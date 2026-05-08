@@ -9,8 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/creack/pty"
-
+	"github.com/aidanwolter/ticket/internal/bubbleterm/emulator"
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 )
@@ -20,8 +19,6 @@ import (
 var SilenceTimeout = 5 * time.Second
 
 // PTYCols and PTYRows are the fixed PTY dimensions used when launching agents.
-// The attach view creates a vt10x terminal with these exact same dimensions so
-// cursor-positioning sequences are interpreted correctly.
 const PTYCols = 220
 const PTYRows = 50
 
@@ -29,40 +26,44 @@ const PTYRows = 50
 type Launcher struct {
 	store     *store.Store
 	mu        sync.Mutex
-	ptys      map[string]*os.File        // sessionID → PTY master fd
-	followers map[string][]chan []byte    // sessionID → live-output subscribers
+	emulators map[string]*emulator.Emulator  // sessionID → emulator
+	followers map[string][]chan []string      // sessionID → live-output subscribers
 }
 
 func NewLauncher(s *store.Store) *Launcher {
 	return &Launcher{
 		store:     s,
-		ptys:      make(map[string]*os.File),
-		followers: make(map[string][]chan []byte),
+		emulators: make(map[string]*emulator.Emulator),
+		followers: make(map[string][]chan []string),
 	}
 }
 
-// PTYMaster returns the PTY master file for the given session (for stdin forwarding).
-func (l *Launcher) PTYMaster(sessionID string) *os.File {
+// WriteToAgent sends input bytes to the agent's PTY (keyboard forwarding).
+func (l *Launcher) WriteToAgent(sessionID string, data []byte) error {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.ptys[sessionID]
+	em := l.emulators[sessionID]
+	l.mu.Unlock()
+	if em == nil {
+		return fmt.Errorf("no active session: %s", sessionID)
+	}
+	_, err := em.Write(data)
+	return err
 }
 
-// Subscribe registers a channel that receives live PTY output for sessionID.
+// Subscribe registers a channel that receives rendered screen lines for sessionID.
 // The returned cancel func must be called to unsubscribe; the channel is closed
 // when the session ends. If the session is no longer active (already terminated),
 // a pre-closed channel is returned so callers fall through to log-only view.
-func (l *Launcher) Subscribe(sessionID string) (<-chan []byte, func()) {
+func (l *Launcher) Subscribe(sessionID string) (<-chan []string, func()) {
 	l.mu.Lock()
-	if _, active := l.ptys[sessionID]; !active {
-		// Session already gone — return a closed channel; no unsub needed.
+	if _, active := l.emulators[sessionID]; !active {
 		l.mu.Unlock()
-		ch := make(chan []byte)
+		ch := make(chan []string)
 		close(ch)
 		return ch, func() {}
 	}
 
-	ch := make(chan []byte, 64)
+	ch := make(chan []string, 64)
 	l.followers[sessionID] = append(l.followers[sessionID], ch)
 	l.mu.Unlock()
 
@@ -76,45 +77,43 @@ func (l *Launcher) Subscribe(sessionID string) (<-chan []byte, func()) {
 			}
 		}
 		l.mu.Unlock()
-		close(ch) // unblock any goroutine waiting on this channel
+		// Guard against double-close: runAgent may have already closed this
+		// channel during session cleanup.
+		defer func() { recover() }()
+		close(ch)
 	}
 	return ch, cancel
 }
 
-// broadcast sends a copy of data to all live subscribers of sessionID.
-// Must NOT be called with l.mu held.
-func (l *Launcher) broadcast(sessionID string, data []byte) {
+// broadcast sends rendered lines to all live subscribers of sessionID.
+func (l *Launcher) broadcast(sessionID string, lines []string) {
 	l.mu.Lock()
 	followers := l.followers[sessionID]
 	l.mu.Unlock()
 
-	cp := make([]byte, len(data))
-	copy(cp, data)
+	cp := make([]string, len(lines))
+	copy(cp, lines)
 	for _, ch := range followers {
 		broadcastSend(ch, cp)
 	}
 }
 
-// broadcastSend sends data to ch without blocking. If ch was concurrently closed
-// (e.g. by Subscribe's cancel func), the recovered panic is silently discarded.
-func broadcastSend(ch chan []byte, data []byte) {
+func broadcastSend(ch chan []string, lines []string) {
 	defer func() { recover() }()
 	select {
-	case ch <- data:
+	case ch <- lines:
 	default:
 	}
 }
 
-// Launch forks args under a PTY, streams output to {worktreePath}/.agent/output.log,
-// and creates an agent_sessions row. The silence monitor goroutine transitions
-// state running↔waiting based on output activity.
+// Launch forks args under a PTY via the bubbleterm emulator, streams raw output
+// to {worktreePath}/.agent/output.log, and creates an agent_sessions row.
+// The silence monitor goroutine transitions state running↔waiting based on output activity.
 func (l *Launcher) Launch(ticketID, worktreePath string, args []string) (*model.AgentSession, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("empty command")
 	}
 
-	// Use a temp dir for the log when the ticket has no worktree yet (ready state);
-	// the agent will create its own worktree after claiming work.
 	logBase := worktreePath
 	if logBase == "" {
 		logBase = filepath.Join(os.TempDir(), "ticket-agent-"+ticketID)
@@ -130,40 +129,62 @@ func (l *Launcher) Launch(ticketID, worktreePath string, args []string) (*model.
 		return nil, fmt.Errorf("open agent log: %w", err)
 	}
 
+	em, err := emulator.New(PTYCols, PTYRows)
+	if err != nil {
+		logFile.Close()
+		return nil, fmt.Errorf("create agent emulator: %w", err)
+	}
+
+	// gotOutput signals the silence monitor when new PTY bytes arrive.
+	gotOutput := make(chan struct{}, 1)
+	em.SetOnRawOutput(func(data []byte) {
+		logFile.Write(data) //nolint:errcheck
+		select {
+		case gotOutput <- struct{}{}:
+		default:
+		}
+	})
+
+	// exitCh receives the process exit error from the emulator's exit callback.
+	exitCh := make(chan error, 1)
+	em.SetOnExit(func(_ string, exitErr error) {
+		exitCh <- exitErr
+	})
+
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = append(os.Environ(), "TICKET_AGENT_PROMPT="+workSkill)
 
-	ptym, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: PTYRows, Cols: PTYCols})
-	if err != nil {
+	if err := em.StartCommand(cmd); err != nil {
+		em.Close()
 		logFile.Close()
-		return nil, fmt.Errorf("start agent pty: %w", err)
+		return nil, fmt.Errorf("start agent: %w", err)
 	}
 
 	sess, err := l.store.CreateAgentSession(ticketID, cmd.Process.Pid, logPath)
 	if err != nil {
-		ptym.Close()
+		em.Close()
 		logFile.Close()
 		cmd.Process.Kill()
 		return nil, fmt.Errorf("create agent session: %w", err)
 	}
 
 	l.mu.Lock()
-	l.ptys[sess.ID] = ptym
+	l.emulators[sess.ID] = em
 	l.mu.Unlock()
 
-	go l.runAgent(sess.ID, cmd, ptym, logFile)
+	go l.runAgent(sess.ID, em, logFile, gotOutput, exitCh)
 
 	return sess, nil
 }
 
-// runAgent reads PTY output, writes to logFile, broadcasts to subscribers,
-// drives state transitions, and cleans up when the process exits.
-func (l *Launcher) runAgent(sessionID string, cmd *exec.Cmd, ptym *os.File, logFile *os.File) {
+// runAgent drives state transitions, broadcasts rendered frames, and cleans up
+// when the process exits.
+func (l *Launcher) runAgent(sessionID string, em *emulator.Emulator, logFile *os.File, gotOutput <-chan struct{}, exitCh <-chan error) {
 	defer func() {
 		logFile.Close()
+		em.Close()
 		l.mu.Lock()
-		delete(l.ptys, sessionID)
-		// Close all subscriber channels so attached viewers know the session ended.
+		delete(l.emulators, sessionID)
 		for _, ch := range l.followers[sessionID] {
 			close(ch)
 		}
@@ -171,18 +192,9 @@ func (l *Launcher) runAgent(sessionID string, cmd *exec.Cmd, ptym *os.File, logF
 		l.mu.Unlock()
 	}()
 
-	// Wait for process exit in a goroutine; close ptym to unblock ptym.Read.
-	exitCh := make(chan error, 1)
-	go func() {
-		err := cmd.Wait()
-		ptym.Close()
-		exitCh <- err
-	}()
-
 	// Silence monitor: transitions state running↔waiting.
 	silenceTimer := time.NewTimer(SilenceTimeout)
 	defer silenceTimer.Stop()
-	gotOutput := make(chan struct{}, 1)
 
 	go func() {
 		for {
@@ -205,31 +217,21 @@ func (l *Launcher) runAgent(sessionID string, cmd *exec.Cmd, ptym *os.File, logF
 		}
 	}()
 
-	// Read PTY output, write to log, and broadcast to any attached viewers.
-	buf := make([]byte, 4096)
-	for {
-		n, err := ptym.Read(buf)
-		if n > 0 {
-			logFile.Write(buf[:n])
-			l.broadcast(sessionID, buf[:n])
-			select {
-			case gotOutput <- struct{}{}:
-			default:
-			}
+	// Broadcast loop: on each damage signal, get the rendered screen and broadcast.
+	go func() {
+		for range em.DamageChan() {
+			frame := em.GetScreen()
+			l.broadcast(sessionID, frame.Rows)
 		}
-		if err != nil {
-			break
-		}
-	}
+	}()
 
-	close(gotOutput)
-
-	// Determine final state from process exit code.
+	// Wait for process to exit.
 	waitErr := <-exitCh
+
+	// Determine final state from process exit.
 	if waitErr != nil {
 		if exitErr, ok := waitErr.(*exec.ExitError); ok {
 			if status, ok2 := exitErr.Sys().(syscall.WaitStatus); ok2 && status.Signaled() {
-				// Killed by signal (e.g. SIGTERM from Terminate) — treat as terminated.
 				l.store.UpdateAgentSessionState(sessionID, model.AgentTerminated)
 			} else {
 				l.store.UpdateAgentSessionState(sessionID, model.AgentCrashed)
@@ -261,16 +263,7 @@ func (l *Launcher) Terminate(ticketID string) error {
 }
 
 // TerminateAll terminates all active agent sessions. Called on TUI shutdown.
-// It sends SIGTERM to each known process and marks all active sessions terminated.
 func (l *Launcher) TerminateAll() error {
-	l.mu.Lock()
-	ptys := make(map[string]*os.File, len(l.ptys))
-	for k, v := range l.ptys {
-		ptys[k] = v
-	}
-	l.mu.Unlock()
-
-	// Send SIGTERM to all known active processes via the store.
 	sessions, err := l.store.ListActiveAgentSessions()
 	if err == nil {
 		for _, sess := range sessions {

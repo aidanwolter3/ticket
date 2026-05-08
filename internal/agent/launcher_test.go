@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,23 +14,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var fakeAgentBin string
+var (
+	fakeAgentBin string
+	oscAgentBin  string
+	csiAgentBin  string
+)
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "fake_agent_bin")
+	dir, err := os.MkdirTemp("", "agent_bins")
 	if err != nil {
 		panic(err)
 	}
 	defer os.RemoveAll(dir)
 
-	bin := filepath.Join(dir, "fake_agent")
-	cmd := exec.Command("go", "build", "-o", bin, "./testdata/fake_agent")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		panic("build fake_agent: " + err.Error())
+	buildBin := func(pkg, name string) string {
+		bin := filepath.Join(dir, name)
+		cmd := exec.Command("go", "build", "-o", bin, pkg)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			panic("build " + name + ": " + err.Error())
+		}
+		return bin
 	}
-	fakeAgentBin = bin
+
+	fakeAgentBin = buildBin("./testdata/fake_agent", "fake_agent")
+	oscAgentBin = buildBin("./testdata/osc_agent", "osc_agent")
+	csiAgentBin = buildBin("./testdata/csi_agent", "csi_agent")
 
 	os.Exit(m.Run())
 }
@@ -43,8 +54,8 @@ func newTestStore(t *testing.T) *store.Store {
 	return s
 }
 
-// pollState polls every 20ms until the active session for ticketID equals want
-// (or is nil when want==""), returning the final observed state.
+// pollState polls every 20ms until the active session for ticketID equals want,
+// returning the final observed state.
 func pollState(t *testing.T, s *store.Store, ticketID string, want model.AgentState, timeout time.Duration) model.AgentState {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -66,15 +77,33 @@ func pollState(t *testing.T, s *store.Store, ticketID string, want model.AgentSt
 	return sess.State
 }
 
+// waitLines polls the subscriber channel until pred returns true or timeout elapses.
+func waitLines(t *testing.T, ch <-chan []string, timeout time.Duration, pred func([]string) bool) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case lines, ok := <-ch:
+			if !ok {
+				return false
+			}
+			if pred(lines) {
+				return true
+			}
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	return false
+}
+
 // TestBuildPrompt verifies that BuildPrompt produces a bash -c invocation with a
-// $TICKET_AGENT_PROMPT reference, and returns errors for invalid templates so
-// that an empty prompt is never silently sent to the agent.
+// $TICKET_AGENT_PROMPT reference, and returns errors for invalid templates.
 func TestBuildPrompt(t *testing.T) {
 	t.Run("success cases", func(t *testing.T) {
 		cases := []struct {
 			name      string
 			template  string
-			wantShell string // expected shell command (args[2])
+			wantShell string
 		}{
 			{"bare placeholder", "claude -p {}", `claude -p "$TICKET_AGENT_PROMPT"`},
 			{"double-quoted placeholder", `claude -p "{}"`, `claude -p "$TICKET_AGENT_PROMPT"`},
@@ -84,20 +113,17 @@ func TestBuildPrompt(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				args, err := BuildPrompt(tc.template)
 				require.NoError(t, err)
-				// BuildPrompt wraps the command in bash -c so the shell handles quoting.
 				require.Len(t, args, 3)
 				assert.Equal(t, "/bin/bash", args[0])
 				assert.Equal(t, "-c", args[1])
-				assert.Equal(t, tc.wantShell, args[2], "shell command should reference env var")
+				assert.Equal(t, tc.wantShell, args[2])
 			})
 		}
 	})
 
 	t.Run("error: missing placeholder", func(t *testing.T) {
-		// If {} is absent, BuildPrompt must return an error so the caller never
-		// dispatches claude without a prompt (which would produce "empty message").
 		_, err := BuildPrompt("claude -p somestaticprompt")
-		require.Error(t, err, "expected error when placeholder is missing")
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no '{}' placeholder")
 	})
 }
@@ -105,10 +131,7 @@ func TestBuildPrompt(t *testing.T) {
 // TestLaunchStateTransitions verifies:
 //
 //	Launch → running → waiting (after silence) → "" (terminated after exit)
-//
-// It also checks that output.log was written.
 func TestLaunchStateTransitions(t *testing.T) {
-	// Use a short silence timeout so the test runs quickly.
 	SilenceTimeout = 80 * time.Millisecond
 
 	s := newTestStore(t)
@@ -122,22 +145,17 @@ func TestLaunchStateTransitions(t *testing.T) {
 	worktreeDir := t.TempDir()
 	launcher := NewLauncher(s)
 
-	// Launch — initial state is running.
 	sess, err := launcher.Launch(ticket.ID, worktreeDir, []string{fakeAgentBin})
 	require.NoError(t, err)
 	require.NotNil(t, sess)
 	assert.Equal(t, model.AgentRunning, sess.State)
 
-	// After 200ms silence (fake_agent pauses 200ms internally), state → waiting.
-	// fake_agent pauses for 200ms; our SilenceTimeout is 80ms so it fires first.
 	got := pollState(t, s, ticket.ID, model.AgentWaiting, 3*time.Second)
 	assert.Equal(t, model.AgentWaiting, got, "state should become waiting after silence timeout")
 
-	// After fake_agent finishes (it pauses 200ms total then exits), session → inactive.
 	got = pollState(t, s, ticket.ID, "", 5*time.Second)
 	assert.Equal(t, model.AgentState(""), got, "session should be inactive after process exits")
 
-	// Verify output.log was written with expected content.
 	logPath := filepath.Join(worktreeDir, ".agent", "output.log")
 	data, err := os.ReadFile(logPath)
 	require.NoError(t, err)
@@ -145,8 +163,7 @@ func TestLaunchStateTransitions(t *testing.T) {
 	assert.Contains(t, string(data), "fake_agent: finishing")
 }
 
-// TestTerminateAll verifies that TerminateAll sends SIGTERM to all active
-// processes and marks their sessions terminated.
+// TestTerminateAll verifies that TerminateAll marks all active sessions terminated.
 func TestTerminateAll(t *testing.T) {
 	SilenceTimeout = 5 * time.Second
 
@@ -165,7 +182,6 @@ func TestTerminateAll(t *testing.T) {
 	_, err = launcher.Launch(t2.ID, dir2, []string{fakeAgentBin})
 	require.NoError(t, err)
 
-	// Both sessions should be active.
 	sess1, _ := s.GetAgentSessionByTicket(t1.ID)
 	sess2, _ := s.GetAgentSessionByTicket(t2.ID)
 	require.NotNil(t, sess1)
@@ -173,9 +189,75 @@ func TestTerminateAll(t *testing.T) {
 
 	require.NoError(t, launcher.TerminateAll())
 
-	// All sessions must be gone from active list.
 	sess1, _ = s.GetAgentSessionByTicket(t1.ID)
 	sess2, _ = s.GetAgentSessionByTicket(t2.ID)
 	assert.Nil(t, sess1, "t1 session should be terminated")
 	assert.Nil(t, sess2, "t2 session should be terminated")
+}
+
+// TestOSCAgentNoLeak verifies that an OSC window title containing ✳ (U+2733)
+// does not leak "Claude Code" as visible rendered text (regression for sanitizeOSCC1).
+// Without sanitizeOSCC1, the 0x9C continuation byte in ✳ is misinterpreted as C1
+// STRING TERMINATOR, prematurely dispatching the OSC and leaking the remaining
+// title text onto the screen.
+func TestOSCAgentNoLeak(t *testing.T) {
+	SilenceTimeout = 5 * time.Second
+
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	launcher := NewLauncher(s)
+	sess, err := launcher.Launch(ticket.ID, t.TempDir(), []string{oscAgentBin})
+	require.NoError(t, err)
+
+	follow, unsub := launcher.Subscribe(sess.ID)
+	defer unsub()
+
+	var allLines []string
+	found := waitLines(t, follow, 5*time.Second, func(lines []string) bool {
+		for _, l := range lines {
+			allLines = append(allLines, l)
+			if strings.Contains(l, "osc_agent: ready") {
+				return true
+			}
+		}
+		return false
+	})
+	require.True(t, found, "expected 'osc_agent: ready' in rendered output")
+
+	// The leaked OSC title text must not appear in any rendered line.
+	// When 0x9C in ✳ is treated as ST, " Claude Code" is emitted as cell text.
+	for _, l := range allLines {
+		if strings.Contains(l, "Claude Code") {
+			t.Errorf("OSC C1 leak detected in rendered line: %q", l)
+		}
+	}
+}
+
+// TestCSIcNoDeadlock verifies that CSI c (device-attributes query) does not
+// deadlock the emulator (regression for vtResponseLoop).
+func TestCSIcNoDeadlock(t *testing.T) {
+	SilenceTimeout = 5 * time.Second
+
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	launcher := NewLauncher(s)
+	sess, err := launcher.Launch(ticket.ID, t.TempDir(), []string{csiAgentBin})
+	require.NoError(t, err)
+
+	follow, unsub := launcher.Subscribe(sess.ID)
+	defer unsub()
+
+	found := waitLines(t, follow, 2*time.Second, func(lines []string) bool {
+		for _, l := range lines {
+			if strings.Contains(l, "csi_agent: done") {
+				return true
+			}
+		}
+		return false
+	})
+	assert.True(t, found, "'csi_agent: done' should appear within 2s (no deadlock)")
 }
