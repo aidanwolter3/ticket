@@ -28,6 +28,17 @@ func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, 
 	autoDispatch, _, _ := s.ConfigGet("agent.auto_dispatch")
 	cmdTemplate, _, _ := s.ConfigGet("agent.command")
 	if autoDispatch == "true" && cmdTemplate != "" {
+		for _, blockerID := range ticket.BlockedBy {
+			blocker, bErr := s.GetTicket(blockerID)
+			if bErr != nil {
+				fmt.Fprintf(stderr, "auto-dispatch: skipped — could not load blocker %s: %v\n", blockerID, bErr)
+				return nil
+			}
+			if blocker.Status != model.StatusApproved && blocker.Status != model.StatusMerged {
+				fmt.Fprintf(stderr, "auto-dispatch: skipped — blocker %s is %s (need approved or merged)\n", blockerID, blocker.Status)
+				return nil
+			}
+		}
 		existing, _ := s.GetAgentSessionByTicket(ticketID)
 		if existing == nil {
 			if ticket.WorktreePath == "" && ticket.RepoPath != "" {

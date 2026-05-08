@@ -837,6 +837,67 @@ func TestPromote_CreatesWorktreeForMissingPath(t *testing.T) {
 	assert.NoError(t, statErr, "worktree directory should exist on disk")
 }
 
+// TestPromote_SkipsAutoDispatchWithOpenBlocker verifies that when auto_dispatch is
+// enabled and a ticket has an unresolved blocker, Promote skips launch and logs the reason.
+func TestPromote_SkipsAutoDispatchWithOpenBlocker(t *testing.T) {
+	s := newTestStore(t)
+
+	blocker := &model.Ticket{Title: "Blocker", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(blocker))
+
+	ticket := &model.Ticket{Title: "Dependent", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.AddBlocker(ticket.ID, blocker.ID))
+
+	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+	require.NoError(t, s.ConfigSet("agent.command", "echo {}"))
+
+	launcher := agent.NewLauncher(s)
+	var errBuf bytes.Buffer
+	err := Promote(s, ticket.ID, launcher, io.Discard, &errBuf)
+	require.NoError(t, err, "Promote must not return an error when skipping due to blockers")
+	assert.Contains(t, errBuf.String(), "skipped", "reason for skipping must be logged to stderr")
+	assert.Contains(t, errBuf.String(), blocker.ID)
+
+	sess, err := s.GetAgentSessionByTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Nil(t, sess, "no agent session should be created when blockers are unresolved")
+}
+
+// TestPromote_AutoDispatchWithApprovedBlocker verifies that when all blockers are
+// approved (or merged), Promote proceeds with auto-dispatch.
+func TestPromote_AutoDispatchWithApprovedBlocker(t *testing.T) {
+	repoPath := gitRepo(t)
+	s := newTestStore(t)
+
+	blocker := &model.Ticket{Title: "Blocker", Type: model.TypeTicket, Status: model.StatusDraft, RepoPath: repoPath}
+	require.NoError(t, s.CreateTicket(blocker))
+	for _, to := range []model.Status{model.StatusReady, model.StatusInProgress, model.StatusInReview, model.StatusApproved} {
+		author := "agent:claude"
+		if to == model.StatusReady || to == model.StatusApproved {
+			author = "human:test"
+		}
+		require.NoError(t, s.TransitionTicket(blocker.ID, to, author))
+	}
+
+	ticket := &model.Ticket{Title: "Dependent", Type: model.TypeTicket, Status: model.StatusDraft, RepoPath: repoPath}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.AddBlocker(ticket.ID, blocker.ID))
+
+	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+	require.NoError(t, s.ConfigSet("agent.command", "echo {}"))
+
+	launcher := agent.NewLauncher(s)
+	var errBuf bytes.Buffer
+	err := Promote(s, ticket.ID, launcher, io.Discard, &errBuf)
+	require.NoError(t, err)
+	assert.NotContains(t, errBuf.String(), "skipped", "should not skip when blocker is approved")
+
+	sess, err := s.GetAgentSessionByTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.NotNil(t, sess, "agent session should be created when all blockers are approved")
+}
+
 // TestPromote_SkipsLaunchOnWorktreeCreationFailure verifies that when worktree
 // creation fails, Promote logs an error and does not launch an agent.
 func TestPromote_SkipsLaunchOnWorktreeCreationFailure(t *testing.T) {
