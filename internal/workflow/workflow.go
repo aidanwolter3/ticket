@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/aidanwolter/ticket/internal/agent"
 	"github.com/aidanwolter/ticket/internal/model"
@@ -235,6 +236,13 @@ func Redraft(s *store.Store, ticketID string, author string, stdout, stderr io.W
 	ticket, err := s.GetTicket(ticketID)
 	if err != nil {
 		return fmt.Errorf("redraft: %w", err)
+	}
+
+	if sess, err := s.GetAgentSessionByTicket(ticketID); err == nil && sess != nil {
+		if proc, err := os.FindProcess(sess.PID); err == nil {
+			proc.Signal(syscall.SIGTERM) //nolint:errcheck
+		}
+		s.UpdateAgentSessionState(sess.ID, model.AgentTerminated) //nolint:errcheck
 	}
 
 	if ticket.WorktreePath != "" {
