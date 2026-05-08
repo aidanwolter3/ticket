@@ -17,6 +17,7 @@ type TicketsView struct {
 	tickets       []*model.Ticket
 	agentSessions map[string]*model.AgentSession // ticketID → active session
 	hideMerged    bool
+	agentFocused  bool
 	cursor        int
 	width         int
 	height        int
@@ -69,6 +70,10 @@ func (v *TicketsView) visible() []*model.Ticket {
 func (v *TicketsView) SetSize(w, h int) {
 	v.width = w
 	v.height = h
+}
+
+func (v *TicketsView) SetAgentFocused(focused bool) {
+	v.agentFocused = focused
 }
 
 func (v *TicketsView) Refresh() {
@@ -209,7 +214,7 @@ func (v *TicketsView) View() string {
 		merged := t.Status == "merged"
 		idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 		titleStyle := lipgloss.NewStyle()
-		if merged {
+		if merged || (v.agentFocused && i != v.cursor) {
 			titleStyle = titleStyle.Foreground(lipgloss.Color("8"))
 		}
 

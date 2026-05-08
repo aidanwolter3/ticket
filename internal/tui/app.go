@@ -788,6 +788,7 @@ func (a *App) View() string {
 	switch a.screen {
 	case screenList:
 		a.ticketsView.SetSize(a.leftW, bodyH)
+		a.ticketsView.SetAgentFocused(a.rightPaneMode == "agent")
 
 		leftContent := a.ticketsView.View()
 
