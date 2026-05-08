@@ -19,13 +19,11 @@ type importTicket struct {
 	// Ref is a local name used only within this JSON document to wire up
 	// blocked_by relationships between tickets being created together.
 	// It is not stored in the database.
-	Ref           string        `json:"ref"`
-	Title         string        `json:"title"`
-	Status        string        `json:"status"` // defaults to "draft"
-	Description   string        `json:"description"`
-	FeatureBranch string        `json:"feature_branch"`
-	WorktreePath  string        `json:"worktree_path"`
-	RepoPath      string        `json:"repo_path"`
+	Ref         string        `json:"ref"`
+	Title       string        `json:"title"`
+	Status      string        `json:"status"` // defaults to "draft"
+	Description string        `json:"description"`
+	RepoPath    string        `json:"repo_path"`
 	// BlockedBy may contain refs from this document ("jwt") or existing IDs ("T-042").
 	BlockedBy []string       `json:"blocked_by"`
 	Tasks     []importTask   `json:"tasks"`
@@ -111,13 +109,11 @@ func importTickets(s *store.Store, inputs []importTicket) (*importResult, error)
 		}
 
 		t := &model.Ticket{
-			Title:         in.Title,
-			Type:          model.TypeTicket,
-			Status:        status,
-			Description:   in.Description,
-			FeatureBranch: in.FeatureBranch,
-			WorktreePath:  in.WorktreePath,
-			RepoPath:      in.RepoPath,
+			Title:       in.Title,
+			Type:        model.TypeTicket,
+			Status:      status,
+			Description: in.Description,
+			RepoPath:    in.RepoPath,
 		}
 		if err := s.CreateTicket(t); err != nil {
 			return nil, fmt.Errorf("create ticket %q: %w", in.Title, err)
