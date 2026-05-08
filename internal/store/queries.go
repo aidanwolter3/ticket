@@ -36,14 +36,22 @@ WHERE t.status = 'ready'
 ORDER BY t.created ASC`
 
 const amendableQuery = `
-SELECT DISTINCT t.id, t.title, t.description, t.type, t.status, t.feature_branch,
+SELECT t.id, t.title, t.description, t.type, t.status, t.feature_branch,
        COALESCE(t.worktree_path,''), COALESCE(t.repo_path,''), t.created, t.updated
 FROM tickets t
-JOIN tasks tk ON tk.ticket_id = t.id
-JOIN comment_threads ct ON ct.task_id = tk.id
 WHERE t.status = 'ready'
   AND t.feature_branch != ''
-  AND ct.status = 'needs_attention'
+  AND (
+    EXISTS (
+      SELECT 1 FROM tasks tk
+      JOIN comment_threads ct ON ct.task_id = tk.id
+      WHERE tk.ticket_id = t.id AND ct.status = 'needs_attention'
+    )
+    OR EXISTS (
+      SELECT 1 FROM tasks tk
+      WHERE tk.ticket_id = t.id AND tk.completed_at IS NULL
+    )
+  )
 ORDER BY t.created ASC`
 
 // ClaimWork atomically finds and claims the first available work item using a

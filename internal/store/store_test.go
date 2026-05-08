@@ -275,6 +275,45 @@ func TestAvailableWork(t *testing.T) {
 	assert.Contains(t, ticketIDs(work), blocked.ID)
 }
 
+func TestAmendmentWorkIncludesOpenTasks(t *testing.T) {
+	s := newTestStore(t)
+
+	// A ready ticket with a feature branch and an incomplete task but no
+	// needs_attention threads should appear in the amendment work queue.
+	ticket := &model.Ticket{
+		Title:         "Needs more work",
+		Type:          model.TypeTicket,
+		Status:        model.StatusReady,
+		FeatureBranch: "feat/t-000",
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	task := &model.Task{TicketID: ticket.ID, Title: "Open task", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	work, err := s.PeekWork()
+	require.NoError(t, err)
+
+	found := false
+	for _, w := range work {
+		if w.Ticket.ID == ticket.ID {
+			assert.Equal(t, WorkTypeAmendment, w.Type)
+			found = true
+		}
+	}
+	assert.True(t, found, "ticket with open task should appear as amendment work")
+
+	// After completing the task it should no longer appear.
+	require.NoError(t, s.CompleteTask(task.ID))
+
+	work, err = s.PeekWork()
+	require.NoError(t, err)
+
+	for _, w := range work {
+		assert.NotEqual(t, ticket.ID, w.Ticket.ID, "completed-task ticket should not appear")
+	}
+}
+
 func TestReviewQueue(t *testing.T) {
 	s := newTestStore(t)
 
