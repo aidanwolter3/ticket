@@ -4,7 +4,7 @@ Find and execute the next available ticket using the workflow below.
 
 `draft → ready → in_progress → in_review → approved → merged`
 
-Only humans approve and merge tickets. Agents claim work (`ready → in_progress`), finish it (`in_progress → in_review`), and flip amended threads back to active (`ready → active`).
+Only humans approve and merge tickets. Agents claim work (`ready → in_progress`), finish it (`in_progress → in_review`), and flip amended threads back to open (`needs_attention → open`).
 
 ## Valid agent transitions
 
@@ -13,7 +13,7 @@ Only humans approve and merge tickets. Agents claim work (`ready → in_progress
 | `ready` | `in_progress` | via `claim-work` |
 | `in_progress` | `in_review` | after all tasks committed |
 | `in_review` | `in_progress` | to address review feedback |
-| `ready` thread | `active` thread | after posting amendment reply |
+| `needs_attention` thread | `open` thread | after posting amendment reply |
 
 Human-only: `in_review → approved` (use `ticket approve`), `approved → merged` (use `ticket merge`).
 
@@ -99,9 +99,9 @@ Review every thread on every task whose status is `ready`. For each such thread:
    ```bash
    ticket thread reply <thread-id> agent:claude '<description of what was changed>'
    ```
-6. Flip the thread back to active:
+6. Flip the thread back to open:
    ```bash
-   ticket thread transition <thread-id> active agent:claude
+   ticket thread transition <thread-id> open agent:claude
    ```
 
 ### 5. Add a note (if warranted)
