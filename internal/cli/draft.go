@@ -12,12 +12,11 @@ import (
 )
 
 func RunDraft(args []string, defaultDB string) {
-	var title, description, branch, repo *string
+	var title, description, repo *string
 	var jsonOut *bool
 	s, _ := parseAndOpen(string(model.StatusDraft), args, defaultDB, func(f *flag.FlagSet) {
 		title = f.String("title", "", "ticket title (required)")
 		description = f.String("description", "", "ticket description (use - to read from stdin)")
-		branch = f.String("branch", "", "feature branch name")
 		repo = f.String("repo", "", "repository path (required)")
 		jsonOut = f.Bool("json", false, "output full ticket JSON instead of just the ID")
 	})
@@ -25,7 +24,7 @@ func RunDraft(args []string, defaultDB string) {
 
 	if *title == "" || *repo == "" {
 		fmt.Fprintln(os.Stderr, "error: --title and --repo are required")
-		fmt.Fprintln(os.Stderr, "usage: ticket draft --title STR --repo STR [--description STR|-] [--branch STR] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: ticket draft --title STR --repo STR [--description STR|-] [--json]")
 		os.Exit(1)
 	}
 
@@ -44,12 +43,11 @@ func RunDraft(args []string, defaultDB string) {
 	}
 
 	t := &model.Ticket{
-		Title:         *title,
-		Type:          model.TypeTicket,
-		Status:        model.StatusDraft,
-		Description:   desc,
-		FeatureBranch: *branch,
-		RepoPath:      *repo,
+		Title:       *title,
+		Type:        model.TypeTicket,
+		Status:      model.StatusDraft,
+		Description: desc,
+		RepoPath:    *repo,
 	}
 	if err := s.CreateTicket(t); err != nil {
 		fmt.Fprintf(os.Stderr, "create ticket: %v\n", err)

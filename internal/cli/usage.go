@@ -7,7 +7,7 @@ func PrintUsage() {
 
 Usage:
   ticket [--db path]                          launch TUI
-  ticket draft [--db path] --title STR --repo STR [--description STR|-] [--branch STR] [--json]
+  ticket draft [--db path] --title STR --repo STR [--description STR|-] [--json]
                                               create a draft ticket from flags; outputs assigned ID (or --json for full ticket)
   ticket import [--db path] [file]            batch-create tickets from JSON (stdin if no file)
   ticket ls [--db path] [--status s] [--json] list tickets
