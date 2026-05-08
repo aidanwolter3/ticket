@@ -122,8 +122,10 @@ func (v *TicketDetailView) View() string {
 			if v.agentSession != nil {
 				hint += " · [enter] attach"
 			}
+		case model.StatusInProgress:
+			hint += " · [X] revert to draft"
 		case model.StatusInReview:
-			hint += " · [a] approve"
+			hint += " · [X] revert to draft · [a] approve"
 		case model.StatusApproved:
 			hint += " · [m] merge"
 		}

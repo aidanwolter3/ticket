@@ -38,6 +38,7 @@ const (
 	screenReplyModal
 	screenNewThreadModal
 	screenConfirmDelete
+	screenConfirmRedraft
 	screenEditDraftMessage
 	screenConfirmDispatch
 	screenAgentAttach
@@ -60,7 +61,8 @@ type App struct {
 	rightW           int
 	statusMsg        string
 	statusErr        bool
-	pendingDeleteID  string
+	pendingDeleteID   string
+	pendingRedraftID  string
 	pendingDispatchID string
 	showHelp         bool
 
@@ -215,6 +217,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateThreads(msg)
 	case screenConfirmDelete:
 		return a.updateConfirmDelete(msg)
+	case screenConfirmRedraft:
+		return a.updateConfirmRedraft(msg)
 	case screenConfirmDispatch:
 		return a.updateConfirmDispatch(msg)
 	case screenNoteModal:
@@ -304,6 +308,17 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.statusErr = false
 					a.ticketsView.Refresh()
 					a.loadCurrentDetail()
+				}
+			}
+			return a, nil
+		case "X":
+			if a.ticketDetail != nil {
+				if t := a.ticketDetail.Ticket(); t != nil {
+					st := t.Status
+					if st == model.StatusInProgress || st == model.StatusInReview {
+						a.pendingRedraftID = t.ID
+						a.screen = screenConfirmRedraft
+					}
 				}
 			}
 			return a, nil
@@ -545,6 +560,31 @@ func (a *App) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+// --- Confirm redraft ---
+
+func (a *App) updateConfirmRedraft(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch km.String() {
+		case "y", "Y":
+			id := a.pendingRedraftID
+			a.pendingRedraftID = ""
+			a.screen = screenList
+			if err := workflow.Redraft(a.store, id, "human", io.Discard, io.Discard); err != nil {
+				a.setErr(err)
+			} else {
+				a.statusMsg = fmt.Sprintf("%s → draft", id)
+				a.statusErr = false
+				a.ticketsView.Refresh()
+				a.loadCurrentDetail()
+			}
+		default:
+			a.pendingRedraftID = ""
+			a.screen = screenList
+		}
+	}
+	return a, nil
+}
+
 // --- Note modal ---
 
 func (a *App) updateNoteModal(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -765,6 +805,9 @@ func (a *App) View() string {
 	case screenConfirmDelete:
 		prompt := fmt.Sprintf("Delete ticket %s? (y/N) ", a.pendingDeleteID)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("1")).Render(prompt))
+	case screenConfirmRedraft:
+		prompt := fmt.Sprintf("Revert %s to draft? This will destroy the worktree and kill any active agent. (y/N) ", a.pendingRedraftID)
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3")).Render(prompt))
 	case screenConfirmDispatch:
 		prompt := fmt.Sprintf("Dispatch agent to %s? (y/N) ", a.pendingDispatchID)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4")).Render(prompt))
@@ -810,6 +853,7 @@ func (a *App) renderHelp() string {
 			"n                 add note",
 			"r                 mark ready (draft tickets)",
 			"R                 back to draft (ready tickets)",
+			"X                 revert to draft (in_progress/in_review tickets)",
 			"g                 dispatch agent (ready tickets)",
 			"enter             attach to agent output (if active)",
 			"ctrl+]            detach from agent output",
