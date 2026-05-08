@@ -150,6 +150,16 @@ func (a *App) currentTicketID() string {
 	return ""
 }
 
+// Update dispatches incoming messages to global handlers or the active screen handler.
+//
+// Message-type ownership:
+//
+//	dbTickMsg         – global: refreshes all live views and reschedules the DB poll tick
+//	tea.WindowSizeMsg – global: resizes every live view component
+//	agentChunkMsg     – screenList: updates the agent-terminal right pane with new output lines
+//	agentDoneMsg      – screenList: marks the agent-terminal pane as idle when the session ends
+//	tea.KeyMsg        – global subset (ctrl+c, ?, esc, q) handled here;
+//	                    remaining keys delegated to the active screen handler
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case dbTickMsg:
