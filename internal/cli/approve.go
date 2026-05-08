@@ -31,7 +31,7 @@ func RunApprove(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	if ticket.Status != "in_review" {
+	if ticket.Status != model.StatusInReview {
 		fmt.Fprintf(os.Stderr, "approve: ticket %s is %s, not in_review\n", ticketID, ticket.Status)
 		os.Exit(1)
 	}
@@ -52,7 +52,7 @@ func RunApprove(args []string, defaultDB string) {
 		}
 	}
 
-	if err := s.TransitionTicket(ticketID, "approved", author); err != nil {
+	if err := s.TransitionTicket(ticketID, model.StatusApproved, author); err != nil {
 		fmt.Fprintf(os.Stderr, "approve: %v\n", err)
 		os.Exit(1)
 	}

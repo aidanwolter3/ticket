@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
 func RunReady(args []string, defaultDB string) {
-	s, fs := parseAndOpen("ready", args, defaultDB, nil)
+	s, fs := parseAndOpen(string(model.StatusReady), args, defaultDB, nil)
 	defer s.Close()
 
 	if fs.NArg() < 2 {

@@ -14,7 +14,7 @@ import (
 func RunDraft(args []string, defaultDB string) {
 	var title, description, branch, repo *string
 	var jsonOut *bool
-	s, _ := parseAndOpen("draft", args, defaultDB, func(f *flag.FlagSet) {
+	s, _ := parseAndOpen(string(model.StatusDraft), args, defaultDB, func(f *flag.FlagSet) {
 		title = f.String("title", "", "ticket title (required)")
 		description = f.String("description", "", "ticket description (use - to read from stdin)")
 		branch = f.String("branch", "", "feature branch name")

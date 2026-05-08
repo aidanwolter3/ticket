@@ -308,7 +308,7 @@ func Merge(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("merge: %w", err)
 	}
 
-	if ticket.Status != "approved" {
+	if ticket.Status != model.StatusApproved {
 		return fmt.Errorf("merge: ticket %s is %s, not approved", ticketID, ticket.Status)
 	}
 
@@ -415,7 +415,7 @@ func Merge(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("merge: update ticket: %w", err)
 	}
 
-	if err := s.TransitionTicket(ticketID, "merged", "human"); err != nil {
+	if err := s.TransitionTicket(ticketID, model.StatusMerged, "human"); err != nil {
 		return fmt.Errorf("merge: transition: %w", err)
 	}
 
