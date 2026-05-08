@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"os/exec"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aidanwolter/ticket/internal/agent"
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/stretchr/testify/assert"
@@ -798,4 +800,72 @@ func TestRedraft_KillsAgentSession(t *testing.T) {
 	updated2, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
 	assert.Equal(t, model.StatusDraft, updated2.Status)
+}
+
+// TestPromote_CreatesWorktreeForMissingPath verifies that when auto_dispatch is
+// enabled and a ticket has RepoPath+FeatureBranch but no WorktreePath, Promote
+// creates the worktree on disk and persists the path before launching the agent.
+func TestPromote_CreatesWorktreeForMissingPath(t *testing.T) {
+	repoPath := gitRepo(t)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoPath
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	git("checkout", "-b", "feat/t-999")
+	git("checkout", "main")
+
+	s := newTestStore(t)
+	ticket := &model.Ticket{
+		Title:         "worktree creation test",
+		Type:          model.TypeTicket,
+		Status:        model.StatusDraft,
+		RepoPath:      repoPath,
+		FeatureBranch: "feat/t-999",
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.SetWorktreePath(ticket.ID, "", repoPath, "feat/t-999"))
+
+	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+	require.NoError(t, s.ConfigSet("agent.command", "echo {}"))
+
+	launcher := agent.NewLauncher(s)
+	err := Promote(s, ticket.ID, launcher, io.Discard, io.Discard)
+	require.NoError(t, err)
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.NotEmpty(t, got.WorktreePath, "WorktreePath should be set after Promote")
+	_, statErr := os.Stat(got.WorktreePath)
+	assert.NoError(t, statErr, "worktree directory should exist on disk")
+}
+
+// TestPromote_SkipsLaunchOnWorktreeCreationFailure verifies that when worktree
+// creation fails, Promote logs an error and does not launch an agent.
+func TestPromote_SkipsLaunchOnWorktreeCreationFailure(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{
+		Title:         "bad repo test",
+		Type:          model.TypeTicket,
+		Status:        model.StatusDraft,
+		RepoPath:      "/nonexistent/repo/path",
+		FeatureBranch: "feat/t-999",
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.SetWorktreePath(ticket.ID, "", "/nonexistent/repo/path", "feat/t-999"))
+
+	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+	require.NoError(t, s.ConfigSet("agent.command", "echo {}"))
+
+	launcher := agent.NewLauncher(s)
+	var errBuf bytes.Buffer
+	err := Promote(s, ticket.ID, launcher, io.Discard, &errBuf)
+	require.NoError(t, err, "Promote itself should not return an error")
+	assert.Contains(t, errBuf.String(), "worktree creation failed", "error should be logged to stderr")
+
+	sess, err := s.GetAgentSessionByTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Nil(t, sess, "no agent session should be created when worktree creation fails")
 }

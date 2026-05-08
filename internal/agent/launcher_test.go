@@ -18,6 +18,7 @@ var (
 	fakeAgentBin string
 	oscAgentBin  string
 	csiAgentBin  string
+	pwdAgentBin  string
 )
 
 func TestMain(m *testing.M) {
@@ -41,6 +42,7 @@ func TestMain(m *testing.M) {
 	fakeAgentBin = buildBin("./testdata/fake_agent", "fake_agent")
 	oscAgentBin = buildBin("./testdata/osc_agent", "osc_agent")
 	csiAgentBin = buildBin("./testdata/csi_agent", "csi_agent")
+	pwdAgentBin = buildBin("./testdata/pwd_agent", "pwd_agent")
 
 	os.Exit(m.Run())
 }
@@ -233,6 +235,35 @@ func TestOSCAgentNoLeak(t *testing.T) {
 			t.Errorf("OSC C1 leak detected in rendered line: %q", l)
 		}
 	}
+}
+
+// TestLaunch_SetsWorkingDirectory verifies that when worktreePath is non-empty,
+// the launched process has its working directory set to that path.
+func TestLaunch_SetsWorkingDirectory(t *testing.T) {
+	SilenceTimeout = 5 * time.Second
+
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	worktreeDir := t.TempDir()
+	launcher := NewLauncher(s)
+
+	sess, err := launcher.Launch(ticket.ID, worktreeDir, []string{pwdAgentBin})
+	require.NoError(t, err)
+
+	follow, unsub := launcher.Subscribe(sess.ID)
+	defer unsub()
+
+	found := waitLines(t, follow, 3*time.Second, func(lines []string) bool {
+		for _, l := range lines {
+			if strings.Contains(l, worktreeDir) {
+				return true
+			}
+		}
+		return false
+	})
+	assert.True(t, found, "agent working directory should match worktreePath")
 }
 
 // TestCSIcNoDeadlock verifies that CSI c (device-attributes query) does not
