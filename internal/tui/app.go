@@ -41,7 +41,6 @@ const (
 	screenConfirmRedraft
 	screenEditDraftMessage
 	screenConfirmDispatch
-	screenAgentAttach
 )
 
 type dbTickMsg struct{}
@@ -79,13 +78,13 @@ type App struct {
 	newThreadModal  *views.NewThreadModal
 	editDraftModal  *views.EditDraftModal
 
-	// agent attach overlay
+	// agent attach state
 	attachFollow    <-chan []string
 	attachUnsub     func()
-	attachLines     []string // latest rendered lines from the emulator
 	attachTicketID  string
 	attachSessionID string
-	attachEnded     bool // true once the session's channel closed
+	rightPaneMode   string // "detail" or "agent"
+	agentTermView   *views.AgentTermView
 }
 
 func New(s *store.Store) *App {
@@ -186,7 +185,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.newThreadModal != nil {
 			a.newThreadModal.SetWidth(a.width)
 		}
+		if a.agentTermView != nil {
+			a.agentTermView.SetSize(a.rightW, a.bodyHeight())
+		}
 		return a, nil
+
+	case agentChunkMsg:
+		if a.agentTermView != nil {
+			a.agentTermView.SetLines(msg.lines)
+			a.agentTermView.SetState(true, false)
+		}
+		return a, a.waitAgentChunk()
+
+	case agentDoneMsg:
+		if a.agentTermView != nil {
+			a.agentTermView.SetState(false, false)
+		}
 
 	case tea.KeyMsg:
 		// Global shortcuts (only when not in a modal/form)
@@ -206,6 +220,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if a.screen == screenList {
 					return a, tea.Quit
 				}
+			}
+		}
+		// Forward keys to the agent PTY when agent pane is active.
+		if a.screen == screenList && a.rightPaneMode == "agent" {
+			switch msg.String() {
+			case "ctrl+]", "?", "q", "ctrl+c":
+				// These are handled by the list/global handlers — don't forward.
+			default:
+				a.launcher.WriteToAgent(a.attachSessionID, keyMsgBytes(msg)) //nolint:errcheck
+				return a, nil
 			}
 		}
 	}
@@ -229,8 +253,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateNewThreadModal(msg)
 	case screenEditDraftMessage:
 		return a.updateEditDraftMessage(msg)
-	case screenAgentAttach:
-		return a.updateAgentAttach(msg)
 	}
 	return a, nil
 }
@@ -398,6 +420,16 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.screen = screenConfirmDispatch
 			}
 			return a, nil
+		case "ctrl+]":
+			if a.rightPaneMode == "agent" {
+				if a.attachUnsub != nil {
+					a.attachUnsub()
+					a.attachUnsub = nil
+				}
+				a.rightPaneMode = "detail"
+				a.agentTermView = nil
+			}
+			return a, nil
 		case "enter":
 			if t := a.ticketsView.SelectedTicket(); t != nil {
 				sess, _ := a.store.GetAgentSessionByTicket(t.ID)
@@ -405,6 +437,10 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					sess, _ = a.store.GetLatestAgentSessionByTicket(t.ID)
 				}
 				if sess != nil {
+					a.rightPaneMode = "agent"
+					atv := views.NewAgentTermView(sess.TicketID)
+					atv.SetSize(a.rightW, a.bodyHeight())
+					a.agentTermView = atv
 					return a, a.enterAttachView(sess)
 				}
 			}
@@ -741,7 +777,10 @@ func (a *App) View() string {
 		}
 
 		var rightContent string
-		if a.ticketDetail != nil {
+		if a.rightPaneMode == "agent" && a.agentTermView != nil {
+			a.agentTermView.SetSize(a.rightW, bodyH)
+			rightContent = a.agentTermView.View()
+		} else if a.ticketDetail != nil {
 			rightContent = a.ticketDetail.View()
 		} else {
 			rightContent = lipgloss.NewStyle().
@@ -749,11 +788,14 @@ func (a *App) View() string {
 				Render("No ticket selected.")
 		}
 
-		rightPane := lipgloss.NewStyle().
+		rightPaneStyle := lipgloss.NewStyle().
 			Width(a.rightW).
 			Height(bodyH).
-			Border(lipgloss.NormalBorder(), false, false, false, true).
-			Render(rightContent)
+			Border(lipgloss.NormalBorder(), false, false, false, true)
+		if a.rightPaneMode == "agent" {
+			rightPaneStyle = rightPaneStyle.BorderForeground(lipgloss.Color("2"))
+		}
+		rightPane := rightPaneStyle.Render(rightContent)
 
 		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane))
 
@@ -777,31 +819,6 @@ func (a *App) View() string {
 		if a.editDraftModal != nil {
 			sb.WriteString(a.editDraftModal.View())
 		}
-	case screenAgentAttach:
-		title := fmt.Sprintf("Agent output: %s", a.attachTicketID)
-		if a.attachEnded {
-			title += "  [session ended]"
-		}
-		title += "  —  ctrl+] to detach"
-		sb.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n")
-		sb.WriteString(strings.Repeat("─", a.width) + "\n")
-		avail := a.bodyHeight() - 2
-		if avail < 1 {
-			avail = 1
-		}
-		lines := a.attachLines
-		// Render exactly avail lines so view height is always constant.
-		for i := 0; i < avail; i++ {
-			var l string
-			if i < len(lines) {
-				l = lines[i]
-				if len(l) > a.width {
-					l = l[:a.width]
-				}
-			}
-			sb.WriteString(l + "\n")
-		}
-
 	case screenConfirmDelete:
 		prompt := fmt.Sprintf("Delete ticket %s? (y/N) ", a.pendingDeleteID)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("1")).Render(prompt))
@@ -829,7 +846,13 @@ func (a *App) View() string {
 
 func (a *App) renderTabBar() string {
 	label := lipgloss.NewStyle().Bold(true).Underline(true).Padding(0, 1).Render("Tickets")
-	return label + "   " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? help · q quit")
+	hints := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? help · q quit")
+	if a.rightPaneMode == "agent" {
+		agentHint := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true).Render("● agent focused") +
+			lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  ctrl+] to detach")
+		return label + "   " + hints + "   " + agentHint
+	}
+	return label + "   " + hints
 }
 
 func (a *App) renderHelp() string {
@@ -855,8 +878,8 @@ func (a *App) renderHelp() string {
 			"R                 back to draft (ready tickets)",
 			"X                 revert to draft (in_progress/in_review tickets)",
 			"g                 dispatch agent (ready tickets)",
-			"enter             attach to agent output (if active)",
-			"ctrl+]            detach from agent output",
+			"enter             attach agent session to right pane (if active)",
+			"ctrl+]            detach agent session, restore ticket detail",
 			"a                 approve (in_review tickets)",
 			"m                 merge (approved tickets)",
 			"[ / ]             scroll up / down",
@@ -907,39 +930,12 @@ func (a *App) enterAttachView(sess *model.AgentSession) tea.Cmd {
 
 	a.attachFollow = follow
 	a.attachUnsub = unsub
-	// The emulator renders a full PTYRows-tall screen; View() shows the first
-	// avail rows so content at the top is visible. No trimming here.
-	a.attachLines = initialLines
 	a.attachTicketID = sess.TicketID
 	a.attachSessionID = sess.ID
-	a.attachEnded = false
-	a.screen = screenAgentAttach
-	return a.waitAgentChunk()
-}
-
-// updateAgentAttach handles messages while the attach overlay is visible.
-func (a *App) updateAgentAttach(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if msg.String() == "ctrl+]" {
-			if a.attachUnsub != nil {
-				a.attachUnsub()
-				a.attachUnsub = nil
-			}
-			a.screen = screenList
-			return a, nil
-		}
-		// Forward all other keys to the agent PTY.
-		a.launcher.WriteToAgent(a.attachSessionID, keyMsgBytes(msg)) //nolint:errcheck
-	case agentChunkMsg:
-		// The emulator broadcasts pre-rendered line slices — assign directly.
-		a.attachLines = msg.lines
-		return a, a.waitAgentChunk()
-	case agentDoneMsg:
-		a.attachEnded = true
-		_ = msg
+	if a.agentTermView != nil && len(initialLines) > 0 {
+		a.agentTermView.SetLines(initialLines)
 	}
-	return a, nil
+	return a.waitAgentChunk()
 }
 
 // keyMsgBytes converts a Bubble Tea key event into the byte sequence a PTY expects.
