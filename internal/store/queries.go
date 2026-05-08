@@ -142,10 +142,6 @@ func (s *Store) PeekWork() ([]*WorkItem, error) {
 	return items, nil
 }
 
-// FindWork is a deprecated alias for PeekWork kept for backwards compatibility.
-func (s *Store) FindWork() ([]*WorkItem, error) {
-	return s.PeekWork()
-}
 
 // AvailableWork returns ready tickets with all blockers completed.
 func (s *Store) AvailableWork() ([]*model.Ticket, error) {

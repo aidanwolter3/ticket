@@ -12,7 +12,6 @@ Usage:
   ticket import [--db path] [file]            batch-create tickets from JSON (stdin if no file)
   ticket ls [--db path] [--status s] [--json] list tickets
   ticket get [--db path] <id>                 get a single ticket as JSON (includes tasks and threads)
-  ticket find-work [--db path]                find actionable work for agents (deprecated, use claim-work)
   ticket claim-work [--db path] [--json]      atomically claim the next available work item
   ticket peek-work [--db path] [--json]       view claimable work without claiming
   ticket transition [--db path] <id> <status> <author>
