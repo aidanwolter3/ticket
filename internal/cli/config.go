@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 )
 
@@ -48,6 +47,16 @@ func runConfigSet(args []string, defaultDB string) {
 	fmt.Printf("%s = %s\n", key, value)
 }
 
+// knownConfigKeys lists every supported config key with its default value (empty string = no default).
+var knownConfigKeys = []struct {
+	key        string
+	defaultVal string
+}{
+	{"agent.auto_dispatch", ""},
+	{"agent.command", ""},
+	{"worktrees", "true"},
+}
+
 func runConfigList(args []string, defaultDB string) {
 	s, _ := parseAndOpen("config ls", args, defaultDB, nil)
 	defer s.Close()
@@ -58,24 +67,14 @@ func runConfigList(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	defaults := map[string]string{
-		"worktrees": "true",
-	}
-	merged := make(map[string]string)
-	for k, v := range defaults {
-		merged[k] = v
-	}
-	for k, v := range stored {
-		merged[k] = v
-	}
-
-	keys := make([]string, 0, len(merged))
-	for k := range merged {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		fmt.Printf("%s = %s\n", k, merged[k])
+	for _, kd := range knownConfigKeys {
+		if v, ok := stored[kd.key]; ok {
+			fmt.Printf("%s = %s\n", kd.key, v)
+		} else if kd.defaultVal != "" {
+			fmt.Printf("%s = %s\n", kd.key, kd.defaultVal)
+		} else {
+			fmt.Printf("%s = <unset>\n", kd.key)
+		}
 	}
 }
 
