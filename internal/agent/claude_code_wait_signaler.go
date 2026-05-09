@@ -8,9 +8,9 @@ import (
 )
 
 // ClaudeCodeWaitSignaler detects when Claude Code finishes a response and is
-// waiting for user input, and when it starts a new tool use. It installs a
-// project-level Stop hook and PreToolUse hook (.claude/settings.json) that
-// touch signal files in the .agent directory.
+// waiting for user input, and when it starts a new tool use. It installs
+// project-level hooks (.claude/settings.json) that touch signal files and
+// fire osascript alerts for all waiting-for-user states.
 type ClaudeCodeWaitSignaler struct {
 	watcher    *signalFileWatcher
 	runWatcher *signalFileWatcher
@@ -45,17 +45,20 @@ type claudeSettings struct {
 }
 
 type claudeHookEntry struct {
-	Hooks []claudeHookCmd `json:"hooks"`
+	Matcher string        `json:"matcher,omitempty"`
+	Hooks   []claudeHookCmd `json:"hooks"`
 }
 
 type claudeHookCmd struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
+	Async   bool   `json:"async,omitempty"`
 }
 
-// writeClaudeHooks writes .claude/settings.json with a Stop hook (touches
-// waitPath) and a PreToolUse hook (touches runPath). It is a no-op if the file
-// already exists to avoid clobbering existing project settings.
+// writeClaudeHooks writes .claude/settings.json with signal-file hooks (Stop
+// touches waitPath, PreToolUse touches runPath) and osascript alert hooks for
+// all waiting-for-user states. It is a no-op if the file already exists to
+// avoid clobbering existing project settings.
 func writeClaudeHooks(worktreePath, waitPath, runPath string) error {
 	claudeDir := filepath.Join(worktreePath, ".claude")
 	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
@@ -70,17 +73,42 @@ func writeClaudeHooks(worktreePath, waitPath, runPath string) error {
 	cfg := claudeSettings{
 		Hooks: map[string][]claudeHookEntry{
 			"Stop": {{
+				Hooks: []claudeHookCmd{
+					{
+						Type:    "command",
+						Command: "touch " + waitPath,
+					},
+					{
+						Type:    "command",
+						Command: "osascript -e 'display notification \"Waiting for your input\" with title \"Claude Code\"'",
+						Async:   true,
+					},
+				},
+			}},
+			"Notification": {{
+				Matcher: "permission_prompt",
 				Hooks: []claudeHookCmd{{
 					Type:    "command",
-					Command: "touch " + waitPath,
+					Command: "osascript -e 'display notification \"Permission prompt\" with title \"Claude Code\"'",
+					Async:   true,
 				}},
 			}},
-			"PreToolUse": {{
-				Hooks: []claudeHookCmd{{
-					Type:    "command",
-					Command: "touch " + runPath,
-				}},
-			}},
+			"PreToolUse": {
+				{
+					Hooks: []claudeHookCmd{{
+						Type:    "command",
+						Command: "touch " + runPath,
+					}},
+				},
+				{
+					Matcher: "AskUserQuestion",
+					Hooks: []claudeHookCmd{{
+						Type:    "command",
+						Command: "osascript -e 'display notification \"Claude is asking you a question\" with title \"Claude Code\"' > /dev/null 2>&1",
+						Async:   true,
+					}},
+				},
+			},
 		},
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
