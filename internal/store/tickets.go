@@ -112,6 +112,17 @@ func (s *Store) ClearWorktree(ticketID string) error {
 }
 
 func (s *Store) DeleteTicket(id string) error {
+	var status string
+	if err := s.db.QueryRow(`SELECT status FROM tickets WHERE id = ?`, id).Scan(&status); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("ticket %s not found", id)
+		}
+		return err
+	}
+	if status != string(model.StatusDraft) {
+		return fmt.Errorf("cannot delete ticket %s: only draft tickets may be deleted (status: %s)", id, status)
+	}
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err

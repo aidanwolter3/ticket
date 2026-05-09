@@ -179,6 +179,17 @@ func TestCascadeDelete(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
+func TestDeleteNonDraftTicketRejected(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
+
+	err := s.DeleteTicket(ticket.ID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only draft tickets may be deleted")
+}
+
 func TestInvalidTicketTransition(t *testing.T) {
 	s := newTestStore(t)
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
