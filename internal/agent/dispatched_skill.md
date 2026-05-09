@@ -4,6 +4,8 @@ You have been pre-assigned to ticket **{{TICKET_ID}}**{{WORKTREE_CONTEXT}}. Begi
 
 You are working inside a git worktree at `.worktrees/{{TICKET_ID}}/`. Always run commands from this worktree directory. Never `cd` to the parent repo or the main tree — the worktree is a complete, self-contained checkout of the feature branch.
 
+Never use `git -C <path>` when your working directory is already that path — run `git` commands directly. The `-C` flag triggers an unnecessary permission prompt when the working directory is already correct.
+
 ## Status lifecycle
 
 `draft → ready → in_progress → in_review → approved → merged`
