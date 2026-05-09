@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	fakeAgentBin string
-	oscAgentBin  string
-	csiAgentBin  string
-	pwdAgentBin  string
+	fakeAgentBin   string
+	oscAgentBin    string
+	csiAgentBin    string
+	pwdAgentBin    string
+	signalAgentBin string
 )
 
 func TestMain(m *testing.M) {
@@ -43,6 +44,7 @@ func TestMain(m *testing.M) {
 	oscAgentBin = buildBin("./testdata/osc_agent", "osc_agent")
 	csiAgentBin = buildBin("./testdata/csi_agent", "csi_agent")
 	pwdAgentBin = buildBin("./testdata/pwd_agent", "pwd_agent")
+	signalAgentBin = buildBin("./testdata/signal_agent", "signal_agent")
 
 	os.Exit(m.Run())
 }
@@ -284,6 +286,36 @@ func TestLaunch_SetsWorkingDirectory(t *testing.T) {
 		return false
 	})
 	assert.True(t, found, "agent working directory should match worktreePath")
+}
+
+// TestSignalFileWaiting verifies that when the agent writes the signal file
+// (.agent/claude_waiting) the session transitions to AgentWaiting immediately —
+// well before the silence timeout — and that the session becomes inactive after
+// the process exits.
+func TestSignalFileWaiting(t *testing.T) {
+	SilenceTimeout = 5 * time.Second // long enough that it does not interfere
+
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	worktreeDir := t.TempDir()
+	launcher := NewLauncher(s)
+
+	sess, err := launcher.Launch(ticket.ID, worktreeDir, []string{signalAgentBin})
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+	assert.Equal(t, model.AgentRunning, sess.State)
+
+	// The signal_agent writes .agent/claude_waiting after ~50 ms; the
+	// ClaudeCodeWaitSignaler polls every 100 ms, so detection must occur
+	// well within 1 second — not the 5-second silence timeout.
+	got := pollState(t, s, ticket.ID, model.AgentWaiting, time.Second)
+	assert.Equal(t, model.AgentWaiting, got, "state should become waiting via signal file before silence timeout")
+
+	// After the process exits the session should be inactive.
+	got = pollState(t, s, ticket.ID, "", 5*time.Second)
+	assert.Equal(t, model.AgentState(""), got, "session should be inactive after process exits")
 }
 
 // TestCSIcNoDeadlock verifies that CSI c (device-attributes query) does not
