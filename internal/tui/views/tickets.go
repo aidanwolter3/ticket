@@ -160,21 +160,8 @@ func (v *TicketsView) View() string {
 		barColWidth = 8 + 1 + maxFracWidth
 	}
 
-	// Reserve a left column for the blocked indicator when any visible ticket is blocked.
-	hasBlocked := false
-	for _, t := range tickets {
-		if len(t.BlockedBy) > 0 {
-			hasBlocked = true
-			break
-		}
-	}
-	blockedColWidth := 0
-	if hasBlocked {
-		blockedColWidth = 2 // "● "
-	}
-
-	// Layout: cursor(1) SP agentPrefix(2) icon(1) SP id(maxIDLen) SP [blocked(blockedColWidth)] title(titleWidth) [SP bar(barColWidth)]
-	titleWidth := v.width - 7 - maxIDLen - blockedColWidth
+	// Layout: cursor(1) SP agentPrefix(2) icon(1) SP id(maxIDLen) SP title(titleWidth) [SP bar(barColWidth)]
+	titleWidth := v.width - 7 - maxIDLen
 	if barColWidth > 0 {
 		titleWidth -= 1 + barColWidth
 	}
@@ -185,6 +172,9 @@ func (v *TicketsView) View() string {
 	for i := start; i < len(tickets) && i < start+visible; i++ {
 		t := tickets[i]
 		icon := components.TicketStatusIcon(t.Status)
+		if len(t.BlockedBy) > 0 {
+			icon = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Render("●")
+		}
 
 		// Agent indicator prefix.
 		agentPrefix := "  "
@@ -239,21 +229,12 @@ func (v *TicketsView) View() string {
 			cursor = ">"
 		}
 
-		blockedIndicator := ""
-		if hasBlocked {
-			if len(t.BlockedBy) > 0 {
-				blockedIndicator = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Render("●") + " "
-			} else {
-				blockedIndicator = "  "
-			}
-		}
-
 		line := fmt.Sprintf("%s %s%s %s %s%s",
 			cursor,
 			agentPrefix,
 			icon,
 			idStyle.Render(paddedID),
-			blockedIndicator+titleStyle.Render(title),
+			titleStyle.Render(title),
 			barStr,
 		)
 		sb.WriteString(line + "\n")
