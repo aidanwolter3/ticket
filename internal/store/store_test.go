@@ -269,6 +269,23 @@ func TestTransitionPreconditions(t *testing.T) {
 		require.NoError(t, s.CompleteTask(amendment.ID))
 		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusApproved, "human:test"))
 	})
+
+	t.Run("ready→in_progress blocked by non-approved/merged tickets", func(t *testing.T) {
+		s := newTestStore(t)
+		blocker := &model.Ticket{Title: "Blocker", Type: model.TypeTicket, Status: model.StatusReady}
+		require.NoError(t, s.CreateTicket(blocker))
+		ticket := &model.Ticket{Title: "Blocked", Type: model.TypeTicket, Status: model.StatusReady, BlockedBy: []string{blocker.ID}}
+		require.NoError(t, s.CreateTicket(ticket))
+
+		err := s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:test")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "blocked by")
+
+		// approved blocker satisfies the check
+		_, err = s.db.Exec(`UPDATE tickets SET status='approved' WHERE id=?`, blocker.ID)
+		require.NoError(t, err)
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:test"))
+	})
 }
 
 func TestInvalidThreadTransition(t *testing.T) {
