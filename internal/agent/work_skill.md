@@ -69,6 +69,14 @@ ticket get <id>
 
 Study every task (in `position` order), every thread, and every note before touching any code.
 
+To read full details for a single task (description, verifiable result, threads):
+
+```bash
+ticket task get <task-id>
+```
+
+Use this when you need to inspect a specific task's description or verifiable result in full.
+
 ### 4. Execute the work
 
 #### For `new_work`
