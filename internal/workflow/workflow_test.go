@@ -844,14 +844,17 @@ func TestRedraft_ResetsTaskStatuses(t *testing.T) {
 	}
 	require.NoError(t, s.CreateTicket(ticket))
 	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreePath, repoPath, "feat/t-reset"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
 
-	// Create tasks and complete them.
+	// Create tasks before transitioning to ready (draft→ready requires at least one task).
 	task1 := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	task2 := &model.Task{TicketID: ticket.ID, Title: "Task 2", Position: 2}
 	require.NoError(t, s.CreateTask(task1))
 	require.NoError(t, s.CreateTask(task2))
+
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
+
+	// Complete both tasks.
 	require.NoError(t, s.CompleteTask(task1.ID))
 	require.NoError(t, s.CompleteTask(task2.ID))
 
