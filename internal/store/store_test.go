@@ -680,6 +680,41 @@ func TestAgentSessionCRUD(t *testing.T) {
 	assert.Nil(t, got, "terminated session should not be returned")
 }
 
+func TestUpdateTask(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	task := &model.Task{TicketID: ticket.ID, Title: "Original title", Description: "Original desc", VerifiableResult: "vr1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	// Update only title.
+	task.Title = "New title"
+	require.NoError(t, s.UpdateTask(task))
+
+	got, err := s.GetTask(task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "New title", got.Title)
+	assert.Equal(t, "Original desc", got.Description)
+	assert.Equal(t, "vr1", got.VerifiableResult)
+	assert.Equal(t, 1, got.Position)
+	assert.Equal(t, task.ID, got.ID)
+
+	// Update description and verifiable result together.
+	task.Description = "New desc"
+	task.VerifiableResult = "vr2"
+	require.NoError(t, s.UpdateTask(task))
+
+	got, err = s.GetTask(task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "New title", got.Title)
+	assert.Equal(t, "New desc", got.Description)
+	assert.Equal(t, "vr2", got.VerifiableResult)
+	assert.Equal(t, 1, got.Position)
+	assert.Equal(t, task.ID, got.ID)
+}
+
+
 func ticketIDs(tickets []*model.Ticket) []string {
 	ids := make([]string, len(tickets))
 	for i, t := range tickets {

@@ -16,6 +16,7 @@ func RunTask(args []string, defaultDB string) {
 		fmt.Fprintln(os.Stderr, "  add        <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>]")
 		fmt.Fprintln(os.Stderr, "  get        <task-id>")
 		fmt.Fprintln(os.Stderr, "  ls         <ticket-id>")
+		fmt.Fprintln(os.Stderr, "  update     <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]")
 		fmt.Fprintln(os.Stderr, "  complete   <task-id> <author>")
 		fmt.Fprintln(os.Stderr, "  uncomplete <task-id> <author>")
 		fmt.Fprintln(os.Stderr, "  delete     <task-id>")
@@ -28,6 +29,8 @@ func RunTask(args []string, defaultDB string) {
 		runTaskGet(args[1:], defaultDB)
 	case "ls":
 		runTaskList(args[1:], defaultDB)
+	case "update":
+		runTaskUpdate(args[1:], defaultDB)
 	case "complete":
 		runTaskComplete(args[1:], defaultDB, false)
 	case "uncomplete":
@@ -238,4 +241,50 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 		os.Exit(1)
 	}
 	fmt.Printf("%s → %sd\n", taskID, subCmd)
+}
+
+func runTaskUpdate(args []string, defaultDB string) {
+	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
+		fmt.Fprintln(os.Stderr, "usage: ticket task update [--db path] <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]")
+		os.Exit(1)
+	}
+	taskID := args[0]
+
+	var title, description, verifiableResult *string
+	s, _ := parseAndOpen("task update", args[1:], defaultDB, func(f *flag.FlagSet) {
+		title = f.String("title", "", "new task title")
+		description = f.String("description", "", "new task description")
+		verifiableResult = f.String("verifiable-result", "", "new verifiable result")
+	})
+	defer s.Close()
+
+	titleSet := *title != ""
+	descSet := *description != ""
+	vrSet := *verifiableResult != ""
+	if !titleSet && !descSet && !vrSet {
+		fmt.Fprintln(os.Stderr, "error: at least one of --title, --description, or --verifiable-result must be provided")
+		os.Exit(1)
+	}
+
+	task, err := s.GetTask(taskID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	if titleSet {
+		task.Title = *title
+	}
+	if descSet {
+		task.Description = *description
+	}
+	if vrSet {
+		task.VerifiableResult = *verifiableResult
+	}
+
+	if err := s.UpdateTask(task); err != nil {
+		fmt.Fprintf(os.Stderr, "update task: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("%s updated\n", taskID)
 }
