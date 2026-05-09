@@ -33,6 +33,14 @@ ticket get {{TICKET_ID}}
 
 `ticket get` outputs **plain text**, not JSON — read it directly. Do not pipe it through `python`, `jq`, or any other parser.
 
+The plain-text output truncates long task titles and **omits thread messages entirely**. To read thread content (e.g., when addressing review feedback), use the `--json` flag — which must come **before** the ID:
+
+```bash
+ticket get --json {{TICKET_ID}}
+```
+
+This outputs full JSON including all thread messages, complete task titles, and notes.
+
 Study every task (in `position` order), every thread, and every note before touching any code.
 
 ### 2. Execute the work
