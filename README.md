@@ -109,6 +109,8 @@ ticket delete <id>
 # Tasks
 ticket task add <ticket-id> --title <title> [--description <text>] [--verifiable-result <text>]
 ticket task ls <ticket-id>
+ticket task update <task-id> [--title <title>] [--description <text>] [--verifiable-result <text>]
+ticket task move <task-id> <position>
 ticket task complete <task-id>
 ticket task uncomplete <task-id>
 
