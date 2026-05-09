@@ -31,10 +31,6 @@ func main() {
 			cli.RunList(os.Args[2:], defaultDB)
 		case "get":
 			cli.RunGet(os.Args[2:], defaultDB)
-		case "claim-work":
-			cli.RunClaimWork(os.Args[2:], defaultDB)
-		case "peek-work":
-			cli.RunPeekWork(os.Args[2:], defaultDB)
 		case "transition":
 			cli.RunTransition(os.Args[2:], defaultDB)
 		case "ready":

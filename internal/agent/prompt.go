@@ -6,12 +6,6 @@ import (
 	"strings"
 )
 
-// workSkill is the /work skill content embedded at compile time.
-// To update the prompt sent to agents, edit work_skill.md in this package.
-//
-//go:embed work_skill.md
-var workSkill string
-
 // dispatchedSkill is the pre-assigned agent skill embedded at compile time.
 // It contains {{TICKET_ID}} and {{WORKTREE_CONTEXT}} placeholders that
 // BuildTicketPrompt replaces at runtime.
@@ -20,9 +14,7 @@ var workSkill string
 var dispatchedSkill string
 
 // BuildTicketPrompt builds a ticket-specific prompt from the dispatched skill
-// template, substituting the ticket ID and worktree context. The result is a
-// self-contained prompt that starts at "Read full context" — it omits the
-// claim-work and enter-worktree steps since the agent is already positioned.
+// template, substituting the ticket ID and worktree context.
 func BuildTicketPrompt(ticketID, worktreePath string) string {
 	worktreeCtx := ""
 	if worktreePath != "" {
@@ -39,15 +31,10 @@ func BuildTicketPrompt(ticketID, worktreePath string) string {
 // "bash -c" so the shell handles quoting. The actual prompt text is passed
 // through the environment to avoid any argument-splitting or quoting issues.
 //
-// The caller must add TICKET_AGENT_PROMPT=<workSkill> to the subprocess env;
-// Launcher.Launch does this automatically.
+// Launcher.Launch sets TICKET_AGENT_PROMPT automatically.
 //
-// Returns an error if the placeholder is not found or the embedded skill is empty.
+// Returns an error if the placeholder is not found.
 func BuildPrompt(commandTemplate string) ([]string, error) {
-	if workSkill == "" {
-		return nil, fmt.Errorf("embedded work skill is empty — rebuild the binary")
-	}
-
 	// Detect which form of the placeholder is present.
 	var shellCmd string
 	switch {
