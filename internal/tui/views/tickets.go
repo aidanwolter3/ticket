@@ -88,6 +88,24 @@ func (v *TicketsView) SelectedTicket() *model.Ticket {
 	return vis[v.cursor]
 }
 
+// VisibleTickets returns the currently visible (non-filtered) ticket list in display order.
+func (v *TicketsView) VisibleTickets() []*model.Ticket {
+	return v.visible()
+}
+
+// SelectTicketByID sets the cursor to the ticket with the given ID.
+// Returns true if the ticket was found and selected.
+func (v *TicketsView) SelectTicketByID(id string) bool {
+	vis := v.visible()
+	for i, t := range vis {
+		if t.ID == id {
+			v.cursor = i
+			return true
+		}
+	}
+	return false
+}
+
 func (v *TicketsView) Init() tea.Cmd { return nil }
 
 func (v *TicketsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

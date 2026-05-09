@@ -1129,6 +1129,50 @@ func (a *App) terminateSilentReviewedSessions() {
 	}
 }
 
+// nextWaitingTicketID returns the ticket ID of the next agent in the "waiting"
+// state after the currently focused ticket, cycling through the visible list.
+// Returns empty string if no agents are waiting.
+func (a *App) nextWaitingTicketID() string {
+	sessions, err := a.store.ListActiveAgentSessions()
+	if err != nil {
+		return ""
+	}
+	waiting := make(map[string]bool, len(sessions))
+	for _, sess := range sessions {
+		if sess.State == model.AgentWaiting {
+			waiting[sess.TicketID] = true
+		}
+	}
+	if len(waiting) == 0 {
+		return ""
+	}
+
+	tickets := a.ticketsView.VisibleTickets()
+	if len(tickets) == 0 {
+		return ""
+	}
+
+	// Find index of the currently focused ticket.
+	currentID := a.selectedTicketID()
+	start := 0
+	for i, t := range tickets {
+		if t.ID == currentID {
+			start = i
+			break
+		}
+	}
+
+	// Scan from start+1, wrapping around, to find the next waiting ticket.
+	n := len(tickets)
+	for offset := 1; offset <= n; offset++ {
+		t := tickets[(start+offset)%n]
+		if waiting[t.ID] {
+			return t.ID
+		}
+	}
+	return ""
+}
+
 // --- helpers ---
 
 func (a *App) setErr(err error) {
