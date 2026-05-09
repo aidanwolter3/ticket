@@ -160,8 +160,21 @@ func (v *TicketsView) View() string {
 		barColWidth = 8 + 1 + maxFracWidth
 	}
 
-	// Layout: cursor(1) SP agentPrefix(2) icon(1) SP id(maxIDLen) SP title(titleWidth) [SP bar(barColWidth)]
-	titleWidth := v.width - 7 - maxIDLen
+	// Reserve a left column for the blocked indicator when any visible ticket is blocked.
+	hasBlocked := false
+	for _, t := range tickets {
+		if len(t.BlockedBy) > 0 {
+			hasBlocked = true
+			break
+		}
+	}
+	blockedColWidth := 0
+	if hasBlocked {
+		blockedColWidth = 2 // "● "
+	}
+
+	// Layout: cursor(1) SP agentPrefix(2) icon(1) SP id(maxIDLen) SP [blocked(blockedColWidth)] title(titleWidth) [SP bar(barColWidth)]
+	titleWidth := v.width - 7 - maxIDLen - blockedColWidth
 	if barColWidth > 0 {
 		titleWidth -= 1 + barColWidth
 	}
@@ -226,21 +239,22 @@ func (v *TicketsView) View() string {
 			cursor = ">"
 		}
 
-		blockedBubble := ""
-		if len(t.BlockedBy) > 0 {
-			blockedBubble = " " + lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FF6B6B")).
-				Render("blocked")
+		blockedIndicator := ""
+		if hasBlocked {
+			if len(t.BlockedBy) > 0 {
+				blockedIndicator = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Render("●") + " "
+			} else {
+				blockedIndicator = "  "
+			}
 		}
 
-		line := fmt.Sprintf("%s %s%s %s %s%s%s",
+		line := fmt.Sprintf("%s %s%s %s %s%s",
 			cursor,
 			agentPrefix,
 			icon,
 			idStyle.Render(paddedID),
-			titleStyle.Render(title),
+			blockedIndicator+titleStyle.Render(title),
 			barStr,
-			blockedBubble,
 		)
 		sb.WriteString(line + "\n")
 	}
