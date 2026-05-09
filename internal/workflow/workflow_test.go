@@ -50,8 +50,8 @@ func gitRepo(t *testing.T) string {
 }
 
 // approvedTicket inserts a ticket already in approved status with the given
-// repo/branch/worktree fields. No tasks are created so the task-complete check
-// in Merge is vacuously satisfied.
+// repo/branch/worktree fields. A completed task is added to satisfy the
+// task-complete preconditions on in_review and approved transitions.
 func approvedTicket(t *testing.T, s *store.Store, repoPath, featureBranch, worktreePath string) *model.Ticket {
 	t.Helper()
 	ticket := &model.Ticket{
@@ -61,6 +61,9 @@ func approvedTicket(t *testing.T, s *store.Store, repoPath, featureBranch, workt
 		RepoPath: repoPath,
 	}
 	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "setup task", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.CompleteTask(task.ID))
 	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreePath, repoPath, featureBranch))
 	for _, to := range []model.Status{
 		model.StatusReady, model.StatusInProgress, model.StatusInReview, model.StatusApproved,
@@ -274,6 +277,12 @@ func TestWorktreeLifecycle(t *testing.T) {
 	require.NoError(t, s.CreateTicket(dependent))
 	require.NoError(t, s.AddBlocker(dependent.ID, blocker.ID))
 
+	// Each ticket needs at least one task to satisfy the draft→ready precondition.
+	blockerTask := &model.Task{TicketID: blocker.ID, Title: "blocker task", Position: 1}
+	require.NoError(t, s.CreateTask(blockerTask))
+	dependentTask := &model.Task{TicketID: dependent.ID, Title: "dependent task", Position: 1}
+	require.NoError(t, s.CreateTask(dependentTask))
+
 	// --- promote: no worktrees should be created ---
 	require.NoError(t, Promote(s, blocker.ID, nil, io.Discard, io.Discard))
 	require.NoError(t, Promote(s, dependent.ID, nil, io.Discard, io.Discard))
@@ -298,6 +307,7 @@ func TestWorktreeLifecycle(t *testing.T) {
 	blockerWorktree := b.WorktreePath
 
 	// --- approved blocker does NOT unblock dependent ---
+	require.NoError(t, s.CompleteTask(blockerTask.ID))
 	require.NoError(t, s.TransitionTicket(blocker.ID, model.StatusInReview, "agent:test"))
 	require.NoError(t, s.TransitionTicket(blocker.ID, model.StatusApproved, "human:test"))
 
@@ -335,6 +345,7 @@ func TestWorktreeLifecycle(t *testing.T) {
 	dependentWorktree := d.WorktreePath
 
 	// --- requeue (in_review → ready): worktree and branch survive ---
+	require.NoError(t, s.CompleteTask(dependentTask.ID))
 	require.NoError(t, s.TransitionTicket(dependent.ID, model.StatusInReview, "agent:test"))
 	require.NoError(t, Ready(s, dependent.ID, "human:reviewer", io.Discard, io.Discard))
 
@@ -370,6 +381,10 @@ func TestReviewCycleLifecycle(t *testing.T) {
 		RepoPath: repoPath,
 	}
 	require.NoError(t, s.CreateTicket(ticket))
+	// A task must exist before Promote (draft→ready requires at least one task).
+	setupTask := &model.Task{TicketID: ticket.ID, Title: "setup task", Position: 0}
+	require.NoError(t, s.CreateTask(setupTask))
+	require.NoError(t, s.CompleteTask(setupTask.ID))
 	require.NoError(t, Promote(s, ticket.ID, nil, io.Discard, io.Discard))
 
 	item, err := Claim(s, "agent:test", io.Discard, io.Discard)
@@ -470,12 +485,12 @@ func TestSubmitReview_FlushesAndTransitions(t *testing.T) {
 
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.CompleteTask(task.ID))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
-
-	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
-	require.NoError(t, s.CreateTask(task))
 
 	// Existing real thread (open).
 	th, err := s.CreateThread(task.ID)
@@ -525,12 +540,12 @@ func TestSubmitReview_CreatesAmendmentTasks(t *testing.T) {
 
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Original task", Position: 1, Round: 1}
+	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.CompleteTask(task.ID))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
-
-	task := &model.Task{TicketID: ticket.ID, Title: "Original task", Position: 1, Round: 1}
-	require.NoError(t, s.CreateTask(task))
 
 	// Create 3 draft threads (all will become needs_attention).
 	for i := 0; i < 3; i++ {
@@ -569,6 +584,9 @@ func TestSubmitReview_EmptyDraftOK(t *testing.T) {
 
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.CompleteTask(task.ID))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
@@ -581,16 +599,17 @@ func TestSubmitReview_EmptyDraftOK(t *testing.T) {
 	assert.Equal(t, model.StatusInReview, got.Status)
 }
 
-// newInReviewTicket creates a ticket in in_review status with one task.
+// newInReviewTicket creates a ticket in in_review status with one completed task.
 func newInReviewTicket(t *testing.T, s *store.Store) (*model.Ticket, *model.Task) {
 	t.Helper()
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.CompleteTask(task.ID))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
-	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
-	require.NoError(t, s.CreateTask(task))
 	return ticket, task
 }
 
@@ -667,9 +686,10 @@ func TestClaim_AmendmentSkipsWorktreeCreation(t *testing.T) {
 	require.NotEmpty(t, originalWorktree)
 
 	// Advance to in_review, then back to ready via ReviewSubmit (simulating review cycle).
-	// We need a task + thread for ReviewSubmit to work.
+	// We need a completed task + thread for ReviewSubmit to work.
 	task := &model.Task{TicketID: ticket.ID, Title: "task", Position: 1}
 	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.CompleteTask(task.ID))
 	th, err := s.CreateThread(task.ID)
 	require.NoError(t, err)
 	_, err = s.AddMessage(th.ID, "human:reviewer", "please fix this")
@@ -753,6 +773,8 @@ func TestRedraft_KillsAgentSession(t *testing.T) {
 		RepoPath: repoPath,
 	}
 	require.NoError(t, s.CreateTicket(ticket))
+	setupTask := &model.Task{TicketID: ticket.ID, Title: "setup task", Position: 1}
+	require.NoError(t, s.CreateTask(setupTask))
 	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreePath, repoPath, "feat/t-999"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
@@ -881,6 +903,8 @@ func TestPromote_CreatesWorktreeForMissingPath(t *testing.T) {
 		RepoPath: repoPath,
 	}
 	require.NoError(t, s.CreateTicket(ticket))
+	setupTask := &model.Task{TicketID: ticket.ID, Title: "setup task", Position: 1}
+	require.NoError(t, s.CreateTask(setupTask))
 	require.NoError(t, s.SetWorktreePath(ticket.ID, "", repoPath, "feat/t-999"))
 
 	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
@@ -907,6 +931,8 @@ func TestPromote_SkipsAutoDispatchWithOpenBlocker(t *testing.T) {
 
 	ticket := &model.Ticket{Title: "Dependent", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
+	setupTask := &model.Task{TicketID: ticket.ID, Title: "setup task", Position: 1}
+	require.NoError(t, s.CreateTask(setupTask))
 	require.NoError(t, s.AddBlocker(ticket.ID, blocker.ID))
 
 	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
@@ -932,6 +958,9 @@ func TestPromote_AutoDispatchWithApprovedBlocker(t *testing.T) {
 
 	blocker := &model.Ticket{Title: "Blocker", Type: model.TypeTicket, Status: model.StatusDraft, RepoPath: repoPath}
 	require.NoError(t, s.CreateTicket(blocker))
+	blockerTask := &model.Task{TicketID: blocker.ID, Title: "blocker task", Position: 1}
+	require.NoError(t, s.CreateTask(blockerTask))
+	require.NoError(t, s.CompleteTask(blockerTask.ID))
 	for _, to := range []model.Status{model.StatusReady, model.StatusInProgress, model.StatusInReview, model.StatusApproved} {
 		author := "agent:claude"
 		if to == model.StatusReady || to == model.StatusApproved {
@@ -942,6 +971,8 @@ func TestPromote_AutoDispatchWithApprovedBlocker(t *testing.T) {
 
 	ticket := &model.Ticket{Title: "Dependent", Type: model.TypeTicket, Status: model.StatusDraft, RepoPath: repoPath}
 	require.NoError(t, s.CreateTicket(ticket))
+	dependentTask := &model.Task{TicketID: ticket.ID, Title: "dependent task", Position: 1}
+	require.NoError(t, s.CreateTask(dependentTask))
 	require.NoError(t, s.AddBlocker(ticket.ID, blocker.ID))
 
 	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
@@ -969,6 +1000,8 @@ func TestPromote_SkipsLaunchOnWorktreeCreationFailure(t *testing.T) {
 		RepoPath: "/nonexistent/repo/path",
 	}
 	require.NoError(t, s.CreateTicket(ticket))
+	setupTask := &model.Task{TicketID: ticket.ID, Title: "setup task", Position: 1}
+	require.NoError(t, s.CreateTask(setupTask))
 	require.NoError(t, s.SetWorktreePath(ticket.ID, "", "/nonexistent/repo/path", "feat/t-999"))
 
 	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))

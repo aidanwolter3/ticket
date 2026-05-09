@@ -74,12 +74,54 @@ func (s *Store) TransitionTicket(id string, to model.Status, author string) erro
 	if err != nil {
 		return err
 	}
-	if err := model.ValidateTicketTransition(model.Status(fromStr), to, author); err != nil {
+	from := model.Status(fromStr)
+	if err := model.ValidateTicketTransition(from, to, author); err != nil {
+		return err
+	}
+	if err := s.checkTransitionPreconditions(id, from, to); err != nil {
 		return err
 	}
 	now := time.Now().UnixMilli()
 	_, err = s.db.Exec(`UPDATE tickets SET status=?, updated=? WHERE id=?`, string(to), now, id)
 	return err
+}
+
+// checkTransitionPreconditions enforces semantic guards that require DB state
+// beyond author/status-graph checks.
+func (s *Store) checkTransitionPreconditions(id string, from, to model.Status) error {
+	switch {
+	case from == model.StatusDraft && to == model.StatusReady:
+		var count int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE ticket_id=?`, id).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			return fmt.Errorf("ticket %s has no tasks: add at least one task before marking ready", id)
+		}
+
+	case (from == model.StatusInProgress && to == model.StatusInReview) ||
+		(from == model.StatusInReview && to == model.StatusApproved):
+		var incomplete int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE ticket_id=? AND completed_at IS NULL`, id).Scan(&incomplete); err != nil {
+			return err
+		}
+		if incomplete > 0 {
+			return fmt.Errorf("ticket %s has %d incomplete task(s): complete all tasks before transitioning %s → %s", id, incomplete, from, to)
+		}
+
+	case from == model.StatusReady && to == model.StatusInProgress:
+		var blocked int
+		if err := s.db.QueryRow(`
+			SELECT COUNT(*) FROM blocked_by b
+			JOIN tickets bt ON bt.id = b.blocker_id
+			WHERE b.ticket_id = ? AND bt.status NOT IN ('approved', 'merged')`, id).Scan(&blocked); err != nil {
+			return err
+		}
+		if blocked > 0 {
+			return fmt.Errorf("ticket %s is blocked by %d ticket(s) that are not yet approved or merged", id, blocked)
+		}
+	}
+	return nil
 }
 
 // PromoteTicket transitions a draft ticket to ready and returns the ticket so

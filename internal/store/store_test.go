@@ -53,6 +53,9 @@ func TestMigrate(t *testing.T) {
 	// approved and merged are valid statuses.
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.CompleteTask(task.ID))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:aidan"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
@@ -183,6 +186,8 @@ func TestDeleteNonDraftTicketRejected(t *testing.T) {
 	s := newTestStore(t)
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
 
 	err := s.DeleteTicket(ticket.ID)
@@ -200,11 +205,30 @@ func TestInvalidTicketTransition(t *testing.T) {
 	assert.Error(t, err)
 
 	// Agent cannot approve (human only).
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.CompleteTask(task.ID))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:aidan"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
 	err = s.TransitionTicket(ticket.ID, model.StatusApproved, "agent:claude")
 	assert.Error(t, err)
+}
+
+func TestTransitionPreconditions(t *testing.T) {
+	t.Run("draft→ready requires at least one task", func(t *testing.T) {
+		s := newTestStore(t)
+		ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+		require.NoError(t, s.CreateTicket(ticket))
+
+		err := s.TransitionTicket(ticket.ID, model.StatusReady, "human:test")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no tasks")
+
+		task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+		require.NoError(t, s.CreateTask(task))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
+	})
 }
 
 func TestInvalidThreadTransition(t *testing.T) {

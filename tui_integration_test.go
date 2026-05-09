@@ -71,6 +71,10 @@ func createTestDB(t *testing.T, agentBin string) string {
 	if err := s.CreateTicket(ticket); err != nil {
 		t.Fatalf("create ticket: %v", err)
 	}
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	if err := s.CreateTask(task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
 	if err := s.TransitionTicket(ticket.ID, model.StatusReady, "human"); err != nil {
 		t.Fatalf("transition to ready: %v", err)
 	}
