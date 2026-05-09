@@ -1,4 +1,4 @@
-You have been pre-assigned to ticket **{{TICKET_ID}}**{{WORKTREE_CONTEXT}}. Do not run `ticket claim-work` or search for other work — begin immediately with step 1 below.
+You have been pre-assigned to ticket **{{TICKET_ID}}**{{WORKTREE_CONTEXT}}. Begin immediately with step 1 below.
 
 ## Working directory
 
@@ -8,13 +8,13 @@ You are working inside a git worktree at `.worktrees/{{TICKET_ID}}/`. Always run
 
 `draft → ready → in_progress → in_review → approved → merged`
 
-Only humans approve and merge tickets. Agents claim work (`ready → in_progress`), finish it (`in_progress → in_review`), and flip amended threads back to open (`needs_attention → open`).
+Only humans approve and merge tickets. Agents are dispatched to tickets and transition them (`in_progress → in_review`), and flip amended threads back to open (`needs_attention → open`).
 
 ## Valid agent transitions
 
 | From | To | Notes |
 |---|---|---|
-| `ready` | `in_progress` | via `claim-work` |
+| `ready` | `in_progress` | via TUI dispatch |
 | `in_progress` | `in_review` | after all tasks committed |
 | `in_review` | `in_progress` | to address review feedback |
 | `needs_attention` thread | `open` thread | after posting amendment reply |

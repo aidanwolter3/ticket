@@ -304,41 +304,6 @@ func TestInvalidThreadTransition(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestBlockerSatisfiedByMergedOnly(t *testing.T) {
-	s := newTestStore(t)
-
-	blocker := &model.Ticket{Title: "Blocker", Type: model.TypeTicket, Status: model.StatusReady}
-	require.NoError(t, s.CreateTicket(blocker))
-	blocked := &model.Ticket{Title: "Blocked", Type: model.TypeTicket, Status: model.StatusReady, BlockedBy: []string{blocker.ID}}
-	require.NoError(t, s.CreateTicket(blocked))
-
-	// blocked ticket is not claimable while blocker is ready.
-	items, err := s.ClaimWork("agent:test")
-	require.NoError(t, err)
-	require.NotNil(t, items)
-	assert.Equal(t, blocker.ID, items.Ticket.ID)
-
-	// Reset blocker back to ready.
-	_, err = s.db.Exec(`UPDATE tickets SET status='ready' WHERE id=?`, blocker.ID)
-	require.NoError(t, err)
-
-	// approved blocker does NOT unblock dependent — must be merged.
-	_, err = s.db.Exec(`UPDATE tickets SET status='approved' WHERE id=?`, blocker.ID)
-	require.NoError(t, err)
-	work, err := s.PeekWork()
-	require.NoError(t, err)
-	workIDs := workItemIDs(work)
-	assert.NotContains(t, workIDs, blocked.ID, "approved blocker should not unblock")
-
-	// merged blocker unblocks dependent.
-	_, err = s.db.Exec(`UPDATE tickets SET status='merged' WHERE id=?`, blocker.ID)
-	require.NoError(t, err)
-	work, err = s.PeekWork()
-	require.NoError(t, err)
-	workIDs = workItemIDs(work)
-	assert.Contains(t, workIDs, blocked.ID, "merged blocker should unblock")
-}
-
 func TestAvailableWork(t *testing.T) {
 	s := newTestStore(t)
 
@@ -365,45 +330,6 @@ func TestAvailableWork(t *testing.T) {
 	work, err = s.AvailableWork()
 	require.NoError(t, err)
 	assert.Contains(t, ticketIDs(work), blocked.ID)
-}
-
-func TestAmendmentWorkIncludesOpenTasks(t *testing.T) {
-	s := newTestStore(t)
-
-	// A ready ticket with a feature branch and an incomplete task but no
-	// needs_attention threads should appear in the amendment work queue.
-	ticket := &model.Ticket{
-		Title:  "Needs more work",
-		Type:   model.TypeTicket,
-		Status: model.StatusReady,
-	}
-	require.NoError(t, s.CreateTicket(ticket))
-	require.NoError(t, s.SetWorktreePath(ticket.ID, "", "", "feat/t-000"))
-
-	task := &model.Task{TicketID: ticket.ID, Title: "Open task", Position: 1}
-	require.NoError(t, s.CreateTask(task))
-
-	work, err := s.PeekWork()
-	require.NoError(t, err)
-
-	found := false
-	for _, w := range work {
-		if w.Ticket.ID == ticket.ID {
-			assert.Equal(t, WorkTypeAmendment, w.Type)
-			found = true
-		}
-	}
-	assert.True(t, found, "ticket with open task should appear as amendment work")
-
-	// After completing the task it should no longer appear.
-	require.NoError(t, s.CompleteTask(task.ID))
-
-	work, err = s.PeekWork()
-	require.NoError(t, err)
-
-	for _, w := range work {
-		assert.NotEqual(t, ticket.ID, w.Ticket.ID, "completed-task ticket should not appear")
-	}
 }
 
 func TestReviewQueue(t *testing.T) {
@@ -774,11 +700,4 @@ func TestCreateTicket_RejectsFeatureBranch(t *testing.T) {
 	require.Error(t, err, "CreateTicket with non-empty FeatureBranch must return an error")
 }
 
-func workItemIDs(items []*WorkItem) []string {
-	ids := make([]string, len(items))
-	for i, w := range items {
-		ids[i] = w.Ticket.ID
-	}
-	return ids
-}
 

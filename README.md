@@ -26,11 +26,12 @@ ticket task add T1 --title "Add /login endpoint"
 ticket ready T1 human:alice
 ```
 
-### 2. Agent: claim and work
+### 2. Agent: work
+
+The agent is dispatched by the TUI (`agent.auto_dispatch`) and pre-assigned to a specific ticket. It does the work and transitions to review:
 
 ```sh
-ticket claim-work          # atomically claims next ready ticket, creates worktree
-# ... do the work ...
+# ... do the work (agent is pre-assigned via TUI dispatch) ...
 ticket task complete <task-id>
 ticket transition T1 in_review agent:claude
 ```
@@ -42,7 +43,6 @@ Open the TUI (`ticket`) and navigate to the ticket in review. Use the threads sc
 ### 4. Agent: amend
 
 ```sh
-ticket claim-work          # claims the same ticket as amendment work
 # ... address review feedback via the generated amendment tasks ...
 ticket transition T1 in_review agent:claude
 ```
@@ -117,10 +117,6 @@ ticket review-submit <ticket-id> <author>
 ticket thread reply <thread-id> <author> <text>
 ticket thread transition <thread-id> <status> <author>
 
-# Work claiming (for agents)
-ticket claim-work [--json]
-ticket peek-work [--json]
-
 # Config
 ticket config set <key> <value>    # e.g. worktrees=false
 ticket config get <key>
@@ -144,11 +140,11 @@ ticket config set agent.auto_dispatch true             # auto-dispatch agents wh
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `worktrees` | `true` | Create a git worktree when claiming work |
-| `agent.command` | _(unset)_ | Command to run as an agent; `{}` is replaced with the /work skill file contents |
+| `worktrees` | `true` | Create a git worktree when a ticket becomes ready |
+| `agent.command` | _(unset)_ | Command to run as an agent; `{}` is replaced with the dispatched skill file contents |
 | `agent.auto_dispatch` | `false` | If `true`, automatically dispatch an agent whenever a ticket is promoted to `ready` |
 
-`agent.command` must contain `{}` — the system substitutes the /work skill file contents (`~/.claude/skills/work/SKILL.md`) in its place. Setting it without `{}` is a validation error.
+`agent.command` must contain `{}` — the system substitutes the dispatched skill file contents in its place. Setting it without `{}` is a validation error.
 
 Default config location: `~/.local/share/ticket/tickets.db` (same database, config table).
 
@@ -161,7 +157,7 @@ internal/
   tui/             TUI interface — Bubbletea app, views, and reusable components
     views/         full-screen views (ticket list, ticket detail, threads)
     components/    reusable widgets (progress bar, status icon)
-  workflow/        orchestration layer — claim-work, merge, redraft, review-submit
+  workflow/        orchestration layer — promote, merge, redraft, review-submit
   store/           SQLite persistence — schema, migrations, per-entity CRUD
   model/           data types and state machine rules
   ids/             sequential ID generation (T1, T2, …)
