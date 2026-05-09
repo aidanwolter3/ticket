@@ -148,6 +148,14 @@ func (s *Store) UncompleteTask(id string) error {
 	return err
 }
 
+// ResetTasksForTicket clears completed_at on all tasks for the given ticket,
+// returning them to pending status.
+func (s *Store) ResetTasksForTicket(ticketID string) error {
+	now := time.Now().UnixMilli()
+	_, err := s.db.Exec(`UPDATE tasks SET completed_at=NULL, updated=? WHERE ticket_id=?`, now, ticketID)
+	return err
+}
+
 // DeleteTask removes a task by ID. Returns an error if the task does not exist
 // or has already been completed.
 func (s *Store) DeleteTask(id string) error {
