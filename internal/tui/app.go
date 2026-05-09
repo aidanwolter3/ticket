@@ -412,17 +412,32 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "C":
 			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == model.StatusApproved {
 				t := a.ticketDetail.Ticket()
-				if t.WorktreePath != "" {
-					shell := os.Getenv("SHELL")
-					if shell == "" {
-						shell = "sh"
-					}
-					cmd := exec.Command(shell)
-					cmd.Dir = t.WorktreePath
-					return a, tea.ExecProcess(cmd, func(err error) tea.Msg {
-						return dbTickMsg{}
-					})
+				last, err := a.store.LastTaskForTicket(t.ID)
+				if err != nil {
+					a.setErr(err)
+					return a, nil
 				}
+				position := 1
+				if last != nil {
+					position = last.Position + 1
+				}
+				task := &model.Task{
+					TicketID: t.ID,
+					Title:    "resolve-conflicts",
+					Position: position,
+				}
+				if err := a.store.CreateTask(task); err != nil {
+					a.setErr(err)
+					return a, nil
+				}
+				if err := a.store.TransitionTicket(t.ID, model.StatusReady, "human"); err != nil {
+					a.setErr(err)
+					return a, nil
+				}
+				a.statusMsg = fmt.Sprintf("%s → ready (resolve-conflicts task added)", t.ID)
+				a.statusErr = false
+				a.ticketsView.Refresh()
+				a.loadCurrentDetail()
 			}
 			return a, nil
 		}

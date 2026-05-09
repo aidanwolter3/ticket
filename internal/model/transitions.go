@@ -15,7 +15,7 @@ func ValidateTicketTransition(from, to Status, author string) error {
 		StatusReady:      {StatusDraft: true, StatusInProgress: true},
 		StatusInProgress: {StatusInReview: true},
 		StatusInReview:   {StatusReady: true, StatusApproved: true, StatusInProgress: true},
-		StatusApproved:   {StatusMerged: true},
+		StatusApproved:   {StatusMerged: true, StatusReady: true},
 		StatusMerged:     {},
 	}
 
@@ -23,7 +23,7 @@ func ValidateTicketTransition(from, to Status, author string) error {
 		StatusDraft:    {StatusReady: true},
 		StatusReady:    {StatusDraft: true},
 		StatusInReview: {StatusReady: true, StatusApproved: true},
-		StatusApproved: {StatusMerged: true},
+		StatusApproved: {StatusMerged: true, StatusReady: true},
 	}
 
 	targets, ok := allowed[from]
