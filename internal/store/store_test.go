@@ -246,6 +246,29 @@ func TestTransitionPreconditions(t *testing.T) {
 		require.NoError(t, s.CompleteTask(task.ID))
 		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:test"))
 	})
+
+	t.Run("in_review→approved requires all tasks complete", func(t *testing.T) {
+		s := newTestStore(t)
+		ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+		require.NoError(t, s.CreateTicket(ticket))
+		task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+		require.NoError(t, s.CreateTask(task))
+		require.NoError(t, s.CompleteTask(task.ID))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:test"))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:test"))
+
+		// Add an incomplete task to simulate an amendment being in progress.
+		amendment := &model.Task{TicketID: ticket.ID, Title: "Amendment", Position: 2, Round: 2}
+		require.NoError(t, s.CreateTask(amendment))
+
+		err := s.TransitionTicket(ticket.ID, model.StatusApproved, "human:test")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "incomplete task")
+
+		require.NoError(t, s.CompleteTask(amendment.ID))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusApproved, "human:test"))
+	})
 }
 
 func TestInvalidThreadTransition(t *testing.T) {
