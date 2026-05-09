@@ -17,6 +17,7 @@ func RunTask(args []string, defaultDB string) {
 		fmt.Fprintln(os.Stderr, "  get        <task-id>")
 		fmt.Fprintln(os.Stderr, "  ls         <ticket-id>")
 		fmt.Fprintln(os.Stderr, "  update     <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]")
+		fmt.Fprintln(os.Stderr, "  move       <task-id> <position>")
 		fmt.Fprintln(os.Stderr, "  complete   <task-id> <author>")
 		fmt.Fprintln(os.Stderr, "  uncomplete <task-id> <author>")
 		fmt.Fprintln(os.Stderr, "  delete     <task-id>")
@@ -31,6 +32,8 @@ func RunTask(args []string, defaultDB string) {
 		runTaskList(args[1:], defaultDB)
 	case "update":
 		runTaskUpdate(args[1:], defaultDB)
+	case "move":
+		runTaskMove(args[1:], defaultDB)
 	case "complete":
 		runTaskComplete(args[1:], defaultDB, false)
 	case "uncomplete":
@@ -287,4 +290,32 @@ func runTaskUpdate(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 	fmt.Printf("%s updated\n", taskID)
+}
+
+func runTaskMove(args []string, defaultDB string) {
+	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
+		fmt.Fprintln(os.Stderr, "usage: ticket task move [--db path] <task-id> <position>")
+		os.Exit(1)
+	}
+	taskID := args[0]
+
+	s, fs := parseAndOpen("task move", args[1:], defaultDB, nil)
+	defer s.Close()
+
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: ticket task move [--db path] <task-id> <position>")
+		os.Exit(1)
+	}
+
+	var newPos int
+	if _, err := fmt.Sscanf(fs.Arg(0), "%d", &newPos); err != nil || newPos < 1 {
+		fmt.Fprintln(os.Stderr, "error: position must be a positive integer")
+		os.Exit(1)
+	}
+
+	if err := s.MoveTask(taskID, newPos); err != nil {
+		fmt.Fprintf(os.Stderr, "move task: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("%s → position %d\n", taskID, newPos)
 }

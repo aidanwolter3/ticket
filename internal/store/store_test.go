@@ -714,6 +714,50 @@ func TestUpdateTask(t *testing.T) {
 	assert.Equal(t, task.ID, got.ID)
 }
 
+func TestMoveTask(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	t1 := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	t2 := &model.Task{TicketID: ticket.ID, Title: "Task 2", Position: 2}
+	t3 := &model.Task{TicketID: ticket.ID, Title: "Task 3", Position: 3}
+	require.NoError(t, s.CreateTask(t1))
+	require.NoError(t, s.CreateTask(t2))
+	require.NoError(t, s.CreateTask(t3))
+
+	// Move t3 to position 1.
+	require.NoError(t, s.MoveTask(t3.ID, 1))
+	tasks, err := s.GetTasksForTicket(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, tasks, 3)
+	assert.Equal(t, t3.ID, tasks[0].ID)
+	assert.Equal(t, 1, tasks[0].Position)
+	assert.Equal(t, t1.ID, tasks[1].ID)
+	assert.Equal(t, 2, tasks[1].Position)
+	assert.Equal(t, t2.ID, tasks[2].ID)
+	assert.Equal(t, 3, tasks[2].Position)
+
+	// Move t3 (now at position 1) to position 2.
+	require.NoError(t, s.MoveTask(t3.ID, 2))
+	tasks, err = s.GetTasksForTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, t1.ID, tasks[0].ID)
+	assert.Equal(t, t3.ID, tasks[1].ID)
+	assert.Equal(t, t2.ID, tasks[2].ID)
+
+	// Moving to same position is a no-op.
+	require.NoError(t, s.MoveTask(t3.ID, 2))
+
+	// Out-of-range position returns error.
+	err = s.MoveTask(t3.ID, 99)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "out of range")
+
+	err = s.MoveTask(t3.ID, 0)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "out of range")
+}
 
 func ticketIDs(tickets []*model.Ticket) []string {
 	ids := make([]string, len(tickets))

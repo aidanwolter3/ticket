@@ -170,6 +170,58 @@ func (s *Store) DeleteTask(id string) error {
 	return err
 }
 
+// MoveTask changes a task's position within its ticket, shifting other tasks to accommodate.
+func (s *Store) MoveTask(taskID string, newPos int) error {
+	task, err := s.GetTask(taskID)
+	if err != nil {
+		return err
+	}
+
+	tasks, err := s.GetTasksForTicket(task.TicketID)
+	if err != nil {
+		return err
+	}
+
+	if newPos < 1 || newPos > len(tasks) {
+		return fmt.Errorf("position %d out of range [1, %d]", newPos, len(tasks))
+	}
+
+	oldPos := task.Position
+	if oldPos == newPos {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UnixMilli()
+
+	if newPos < oldPos {
+		_, err = tx.Exec(
+			`UPDATE tasks SET position=position+1, updated=? WHERE ticket_id=? AND position>=? AND position<?`,
+			now, task.TicketID, newPos, oldPos,
+		)
+	} else {
+		_, err = tx.Exec(
+			`UPDATE tasks SET position=position-1, updated=? WHERE ticket_id=? AND position>? AND position<=?`,
+			now, task.TicketID, oldPos, newPos,
+		)
+	}
+	if err != nil {
+		return fmt.Errorf("shift tasks: %w", err)
+	}
+
+	_, err = tx.Exec(`UPDATE tasks SET position=?, updated=? WHERE id=?`, newPos, now, taskID)
+	if err != nil {
+		return fmt.Errorf("set task position: %w", err)
+	}
+
+	return tx.Commit()
+}
+
 // LastTaskForTicket returns the task with the highest position for a ticket.
 // Used by the TUI to choose which task to attach new threads to.
 func (s *Store) LastTaskForTicket(ticketID string) (*model.Task, error) {
