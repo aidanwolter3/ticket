@@ -410,7 +410,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		case "C":
-			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == model.StatusApproved {
+			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && (a.ticketDetail.Ticket().Status == model.StatusApproved || a.ticketDetail.Ticket().Status == model.StatusInReview) {
 				t := a.ticketDetail.Ticket()
 				last, err := a.store.LastTaskForTicket(t.ID)
 				if err != nil {
@@ -960,7 +960,7 @@ func (a *App) renderHelp() string {
 			"ctrl+]            detach agent session, restore ticket detail",
 			"a                 approve (in_review tickets)",
 			"m                 merge (approved tickets)",
-			"C                 resolve merge conflicts (approved tickets with worktree)",
+			"C                 resolve merge conflicts (approved/in_review tickets with worktree)",
 			"[ / ]             scroll up / down",
 		}},
 		{"Threads", []string{
