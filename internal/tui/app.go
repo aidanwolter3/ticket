@@ -204,8 +204,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyMsg:
-		// Global shortcuts (only when not in a modal/form)
-		if a.screen == screenList || a.screen == screenThreads {
+		// Global shortcuts (only when not in a modal/form, and not when the agent
+		// pane is focused — all keys except ctrl+] are forwarded to the agent PTY).
+		if (a.screen == screenList || a.screen == screenThreads) && a.rightPaneMode != "agent" {
 			switch msg.String() {
 			case "ctrl+c":
 				return a, tea.Quit
@@ -285,8 +286,8 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Forward keys to the agent PTY when agent pane is active.
 		if a.rightPaneMode == "agent" {
 			switch km.String() {
-			case "ctrl+]", "?", "q", "ctrl+c":
-				// handled by global/list handlers — don't forward
+			case "ctrl+]":
+				// handled by the list handler below to detach — don't forward
 			default:
 				a.launcher.WriteToAgent(a.attachSessionID, keyMsgBytes(km)) //nolint:errcheck
 				return a, nil

@@ -212,6 +212,39 @@ func TestDispatchAndAttach(t *testing.T) {
 	})
 }
 
+// TestAgentPaneHotkeysForwarded verifies that TUI hotkeys (q, ?, ctrl+c) are
+// forwarded to the agent PTY rather than handled by the TUI when the agent
+// pane is focused. Pressing 'q' must not quit the TUI.
+func TestAgentPaneHotkeysForwarded(t *testing.T) {
+	if globalBuildFailed || globalTicketBin == "" || globalEchoAgent == "" {
+		t.Skip("ticket or echo_agent binary could not be built")
+	}
+
+	dbPath := createTestDB(t, globalEchoAgent)
+	h := newPTYHarness(t, dbPath)
+
+	dispatchAgent(t, h)
+
+	// Attach to the agent pane.
+	time.Sleep(200 * time.Millisecond)
+	h.write([]byte("\r"))
+	h.waitFor(t, "attach view visible", 10*time.Second, func(s string) bool {
+		return strings.Contains(s, "echo_agent")
+	})
+
+	// Press 'q' — must NOT quit the TUI. If it quits, the PTY closes and
+	// subsequent writes/reads will fail; we detect this by verifying the
+	// process is still running 500 ms later.
+	h.write([]byte("q"))
+	time.Sleep(500 * time.Millisecond)
+
+	// Detach with ctrl+] to prove the TUI is still alive.
+	h.write([]byte{0x1D})
+	h.waitFor(t, "TUI still alive after 'q' in agent pane (q quit hint visible)", 5*time.Second, func(s string) bool {
+		return strings.Contains(s, "q quit") || strings.Contains(s, "? help")
+	})
+}
+
 // TestAttachExitCtrlBracket verifies that ctrl+] detaches from the agent and
 // returns the user to the ticket list.
 func TestAttachExitCtrlBracket(t *testing.T) {
