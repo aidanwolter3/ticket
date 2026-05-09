@@ -59,6 +59,8 @@ EnterWorktree path:<worktree_path>
 
 The ticket has already been transitioned to `in_progress` by `claim-work`.
 
+Once inside the worktree, always run commands from that directory. Never `cd` to the parent repo or the main tree — the worktree is a complete, self-contained checkout of the feature branch.
+
 ### 3. Read full context
 
 ```bash

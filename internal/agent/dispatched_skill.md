@@ -1,5 +1,9 @@
 You have been pre-assigned to ticket **{{TICKET_ID}}**{{WORKTREE_CONTEXT}}. Do not run `ticket claim-work` or search for other work — begin immediately with step 1 below.
 
+## Working directory
+
+You are working inside a git worktree at `.worktrees/{{TICKET_ID}}/`. Always run commands from this worktree directory. Never `cd` to the parent repo or the main tree — the worktree is a complete, self-contained checkout of the feature branch.
+
 ## Status lifecycle
 
 `draft → ready → in_progress → in_review → approved → merged`
