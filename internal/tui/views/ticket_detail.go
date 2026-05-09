@@ -127,10 +127,7 @@ func (v *TicketDetailView) View() string {
 		case model.StatusInReview:
 			hint += " · [X] revert to draft · [a] approve"
 		case model.StatusApproved:
-			hint += " · [m] merge"
-			if v.ticket.WorktreePath != "" {
-				hint += " · [C] resolve conflicts"
-			}
+			hint += " · [m] merge · [C] resolve conflicts"
 		}
 	}
 	return v.vp.View() + "\n" +
