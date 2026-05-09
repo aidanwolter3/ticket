@@ -317,6 +317,10 @@ func Redraft(s *store.Store, ticketID string, author string, stdout, stderr io.W
 		}
 	}
 
+	if err := s.ResetTasksForTicket(ticketID); err != nil {
+		return fmt.Errorf("redraft: reset tasks: %w", err)
+	}
+
 	if err := s.TransitionTicket(ticketID, model.StatusDraft, author); err != nil {
 		return fmt.Errorf("redraft: transition: %w", err)
 	}
