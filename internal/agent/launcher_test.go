@@ -318,6 +318,41 @@ func TestSignalFileWaiting(t *testing.T) {
 	assert.Equal(t, model.AgentState(""), got, "session should be inactive after process exits")
 }
 
+// TestSignalFileDebounce verifies that PTY output emitted by the agent immediately
+// after the Stop hook fires (e.g. Claude re-rendering its input prompt) does not
+// flip state back to AgentRunning during the SignalDebounce window.
+func TestSignalFileDebounce(t *testing.T) {
+	SilenceTimeout = 5 * time.Second   // long; silence timer must not interfere
+	SignalDebounce = 500 * time.Millisecond
+
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	worktreeDir := t.TempDir()
+	launcher := NewLauncher(s)
+
+	sess, err := launcher.Launch(ticket.ID, worktreeDir, []string{signalAgentBin})
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+
+	// Wait for AgentWaiting via the signal file (should arrive well within 1s).
+	got := pollState(t, s, ticket.ID, model.AgentWaiting, time.Second)
+	require.Equal(t, model.AgentWaiting, got, "state should become AgentWaiting via signal file")
+
+	// signal_agent continues to emit PTY output after signalling ("signal_agent:
+	// signalled waiting", "signal_agent: done"). With debounce those gotOutput
+	// events must not flip state back to AgentRunning.
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		cur, _ := s.GetAgentSessionByTicket(ticket.ID)
+		if cur != nil && cur.State == model.AgentRunning {
+			t.Fatalf("state flipped back to AgentRunning after signal")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // TestCSIcNoDeadlock verifies that CSI c (device-attributes query) does not
 // deadlock the emulator (regression for vtResponseLoop).
 func TestCSIcNoDeadlock(t *testing.T) {
