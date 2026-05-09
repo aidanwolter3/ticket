@@ -798,6 +798,66 @@ func TestRedraft_KillsAgentSession(t *testing.T) {
 	assert.Equal(t, model.StatusDraft, updated2.Status)
 }
 
+// TestRedraft_ResetsTaskStatuses verifies that all completed tasks are reset to
+// pending when a ticket is redrafted.
+func TestRedraft_ResetsTaskStatuses(t *testing.T) {
+	repoPath := gitRepo(t)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoPath
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	git("branch", "feat/t-reset")
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	git("worktree", "add", worktreePath, "feat/t-reset")
+
+	s := newTestStore(t)
+	ticket := &model.Ticket{
+		Title:    "task reset test",
+		Type:     model.TypeTicket,
+		Status:   model.StatusDraft,
+		RepoPath: repoPath,
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreePath, repoPath, "feat/t-reset"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
+
+	// Create tasks and complete them.
+	task1 := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	task2 := &model.Task{TicketID: ticket.ID, Title: "Task 2", Position: 2}
+	require.NoError(t, s.CreateTask(task1))
+	require.NoError(t, s.CreateTask(task2))
+	require.NoError(t, s.CompleteTask(task1.ID))
+	require.NoError(t, s.CompleteTask(task2.ID))
+
+	// Confirm both tasks are complete before redraft.
+	tasks, err := s.GetTasksForTicket(ticket.ID)
+	require.NoError(t, err)
+	for _, tk := range tasks {
+		assert.NotNil(t, tk.CompletedAt, "task %s should be complete before redraft", tk.ID)
+	}
+
+	// Redraft the ticket.
+	err = Redraft(s, ticket.ID, "human:test", io.Discard, io.Discard)
+	require.NoError(t, err)
+
+	// All tasks must be pending again.
+	tasks, err = s.GetTasksForTicket(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, tasks, 2)
+	for _, tk := range tasks {
+		assert.Nil(t, tk.CompletedAt, "task %s should be pending after redraft", tk.ID)
+	}
+
+	// Ticket must be back in draft.
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusDraft, got.Status)
+}
+
 // TestPromote_CreatesWorktreeForMissingPath verifies that when auto_dispatch is
 // enabled and a ticket has RepoPath+FeatureBranch but no WorktreePath, Promote
 // creates the worktree on disk and persists the path before launching the agent.
