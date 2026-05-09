@@ -23,7 +23,7 @@ var (
 	StyleError     = lipgloss.NewStyle().Foreground(ColorRed).Bold(true)
 	StyleBold      = lipgloss.NewStyle().Bold(true)
 	StyleTab       = lipgloss.NewStyle().Padding(0, 2)
-	StyleActiveTab = lipgloss.NewStyle().Padding(0, 2).Bold(true).Underline(true)
+	StyleActiveTab = lipgloss.NewStyle().Padding(0, 2).Bold(true).Underline(true).UnderlineSpaces(false)
 	StyleBorder    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 	StyleTitle     = lipgloss.NewStyle().Bold(true).Foreground(ColorBlue)
 )

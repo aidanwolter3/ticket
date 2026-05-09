@@ -928,7 +928,7 @@ func (a *App) View() string {
 }
 
 func (a *App) renderTabBar() string {
-	label := lipgloss.NewStyle().Bold(true).Underline(true).Padding(0, 1).Render("Tickets")
+	label := lipgloss.NewStyle().Bold(true).Underline(true).UnderlineSpaces(false).Padding(0, 1).Render("Tickets")
 	hints := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? help · q quit")
 	return label + "   " + hints
 }
