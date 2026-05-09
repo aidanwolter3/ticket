@@ -15,11 +15,12 @@ import (
 )
 
 var (
-	fakeAgentBin   string
-	oscAgentBin    string
-	csiAgentBin    string
-	pwdAgentBin    string
-	signalAgentBin string
+	fakeAgentBin           string
+	oscAgentBin            string
+	csiAgentBin            string
+	pwdAgentBin            string
+	signalAgentBin         string
+	periodicSignalAgentBin string
 )
 
 func TestMain(m *testing.M) {
@@ -45,6 +46,7 @@ func TestMain(m *testing.M) {
 	csiAgentBin = buildBin("./testdata/csi_agent", "csi_agent")
 	pwdAgentBin = buildBin("./testdata/pwd_agent", "pwd_agent")
 	signalAgentBin = buildBin("./testdata/signal_agent", "signal_agent")
+	periodicSignalAgentBin = buildBin("./testdata/periodic_signal_agent", "periodic_signal_agent")
 
 	os.Exit(m.Run())
 }
@@ -320,10 +322,9 @@ func TestSignalFileWaiting(t *testing.T) {
 
 // TestSignalFileDebounce verifies that PTY output emitted by the agent immediately
 // after the Stop hook fires (e.g. Claude re-rendering its input prompt) does not
-// flip state back to AgentRunning during the SignalDebounce window.
+// flip state back to AgentRunning.
 func TestSignalFileDebounce(t *testing.T) {
-	SilenceTimeout = 5 * time.Second   // long; silence timer must not interfere
-	SignalDebounce = 500 * time.Millisecond
+	SilenceTimeout = 5 * time.Second // long; silence timer must not interfere
 
 	s := newTestStore(t)
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
@@ -350,6 +351,41 @@ func TestSignalFileDebounce(t *testing.T) {
 			t.Fatalf("state flipped back to AgentRunning after signal")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestSignalFilePeriodicOutput tests that AgentWaiting is maintained even when
+// the agent continues to emit small periodic PTY outputs (simulating Claude's
+// status-bar time-counter) after the stop hook fires. Each tick arrives 600ms
+// apart; without the suppressRunning gate these would flip state back to
+// AgentRunning.
+func TestSignalFilePeriodicOutput(t *testing.T) {
+	SilenceTimeout = 10 * time.Second // long; silence timer must not interfere
+
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	worktreeDir := t.TempDir()
+	launcher := NewLauncher(s)
+
+	sess, err := launcher.Launch(ticket.ID, worktreeDir, []string{periodicSignalAgentBin})
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+
+	// Wait for initial AgentWaiting via the signal file.
+	got := pollState(t, s, ticket.ID, model.AgentWaiting, 2*time.Second)
+	require.Equal(t, model.AgentWaiting, got, "state should become AgentWaiting via signal file")
+
+	// After the debounce window, periodic outputs arrive every 600ms.
+	// Verify state does NOT flip back to AgentRunning over 3 ticks (~2s).
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		cur, _ := s.GetAgentSessionByTicket(ticket.ID)
+		if cur != nil && cur.State == model.AgentRunning {
+			t.Fatalf("state flipped back to AgentRunning after signal (periodic output broke debounce)")
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

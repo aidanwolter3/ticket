@@ -18,12 +18,6 @@ import (
 // transitions to "waiting". Exposed as a package-level var so tests can shorten it.
 var SilenceTimeout = 5 * time.Second
 
-// SignalDebounce is the window after a WaitSignaler signal during which
-// gotOutput events do not flip state back to AgentRunning. Claude Code
-// re-renders its input prompt after the Stop hook fires, producing PTY output
-// that would otherwise immediately cancel the AgentWaiting transition.
-var SignalDebounce = 500 * time.Millisecond
-
 // PTYCols and PTYRows are the fixed PTY dimensions used when launching agents.
 const PTYCols = 220
 const PTYRows = 50
@@ -213,12 +207,29 @@ func (l *Launcher) runAgent(sessionID string, em *emulator.Emulator, logFile *os
 	defer silenceTimer.Stop()
 
 	go func() {
-		var debounceDeadline time.Time
+		// suppressRunning gates gotOutput→AgentRunning transitions. It is set
+		// true when the Stop hook fires and cleared when the PreToolUse hook
+		// fires. NopWaitSignaler/GeminiWaitSignaler never set it, so gotOutput
+		// always drives state for those agents; the silence timer is their
+		// sole fallback for entering AgentWaiting.
+		suppressRunning := false
 		for {
 			select {
 			case <-ws.Chan():
+				// Stop hook fired: agent finished its turn, now waiting.
 				l.store.UpdateAgentSessionState(sessionID, model.AgentWaiting) //nolint:errcheck
-				debounceDeadline = time.Now().Add(SignalDebounce)
+				suppressRunning = true
+				if !silenceTimer.Stop() {
+					select {
+					case <-silenceTimer.C:
+					default:
+					}
+				}
+				silenceTimer.Reset(SilenceTimeout)
+			case <-ws.RunChan():
+				// PreToolUse hook fired: agent started a new tool use.
+				l.store.UpdateAgentSessionState(sessionID, model.AgentRunning) //nolint:errcheck
+				suppressRunning = false
 				if !silenceTimer.Stop() {
 					select {
 					case <-silenceTimer.C:
@@ -232,9 +243,9 @@ func (l *Launcher) runAgent(sessionID string, em *emulator.Emulator, logFile *os
 				if !ok {
 					return
 				}
-				if time.Now().Before(debounceDeadline) {
-					// Suppress: agent is re-rendering its prompt after signalling
-					// waiting; don't flip state back to AgentRunning.
+				if suppressRunning {
+					// Stop hook fired but PreToolUse has not yet; ignore output
+					// so periodic PTY redraws don't cancel AgentWaiting.
 					continue
 				}
 				l.store.UpdateAgentSessionState(sessionID, model.AgentRunning) //nolint:errcheck
