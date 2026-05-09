@@ -169,11 +169,19 @@ func (v *TicketsView) View() string {
 		titleWidth = 5
 	}
 
+	ticketStatus := make(map[string]model.Status, len(v.tickets))
+	for _, t := range v.tickets {
+		ticketStatus[t.ID] = t.Status
+	}
+
 	for i := start; i < len(tickets) && i < start+visible; i++ {
 		t := tickets[i]
 		icon := components.TicketStatusIcon(t.Status)
-		if len(t.BlockedBy) > 0 {
-			icon = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Render("●")
+		for _, blockerID := range t.BlockedBy {
+			if s := ticketStatus[blockerID]; s != model.StatusMerged {
+				icon = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Render("●")
+				break
+			}
 		}
 
 		// Agent indicator prefix.
