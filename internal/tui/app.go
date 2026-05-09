@@ -423,7 +423,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				task := &model.Task{
 					TicketID: t.ID,
-					Title:    "resolve-conflicts",
+					Title:    "Sync this worktree so that it has the latest commits from 'main' and fix any merge conflicts",
 					Position: position,
 				}
 				if err := a.store.CreateTask(task); err != nil {
