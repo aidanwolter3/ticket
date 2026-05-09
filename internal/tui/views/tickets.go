@@ -226,13 +226,21 @@ func (v *TicketsView) View() string {
 			cursor = ">"
 		}
 
-		line := fmt.Sprintf("%s %s%s %s %s%s",
+		blockedBubble := ""
+		if len(t.BlockedBy) > 0 {
+			blockedBubble = " " + lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FF6B6B")).
+				Render("blocked")
+		}
+
+		line := fmt.Sprintf("%s %s%s %s %s%s%s",
 			cursor,
 			agentPrefix,
 			icon,
 			idStyle.Render(paddedID),
 			titleStyle.Render(title),
 			barStr,
+			blockedBubble,
 		)
 		sb.WriteString(line + "\n")
 	}
