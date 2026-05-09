@@ -14,6 +14,7 @@ func RunTask(args []string, defaultDB string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket task <subcommand>")
 		fmt.Fprintln(os.Stderr, "  add        <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>]")
+		fmt.Fprintln(os.Stderr, "  get        <task-id>")
 		fmt.Fprintln(os.Stderr, "  ls         <ticket-id>")
 		fmt.Fprintln(os.Stderr, "  complete   <task-id> <author>")
 		fmt.Fprintln(os.Stderr, "  uncomplete <task-id> <author>")
@@ -23,6 +24,8 @@ func RunTask(args []string, defaultDB string) {
 	switch args[0] {
 	case "add":
 		runTaskAdd(args[1:], defaultDB)
+	case "get":
+		runTaskGet(args[1:], defaultDB)
 	case "ls":
 		runTaskList(args[1:], defaultDB)
 	case "complete":
@@ -79,6 +82,72 @@ func runTaskAdd(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 	fmt.Println(task.ID)
+}
+
+func runTaskGet(args []string, defaultDB string) {
+	var jsonOut *bool
+	s, fs := parseAndOpen("task get", args, defaultDB, func(f *flag.FlagSet) {
+		jsonOut = f.Bool("json", false, "output task as JSON")
+	})
+	defer s.Close()
+
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: ticket task get [--db path] [--json] <task-id>")
+		os.Exit(1)
+	}
+	taskID := fs.Arg(0)
+
+	task, err := s.GetTask(taskID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	threads, err := s.GetThreadsForTask(taskID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "load threads: %v\n", err)
+		os.Exit(1)
+	}
+
+	tj := toTaskJSON(task)
+	for _, th := range threads {
+		tj.Threads = append(tj.Threads, toThreadJSON(th))
+	}
+
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(tj)
+		return
+	}
+
+	status := "incomplete"
+	if task.CompletedAt != nil {
+		status = "complete"
+	}
+	fmt.Printf("ID:               %s\n", tj.ID)
+	fmt.Printf("Title:            %s\n", tj.Title)
+	fmt.Printf("Position:         %d\n", tj.Position)
+	fmt.Printf("Status:           %s\n", status)
+	if tj.Description != "" {
+		fmt.Printf("Description:      %s\n", tj.Description)
+	}
+	if tj.VerifiableResult != "" {
+		fmt.Printf("Verifiable Result: %s\n", tj.VerifiableResult)
+	}
+	if tj.CommitHash != "" {
+		fmt.Printf("Commit Hash:      %s\n", tj.CommitHash)
+	}
+
+	if len(tj.Threads) > 0 {
+		fmt.Println("\nThreads:")
+		for _, th := range tj.Threads {
+			fmt.Printf("  %s  [%s]\n", th.ID, th.Status)
+			for _, m := range th.Messages {
+				fmt.Printf("    %s: %s\n", m.Author, m.Text)
+			}
+		}
+	}
 }
 
 func runTaskList(args []string, defaultDB string) {
