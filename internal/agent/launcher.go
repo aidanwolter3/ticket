@@ -24,17 +24,19 @@ const PTYRows = 50
 
 // Launcher manages agent sessions for a store.
 type Launcher struct {
-	store     *store.Store
-	mu        sync.Mutex
-	emulators map[string]*emulator.Emulator  // sessionID → emulator
-	followers map[string][]chan []string      // sessionID → live-output subscribers
+	store               *store.Store
+	mu                  sync.Mutex
+	emulators           map[string]*emulator.Emulator // sessionID → emulator
+	followers           map[string][]chan []string     // sessionID → live-output subscribers
+	WaitSignalerFactory WaitSignalerFactory            // injectable; defaults to ClaudeCode
 }
 
 func NewLauncher(s *store.Store) *Launcher {
 	return &Launcher{
-		store:     s,
-		emulators: make(map[string]*emulator.Emulator),
-		followers: make(map[string][]chan []string),
+		store:               s,
+		emulators:           make(map[string]*emulator.Emulator),
+		followers:           make(map[string][]chan []string),
+		WaitSignalerFactory: NewClaudeCodeWaitSignaler,
 	}
 }
 
@@ -171,19 +173,22 @@ func (l *Launcher) Launch(ticketID, worktreePath string, args []string) (*model.
 		return nil, fmt.Errorf("create agent session: %w", err)
 	}
 
+	ws := l.WaitSignalerFactory(logBase)
+
 	l.mu.Lock()
 	l.emulators[sess.ID] = em
 	l.mu.Unlock()
 
-	go l.runAgent(sess.ID, em, logFile, gotOutput, exitCh)
+	go l.runAgent(sess.ID, em, logFile, gotOutput, exitCh, ws)
 
 	return sess, nil
 }
 
 // runAgent drives state transitions, broadcasts rendered frames, and cleans up
 // when the process exits.
-func (l *Launcher) runAgent(sessionID string, em *emulator.Emulator, logFile *os.File, gotOutput <-chan struct{}, exitCh <-chan error) {
+func (l *Launcher) runAgent(sessionID string, em *emulator.Emulator, logFile *os.File, gotOutput <-chan struct{}, exitCh <-chan error, ws WaitSignaler) {
 	defer func() {
+		ws.Close()
 		logFile.Close()
 		em.Close()
 		l.mu.Lock()
@@ -196,19 +201,30 @@ func (l *Launcher) runAgent(sessionID string, em *emulator.Emulator, logFile *os
 	}()
 
 	// Silence monitor: transitions state running↔waiting.
+	// ws.Chan() provides earlier detection when the agent explicitly signals;
+	// the silence timer remains the fallback for agents without signal support.
 	silenceTimer := time.NewTimer(SilenceTimeout)
 	defer silenceTimer.Stop()
 
 	go func() {
 		for {
 			select {
+			case <-ws.Chan():
+				l.store.UpdateAgentSessionState(sessionID, model.AgentWaiting) //nolint:errcheck
+				if !silenceTimer.Stop() {
+					select {
+					case <-silenceTimer.C:
+					default:
+					}
+				}
+				silenceTimer.Reset(SilenceTimeout)
 			case <-silenceTimer.C:
-				l.store.UpdateAgentSessionState(sessionID, model.AgentWaiting)
+				l.store.UpdateAgentSessionState(sessionID, model.AgentWaiting) //nolint:errcheck
 			case _, ok := <-gotOutput:
 				if !ok {
 					return
 				}
-				l.store.UpdateAgentSessionState(sessionID, model.AgentRunning)
+				l.store.UpdateAgentSessionState(sessionID, model.AgentRunning) //nolint:errcheck
 				if !silenceTimer.Stop() {
 					select {
 					case <-silenceTimer.C:
