@@ -468,6 +468,20 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.screen = screenConfirmDispatch
 			}
 			return a, nil
+		case "tab":
+			if id := a.nextWaitingTicketID(); id != "" {
+				a.ticketsView.SelectTicketByID(id)
+				a.loadCurrentDetail()
+				sess, _ := a.store.GetAgentSessionByTicket(id)
+				if sess != nil {
+					a.rightPaneMode = "agent"
+					atv := views.NewAgentTermView(id)
+					atv.SetSize(a.rightW, a.bodyHeight())
+					a.agentTermView = atv
+					return a, a.enterAttachView(sess)
+				}
+			}
+			return a, nil
 		case "ctrl+]":
 			if a.rightPaneMode == "agent" {
 				if a.attachUnsub != nil {
@@ -956,6 +970,7 @@ func (a *App) renderHelp() string {
 			"R                 back to draft (ready tickets)",
 			"X                 revert to draft (in_progress/in_review tickets)",
 			"g                 dispatch agent (ready tickets)",
+			"tab               jump to next waiting agent (cycles in order)",
 			"enter             attach agent session to right pane (if active)",
 			"ctrl+]            detach agent session, restore ticket detail",
 			"a                 approve (in_review tickets)",
