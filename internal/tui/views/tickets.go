@@ -212,7 +212,7 @@ func (v *TicketsView) View() string {
 		}
 
 		merged := t.Status == "merged"
-		idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6CB6FF"))
 		titleStyle := lipgloss.NewStyle()
 		if merged || (v.agentFocused && i != v.cursor) {
 			titleStyle = titleStyle.Foreground(lipgloss.Color("8"))
