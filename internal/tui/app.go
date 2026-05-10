@@ -66,7 +66,6 @@ type App struct {
 	pendingDeleteID   string
 	pendingRedraftID  string
 	pendingDispatchID string
-	showHelp         bool
 
 	// list views (left pane)
 	ticketsView *views.TicketsView
@@ -211,14 +210,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return a, tea.Quit
-			case "?":
-				a.showHelp = !a.showHelp
-				return a, nil
-			case "esc":
-				if a.showHelp {
-					a.showHelp = false
-					return a, nil
-				}
 			case "q":
 				if a.screen == screenList {
 					return a, tea.Quit
@@ -853,11 +844,6 @@ func (a *App) View() string {
 
 	bodyH := a.bodyHeight()
 
-	if a.showHelp {
-		sb.WriteString(a.renderHelp())
-		return sb.String()
-	}
-
 	switch a.screen {
 	case screenList:
 		a.ticketsView.SetSize(a.leftW, bodyH)
@@ -944,66 +930,8 @@ func (a *App) View() string {
 
 func (a *App) renderTabBar() string {
 	label := lipgloss.NewStyle().Bold(true).Underline(true).UnderlineSpaces(false).Padding(0, 1).Render("Tickets")
-	hints := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? help · q quit")
+	hints := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("q quit")
 	return label + "   " + hints
-}
-
-func (a *App) renderHelp() string {
-	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Keybindings") + "\n\n")
-
-	sections := []struct {
-		title string
-		lines []string
-	}{
-		{"Global", []string{
-			"?                 toggle help",
-			"q / ctrl+c        quit",
-		}},
-		{"List Panel (left)", []string{
-			"↑↓ / j/k          navigate",
-			"D                 delete ticket",
-		}},
-		{"Detail Panel (right)", []string{
-			"t                 threads",
-			"n                 add note",
-			"r                 mark ready (draft tickets)",
-			"R                 back to draft (ready tickets)",
-			"X                 revert to draft (in_progress/in_review tickets)",
-			"g                 dispatch agent (ready tickets)",
-			"tab               jump to next waiting agent (cycles in order)",
-			"enter             attach agent session to right pane (if active)",
-			"ctrl+]            detach agent session, restore ticket detail",
-			"a                 approve (in_review tickets)",
-			"m                 merge (approved tickets)",
-			"C                 resolve merge conflicts (approved/in_review tickets with worktree)",
-			"[ / ]             scroll up / down",
-		}},
-		{"Threads", []string{
-			"↑↓                navigate",
-			"enter             expand/collapse",
-			"r                 reply",
-			"x                 resolve",
-			"n                 new thread",
-			"esc               back",
-		}},
-		{"Forms / Modals", []string{
-			"tab               next field",
-			"shift+tab         prev field",
-			"ctrl+s            save/confirm",
-			"esc               cancel",
-		}},
-	}
-
-	for _, s := range sections {
-		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4")).Render(s.title) + "\n")
-		for _, l := range s.lines {
-			sb.WriteString("  " + l + "\n")
-		}
-		sb.WriteString("\n")
-	}
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("? / esc to close"))
-	return sb.String()
 }
 
 // enterAttachView subscribes to the session's broadcast channel, renders the log

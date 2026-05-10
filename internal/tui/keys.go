@@ -8,7 +8,6 @@ type GlobalKeys struct {
 	ShiftTab key.Binding
 	Tab1     key.Binding
 	Tab2     key.Binding
-	Help     key.Binding
 }
 
 var Keys = GlobalKeys{
@@ -17,7 +16,6 @@ var Keys = GlobalKeys{
 	ShiftTab: key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "cycle agents")),
 	Tab1:     key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "tickets")),
 	Tab2:     key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "review queue")),
-	Help:     key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 }
 
 type ListKeys struct {
