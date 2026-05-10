@@ -469,7 +469,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.screen = screenConfirmDispatch
 			}
 			return a, nil
-		case "tab":
+		case "shift+tab":
 			if id := a.nextWaitingTicketID(); id != "" {
 				a.ticketsView.SelectTicketByID(id)
 				a.loadCurrentDetail()

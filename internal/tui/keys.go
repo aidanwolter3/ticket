@@ -14,7 +14,7 @@ type GlobalKeys struct {
 var Keys = GlobalKeys{
 	Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	Tab:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next tab")),
-	ShiftTab: key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "prev tab")),
+	ShiftTab: key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "cycle agents")),
 	Tab1:     key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "tickets")),
 	Tab2:     key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "review queue")),
 	Help:     key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
