@@ -15,12 +15,13 @@ import (
 )
 
 var (
-	fakeAgentBin           string
-	oscAgentBin            string
-	csiAgentBin            string
-	pwdAgentBin            string
-	signalAgentBin         string
-	periodicSignalAgentBin string
+	fakeAgentBin              string
+	oscAgentBin               string
+	csiAgentBin               string
+	pwdAgentBin               string
+	signalAgentBin            string
+	periodicSignalAgentBin    string
+	permissionPromptAgentBin  string
 )
 
 func TestMain(m *testing.M) {
@@ -47,6 +48,7 @@ func TestMain(m *testing.M) {
 	pwdAgentBin = buildBin("./testdata/pwd_agent", "pwd_agent")
 	signalAgentBin = buildBin("./testdata/signal_agent", "signal_agent")
 	periodicSignalAgentBin = buildBin("./testdata/periodic_signal_agent", "periodic_signal_agent")
+	permissionPromptAgentBin = buildBin("./testdata/permission_prompt_agent", "permission_prompt_agent")
 
 	os.Exit(m.Run())
 }
@@ -387,6 +389,33 @@ func TestSignalFilePeriodicOutput(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// TestPermissionPromptSetsAgentWaiting verifies that touching .agent/claude_waiting
+// (as the fixed Notification/permission_prompt hook does) transitions the session
+// to AgentWaiting well before the silence timeout.
+func TestPermissionPromptSetsAgentWaiting(t *testing.T) {
+	SilenceTimeout = 5 * time.Second // long, so silence timer does not interfere
+
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	worktreeDir := t.TempDir()
+	launcher := NewLauncher(s)
+
+	sess, err := launcher.Launch(ticket.ID, worktreeDir, []string{permissionPromptAgentBin})
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+	assert.Equal(t, model.AgentRunning, sess.State)
+
+	// The permission_prompt_agent touches .agent/claude_waiting after ~50ms.
+	// State must reach AgentWaiting within 1s — far before the 5s silence timeout.
+	got := pollState(t, s, ticket.ID, model.AgentWaiting, time.Second)
+	assert.Equal(t, model.AgentWaiting, got, "state should become AgentWaiting when permission prompt signal file is touched")
+
+	got = pollState(t, s, ticket.ID, "", 5*time.Second)
+	assert.Equal(t, model.AgentState(""), got, "session should be inactive after process exits")
 }
 
 // TestCSIcNoDeadlock verifies that CSI c (device-attributes query) does not
