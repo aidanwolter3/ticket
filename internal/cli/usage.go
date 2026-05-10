@@ -27,6 +27,11 @@ Usage:
   ticket task complete [--db path] <task-id>  mark a task complete
   ticket task uncomplete [--db path] <task-id>
                                               mark a task incomplete
+  ticket task delete [--db path] <task-id>   delete a task
+  ticket task update [--db path] <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]
+                                              update a task's fields
+  ticket task move [--db path] <task-id> <position>
+                                              move a task to a new position
   ticket block [--db path] <ticket-id> <blocker-id>
                                               record that <ticket-id> is blocked by <blocker-id>
   ticket unblock [--db path] <ticket-id> <blocker-id>
