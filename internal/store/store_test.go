@@ -116,7 +116,7 @@ func TestThreadAndMessages(t *testing.T) {
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
 
-	thread, err := s.CreateThread(task.ID)
+	thread, err := s.CreateThread(task.ID, "", "")
 	require.NoError(t, err)
 
 	_, err = s.AddMessage(thread.ID, "human:aidan", "first message")
@@ -160,7 +160,7 @@ func TestCascadeDelete(t *testing.T) {
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
 
-	thread, err := s.CreateThread(task.ID)
+	thread, err := s.CreateThread(task.ID, "", "")
 	require.NoError(t, err)
 	_, err = s.AddMessage(thread.ID, "human:aidan", "msg")
 	require.NoError(t, err)
@@ -286,7 +286,7 @@ func TestInvalidThreadTransition(t *testing.T) {
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
 
-	thread, err := s.CreateThread(task.ID)
+	thread, err := s.CreateThread(task.ID, "", "")
 	require.NoError(t, err)
 
 	// Agent trying to resolve directly
@@ -505,11 +505,11 @@ func TestDraftStatePersists(t *testing.T) {
 	require.NoError(t, s1.CreateTask(task))
 
 	// Real thread for staged action/reply.
-	realThread, err := s1.CreateThread(task.ID)
+	realThread, err := s1.CreateThread(task.ID, "", "")
 	require.NoError(t, err)
 
 	// Draft thread with a message.
-	dt, err := s1.CreateDraftThread(ticket.ID, task.ID)
+	dt, err := s1.CreateDraftThread(ticket.ID, task.ID, "", "")
 	require.NoError(t, err)
 	_, err = s1.AddDraftMessage(dt.ID, ticket.ID, false, "human", "review comment")
 	require.NoError(t, err)
@@ -549,15 +549,15 @@ func TestFlushDraftState(t *testing.T) {
 	require.NoError(t, s.CreateTask(task))
 
 	// Real threads.
-	openThread, err := s.CreateThread(task.ID)
+	openThread, err := s.CreateThread(task.ID, "", "")
 	require.NoError(t, err)
-	resolvedThread, err := s.CreateThread(task.ID)
+	resolvedThread, err := s.CreateThread(task.ID, "", "")
 	require.NoError(t, err)
 	_, err = s.db.Exec(`UPDATE comment_threads SET status='resolved' WHERE id=?`, resolvedThread.ID)
 	require.NoError(t, err)
 
 	// Draft new thread.
-	dt, err := s.CreateDraftThread(ticket.ID, task.ID)
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "", "")
 	require.NoError(t, err)
 	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "new comment")
 	require.NoError(t, err)
@@ -597,7 +597,7 @@ func TestDraftActionToggle(t *testing.T) {
 	require.NoError(t, s.CreateTicket(ticket))
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
-	thread, err := s.CreateThread(task.ID)
+	thread, err := s.CreateThread(task.ID, "", "")
 	require.NoError(t, err)
 
 	// Set resolve, then clear it.
@@ -618,7 +618,7 @@ func TestDraftMessageEditDelete(t *testing.T) {
 	require.NoError(t, s.CreateTicket(ticket))
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
-	dt, err := s.CreateDraftThread(ticket.ID, task.ID)
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "", "")
 	require.NoError(t, err)
 
 	msg, err := s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "original text")
@@ -630,10 +630,35 @@ func TestDraftMessageEditDelete(t *testing.T) {
 	require.Len(t, state.NewThreads[0].Messages, 1)
 	assert.Equal(t, "edited text", state.NewThreads[0].Messages[0].Text)
 
-	require.NoError(t, s.DeleteDraftMessage(msg.ID))
+	// Adding a second message so the thread survives single-message deletion
+	msg2, err := s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "second message")
+	require.NoError(t, err)
+
+	require.NoError(t, s.DeleteDraftMessage(msg2.ID))
 	state, err = s.GetDraftState(ticket.ID)
 	require.NoError(t, err)
-	assert.Empty(t, state.NewThreads[0].Messages)
+	// Thread still exists with msg (edited).
+	require.Len(t, state.NewThreads, 1)
+	assert.Len(t, state.NewThreads[0].Messages, 1)
+}
+
+func TestDeleteDraftMessageAutoDeletesEmptyThread(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "", "")
+	require.NoError(t, err)
+
+	msg, err := s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "only message")
+	require.NoError(t, err)
+
+	require.NoError(t, s.DeleteDraftMessage(msg.ID))
+
+	_, err = s.GetDraftThread(dt.ID)
+	require.Error(t, err, "draft thread should be auto-deleted when its only message is deleted")
 }
 
 func TestAgentSessionCRUD(t *testing.T) {

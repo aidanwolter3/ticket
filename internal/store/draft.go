@@ -9,20 +9,22 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 )
 
-func (s *Store) CreateDraftThread(ticketID, taskID string) (*model.DraftThread, error) {
+func (s *Store) CreateDraftThread(ticketID, taskID, filePath, hunkHeader string) (*model.DraftThread, error) {
 	id := ids.NewUUID()
 	now := time.Now().UnixMilli()
 	_, err := s.db.Exec(
-		`INSERT INTO draft_threads (id, ticket_id, task_id, created) VALUES (?, ?, ?, ?)`,
-		id, ticketID, taskID, now)
+		`INSERT INTO draft_threads (id, ticket_id, task_id, file_path, hunk_header, created) VALUES (?, ?, ?, ?, ?, ?)`,
+		id, ticketID, taskID, nullStr(filePath), nullStr(hunkHeader), now)
 	if err != nil {
 		return nil, fmt.Errorf("create draft thread: %w", err)
 	}
 	return &model.DraftThread{
-		ID:       id,
-		TicketID: ticketID,
-		TaskID:   taskID,
-		Created:  time.UnixMilli(now),
+		ID:         id,
+		TicketID:   ticketID,
+		TaskID:     taskID,
+		FilePath:   filePath,
+		HunkHeader: hunkHeader,
+		Created:    time.UnixMilli(now),
 	}, nil
 }
 
@@ -64,8 +66,43 @@ func (s *Store) ClearDraftAction(threadID string) error {
 }
 
 func (s *Store) DeleteDraftMessage(id string) error {
-	_, err := s.db.Exec(`DELETE FROM draft_messages WHERE id=?`, id)
-	return err
+	var threadID string
+	var isRealThread int
+	err := s.db.QueryRow(`SELECT thread_id, is_real_thread FROM draft_messages WHERE id=?`, id).Scan(&threadID, &isRealThread)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(`DELETE FROM draft_messages WHERE id=?`, id); err != nil {
+		return err
+	}
+
+	if isRealThread == 0 {
+		var count int
+		if err = tx.QueryRow(`SELECT COUNT(*) FROM draft_messages WHERE thread_id=? AND is_real_thread=0`, threadID).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			if _, err = tx.Exec(`DELETE FROM draft_threads WHERE id=?`, threadID); err != nil {
+				return err
+			}
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (s *Store) UpdateDraftMessage(id, text string) error {
@@ -74,7 +111,7 @@ func (s *Store) UpdateDraftMessage(id, text string) error {
 }
 
 func (s *Store) GetDraftThread(id string) (*model.DraftThread, error) {
-	row := s.db.QueryRow(`SELECT id, ticket_id, task_id, created FROM draft_threads WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, ticket_id, task_id, COALESCE(file_path,''), COALESCE(hunk_header,''), created FROM draft_threads WHERE id=?`, id)
 	dt, err := scanDraftThread(row)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("draft thread %s not found", id)
@@ -94,7 +131,7 @@ func (s *Store) GetDraftState(ticketID string) (*model.DraftState, error) {
 	state := &model.DraftState{TicketID: ticketID}
 
 	rows, err := s.db.Query(
-		`SELECT id, ticket_id, task_id, created FROM draft_threads WHERE ticket_id=? ORDER BY created`,
+		`SELECT id, ticket_id, task_id, COALESCE(file_path,''), COALESCE(hunk_header,''), created FROM draft_threads WHERE ticket_id=? ORDER BY created`,
 		ticketID)
 	if err != nil {
 		return nil, err
@@ -194,8 +231,8 @@ func (s *Store) FlushDraftState(ticketID string) ([]string, error) {
 		threadID := ids.NewUUID()
 		now := time.Now().UnixMilli()
 		if _, err = tx.Exec(
-			`INSERT INTO comment_threads (id, task_id, status, created) VALUES (?, ?, 'needs_attention', ?)`,
-			threadID, dt.TaskID, now); err != nil {
+			`INSERT INTO comment_threads (id, task_id, status, file_path, hunk_header, created) VALUES (?, ?, 'needs_attention', ?, ?, ?)`,
+			threadID, dt.TaskID, nullStrTx(dt.FilePath), nullStrTx(dt.HunkHeader), now); err != nil {
 			return nil, fmt.Errorf("flush: create thread: %w", err)
 		}
 		naIDs = append(naIDs, threadID)
@@ -311,7 +348,7 @@ func scanDraftThread(r scanner) (*model.DraftThread, error) {
 		dt        model.DraftThread
 		createdMs int64
 	)
-	if err := r.Scan(&dt.ID, &dt.TicketID, &dt.TaskID, &createdMs); err != nil {
+	if err := r.Scan(&dt.ID, &dt.TicketID, &dt.TaskID, &dt.FilePath, &dt.HunkHeader, &createdMs); err != nil {
 		return nil, err
 	}
 	dt.Created = fromMs(createdMs)
