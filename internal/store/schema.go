@@ -54,11 +54,13 @@ CREATE TABLE IF NOT EXISTS blocked_by (
 );
 
 CREATE TABLE IF NOT EXISTS comment_threads (
-  id       TEXT PRIMARY KEY,
-  task_id  TEXT NOT NULL,
-  status   TEXT NOT NULL DEFAULT 'open'
-           CHECK(status IN ('open','needs_attention','resolved')),
-  created  INTEGER NOT NULL,
+  id          TEXT PRIMARY KEY,
+  task_id     TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'open'
+              CHECK(status IN ('open','needs_attention','resolved')),
+  file_path   TEXT,
+  hunk_header TEXT,
+  created     INTEGER NOT NULL,
   FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
@@ -90,10 +92,12 @@ CREATE INDEX IF NOT EXISTS idx_thread_messages_thread ON thread_messages(thread_
 CREATE INDEX IF NOT EXISTS idx_notes_ticket           ON notes(ticket_id);
 
 CREATE TABLE IF NOT EXISTS draft_threads (
-  id        TEXT PRIMARY KEY,
-  ticket_id TEXT NOT NULL,
-  task_id   TEXT NOT NULL,
-  created   INTEGER NOT NULL
+  id          TEXT PRIMARY KEY,
+  ticket_id   TEXT NOT NULL,
+  task_id     TEXT NOT NULL,
+  file_path   TEXT,
+  hunk_header TEXT,
+  created     INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS draft_messages (

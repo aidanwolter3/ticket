@@ -229,11 +229,11 @@ func TestSubmitReview_FlushesAndTransitions(t *testing.T) {
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
 
 	// Existing real thread (open).
-	th, err := s.CreateThread(task.ID)
+	th, err := s.CreateThread(task.ID, "", "")
 	require.NoError(t, err)
 
 	// Stage: draft new thread.
-	dt, err := s.CreateDraftThread(ticket.ID, task.ID)
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "", "")
 	require.NoError(t, err)
 	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "please fix this")
 	require.NoError(t, err)
@@ -285,7 +285,7 @@ func TestSubmitReview_CreatesAmendmentTasks(t *testing.T) {
 
 	// Create 3 draft threads (all will become needs_attention).
 	for i := 0; i < 3; i++ {
-		dt, err := s.CreateDraftThread(ticket.ID, task.ID)
+		dt, err := s.CreateDraftThread(ticket.ID, task.ID, "", "")
 		require.NoError(t, err)
 		_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "review comment")
 		require.NoError(t, err)
@@ -357,7 +357,7 @@ func TestSubmitReview_OnlyResolutionsStaysInReview(t *testing.T) {
 	ticket, task := newInReviewTicket(t, s)
 
 	// Open thread exists; stage only a resolution for it.
-	th, err := s.CreateThread(task.ID)
+	th, err := s.CreateThread(task.ID, "", "")
 	require.NoError(t, err)
 	require.NoError(t, s.SetDraftAction(th.ID, ticket.ID, model.DraftActionResolve))
 
@@ -381,7 +381,7 @@ func TestSubmitReview_NewThreadTransitionsToReady(t *testing.T) {
 	ticket, task := newInReviewTicket(t, s)
 
 	// Stage a new draft thread (will become needs_attention on flush).
-	dt, err := s.CreateDraftThread(ticket.ID, task.ID)
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "", "")
 	require.NoError(t, err)
 	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "please rename this")
 	require.NoError(t, err)

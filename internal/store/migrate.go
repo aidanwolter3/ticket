@@ -61,6 +61,14 @@ func (s *Store) runMigrations() error {
 			return fmt.Errorf("record migration 5: %w", err)
 		}
 	}
+	if current < 6 {
+		if err := s.migration6(); err != nil {
+			return fmt.Errorf("migration 6: %w", err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO schema_migrations (version, applied) VALUES (6, ?)`, time.Now().UnixMilli()); err != nil {
+			return fmt.Errorf("record migration 6: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -673,6 +681,40 @@ func (s *Store) migration5() error {
 	}
 	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_agent_sessions_ticket ON agent_sessions(ticket_id)`)
 	return err
+}
+
+// migration6 adds file_path and hunk_header columns to comment_threads and draft_threads.
+// These columns are nullable and allow threads to be anchored to a specific diff hunk.
+func (s *Store) migration6() error {
+	type alteration struct {
+		table  string
+		column string
+	}
+	for _, a := range []alteration{
+		{"comment_threads", "file_path"},
+		{"comment_threads", "hunk_header"},
+		{"draft_threads", "file_path"},
+		{"draft_threads", "hunk_header"},
+	} {
+		exists, err := s.hasTable(a.table)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			continue
+		}
+		has, err := s.hasColumn(a.table, a.column)
+		if err != nil {
+			return err
+		}
+		if has {
+			continue
+		}
+		if _, err := s.db.Exec(`ALTER TABLE ` + a.table + ` ADD COLUMN ` + a.column + ` TEXT`); err != nil {
+			return fmt.Errorf("add %s.%s: %w", a.table, a.column, err)
+		}
+	}
+	return nil
 }
 
 func nullStrTx(s string) interface{} {

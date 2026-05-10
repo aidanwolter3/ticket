@@ -11,11 +11,13 @@ const (
 )
 
 type Thread struct {
-	ID       string
-	TaskID   string
-	Status   ThreadStatus
-	Messages []Message
-	Created  time.Time
+	ID         string
+	TaskID     string
+	Status     ThreadStatus
+	FilePath   string
+	HunkHeader string
+	Messages   []Message
+	Created    time.Time
 }
 
 func (t *Thread) Summary() string {

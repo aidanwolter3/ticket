@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Store) GetThread(id string) (*model.Thread, error) {
-	row := s.db.QueryRow(`SELECT id, task_id, status, created FROM comment_threads WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id, task_id, status, COALESCE(file_path,''), COALESCE(hunk_header,''), created FROM comment_threads WHERE id=?`, id)
 	t, err := scanThread(row)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("thread %s not found", id)
@@ -24,19 +24,21 @@ func (s *Store) GetThread(id string) (*model.Thread, error) {
 	return t, nil
 }
 
-func (s *Store) CreateThread(taskID string) (*model.Thread, error) {
+func (s *Store) CreateThread(taskID, filePath, hunkHeader string) (*model.Thread, error) {
 	id := ids.NewUUID()
 	now := time.Now().UnixMilli()
-	_, err := s.db.Exec(`INSERT INTO comment_threads (id, task_id, status, created) VALUES (?, ?, 'open', ?)`,
-		id, taskID, now)
+	_, err := s.db.Exec(`INSERT INTO comment_threads (id, task_id, status, file_path, hunk_header, created) VALUES (?, ?, 'open', ?, ?, ?)`,
+		id, taskID, nullStr(filePath), nullStr(hunkHeader), now)
 	if err != nil {
 		return nil, fmt.Errorf("create thread: %w", err)
 	}
 	return &model.Thread{
-		ID:      id,
-		TaskID:  taskID,
-		Status:  model.ThreadOpen,
-		Created: time.UnixMilli(now),
+		ID:         id,
+		TaskID:     taskID,
+		Status:     model.ThreadOpen,
+		FilePath:   filePath,
+		HunkHeader: hunkHeader,
+		Created:    time.UnixMilli(now),
 	}, nil
 }
 
@@ -74,7 +76,7 @@ func (s *Store) AddMessage(threadID, author, text string) (*model.Message, error
 }
 
 func (s *Store) GetThreadsForTask(taskID string) ([]*model.Thread, error) {
-	rows, err := s.db.Query(`SELECT id, task_id, status, created FROM comment_threads WHERE task_id=? ORDER BY created`, taskID)
+	rows, err := s.db.Query(`SELECT id, task_id, status, COALESCE(file_path,''), COALESCE(hunk_header,''), created FROM comment_threads WHERE task_id=? ORDER BY created`, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +109,7 @@ func (s *Store) GetThreadsForTicket(ticketID string) ([]*model.Thread, error) {
 // ordered by task position then thread creation time.
 func (s *Store) GetAllThreadsForTicket(ticketID string) ([]*model.Thread, error) {
 	rows, err := s.db.Query(`
-		SELECT ct.id, ct.task_id, ct.status, ct.created
+		SELECT ct.id, ct.task_id, ct.status, COALESCE(ct.file_path,''), COALESCE(ct.hunk_header,''), ct.created
 		FROM comment_threads ct
 		JOIN tasks tk ON tk.id = ct.task_id
 		WHERE tk.ticket_id = ?
@@ -161,7 +163,7 @@ func scanThread(r scanner) (*model.Thread, error) {
 		statusStr string
 		createdMs int64
 	)
-	if err := r.Scan(&t.ID, &t.TaskID, &statusStr, &createdMs); err != nil {
+	if err := r.Scan(&t.ID, &t.TaskID, &statusStr, &t.FilePath, &t.HunkHeader, &createdMs); err != nil {
 		return nil, err
 	}
 	t.Status = model.ThreadStatus(statusStr)

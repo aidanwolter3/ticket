@@ -8,11 +8,13 @@ const (
 )
 
 type DraftThread struct {
-	ID       string
-	TicketID string
-	TaskID   string
-	Messages []DraftMessage
-	Created  time.Time
+	ID         string
+	TicketID   string
+	TaskID     string
+	FilePath   string
+	HunkHeader string
+	Messages   []DraftMessage
+	Created    time.Time
 }
 
 type DraftMessage struct {

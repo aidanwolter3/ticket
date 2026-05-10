@@ -804,7 +804,7 @@ func (a *App) updateNewThreadModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if a.threadsView != nil {
 					ticketID = a.threadsView.TicketID()
 				}
-				dt, err := a.store.CreateDraftThread(ticketID, a.newThreadModal.TaskID())
+				dt, err := a.store.CreateDraftThread(ticketID, a.newThreadModal.TaskID(), "", "")
 				if err != nil {
 					a.setErr(err)
 					a.screen = screenThreads

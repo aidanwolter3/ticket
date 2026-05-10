@@ -162,7 +162,7 @@ func importTickets(s *store.Store, inputs []importTicket) (*importResult, error)
 				return nil, fmt.Errorf("create task %q for %s: %w", it.Title, ticketID, err)
 			}
 			for _, th := range it.Threads {
-				thread, err := s.CreateThread(task.ID)
+				thread, err := s.CreateThread(task.ID, "", "")
 				if err != nil {
 					return nil, fmt.Errorf("create thread on task %s: %w", task.ID, err)
 				}
