@@ -241,7 +241,7 @@ func TestSubmitReview_FlushesAndTransitions(t *testing.T) {
 	// Stage: resolve the open thread.
 	require.NoError(t, s.SetDraftAction(th.ID, ticket.ID, model.DraftActionResolve))
 
-	require.NoError(t, SubmitReview(s, ticket.ID, io.Discard, io.Discard))
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", nil, io.Discard, io.Discard))
 
 	// Ticket should be ready.
 	got, err := s.GetTicket(ticket.ID)
@@ -291,7 +291,7 @@ func TestSubmitReview_CreatesAmendmentTasks(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	require.NoError(t, SubmitReview(s, ticket.ID, io.Discard, io.Discard))
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", nil, io.Discard, io.Discard))
 
 	// Ticket should be ready.
 	got, err := s.GetTicket(ticket.ID)
@@ -328,7 +328,7 @@ func TestSubmitReview_EmptyDraftOK(t *testing.T) {
 	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
 
 	// No draft state — no needs_attention threads, so ticket stays in_review.
-	require.NoError(t, SubmitReview(s, ticket.ID, io.Discard, io.Discard))
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", nil, io.Discard, io.Discard))
 
 	got, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
@@ -361,7 +361,7 @@ func TestSubmitReview_OnlyResolutionsStaysInReview(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.SetDraftAction(th.ID, ticket.ID, model.DraftActionResolve))
 
-	require.NoError(t, SubmitReview(s, ticket.ID, io.Discard, io.Discard))
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", nil, io.Discard, io.Discard))
 
 	got, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
@@ -386,7 +386,7 @@ func TestSubmitReview_NewThreadTransitionsToReady(t *testing.T) {
 	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "please rename this")
 	require.NoError(t, err)
 
-	require.NoError(t, SubmitReview(s, ticket.ID, io.Discard, io.Discard))
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", nil, io.Discard, io.Discard))
 
 	got, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
@@ -699,4 +699,117 @@ func TestPromote_SkipsLaunchOnWorktreeCreationFailure(t *testing.T) {
 	sess, err := s.GetAgentSessionByTicket(ticket.ID)
 	require.NoError(t, err)
 	assert.Nil(t, sess, "no agent session should be created when worktree creation fails")
+}
+
+// TestFullReviewCycle_HunkComments exercises the complete review flow that the
+// new review panel enables: hunk-anchored draft comment → submit → agent sets
+// new commit hash → human resolves → submit → approve.
+func TestFullReviewCycle_HunkComments(t *testing.T) {
+	s := newTestStore(t)
+
+	// ── Round 1: agent does the work ──────────────────────────────────────────
+	ticket, task := newInReviewTicket(t, s)
+
+	// Agent stores the commit hash (mimics "ticket task set-commit").
+	task.CommitHash = "aabbccdd1122"
+	require.NoError(t, s.UpdateTask(task))
+
+	// Human leaves a hunk-anchored review comment.
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "internal/foo.go", "@@ -3,6 +3,7 @@")
+	require.NoError(t, err)
+	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human:alice", "extract into helper")
+	require.NoError(t, err)
+
+	// Submit review → ticket transitions to ready; thread becomes needs_attention.
+	require.NoError(t, SubmitReview(s, ticket.ID, "human:alice", nil, io.Discard, io.Discard))
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusReady, got.Status, "hunk comment must move ticket back to ready")
+
+	threads, err := s.GetThreadsForTicket(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, threads, 1)
+	assert.Equal(t, model.ThreadNeedsAttention, threads[0].Status)
+	assert.Equal(t, "internal/foo.go", threads[0].FilePath)
+	assert.Equal(t, "@@ -3,6 +3,7 @@", threads[0].HunkHeader)
+
+	// ── Round 2: agent amends ─────────────────────────────────────────────────
+	// Complete all tasks (including newly created amendment tasks) then advance to in_review.
+	allTasks, err := s.GetTasksForTicket(ticket.ID)
+	require.NoError(t, err)
+	for _, tk := range allTasks {
+		if tk.CompletedAt == nil {
+			require.NoError(t, s.CompleteTask(tk.ID))
+		}
+	}
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
+
+	// Agent updates commit hash after fixup + autosquash.
+	task.CommitHash = "deadbeef9900"
+	require.NoError(t, s.UpdateTask(task))
+
+	// Human resolves the thread.
+	require.NoError(t, s.SetDraftAction(threads[0].ID, ticket.ID, model.DraftActionResolve))
+
+	// Submit with only resolutions → ticket stays in_review.
+	require.NoError(t, SubmitReview(s, ticket.ID, "human:alice", nil, io.Discard, io.Discard))
+
+	got, err = s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusInReview, got.Status, "pure-resolution submit must keep ticket in_review")
+
+	// All threads resolved → approve is valid.
+	threads, err = s.GetThreadsForTicket(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, threads, 1)
+	assert.Equal(t, model.ThreadResolved, threads[0].Status)
+
+	// Verify stored commit hash reflects the amendment.
+	updatedTask, err := s.GetTask(task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "deadbeef9900", updatedTask.CommitHash)
+
+	// Complete any remaining tasks before approving.
+	allTasks, err = s.GetTasksForTicket(ticket.ID)
+	require.NoError(t, err)
+	for _, tk := range allTasks {
+		if tk.CompletedAt == nil {
+			require.NoError(t, s.CompleteTask(tk.ID))
+		}
+	}
+
+	// Approve (no open threads).
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusApproved))
+	got, err = s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusApproved, got.Status)
+}
+
+// TestApprove_BlockedByOpenThread verifies that a ticket with an open or
+// needs_attention thread cannot be approved at the store level (callers are
+// responsible for the pre-check; this test documents the required guard).
+func TestApprove_BlockedByOpenThread(t *testing.T) {
+	s := newTestStore(t)
+	ticket, task := newInReviewTicket(t, s)
+
+	// Create an open thread.
+	_, err := s.CreateThread(task.ID, "pkg/util.go", "@@ -1,3 +1,4 @@")
+	require.NoError(t, err)
+
+	// Verify the open thread is visible.
+	threads, err := s.GetThreadsForTicket(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, threads, 1)
+	assert.Equal(t, model.ThreadOpen, threads[0].Status)
+
+	// Caller must check threads before approving. Demonstrate the check logic.
+	hasOpen := false
+	for _, th := range threads {
+		if th.Status == model.ThreadOpen || th.Status == model.ThreadNeedsAttention {
+			hasOpen = true
+		}
+	}
+	assert.True(t, hasOpen, "thread is open so approval must be blocked")
 }

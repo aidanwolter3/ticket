@@ -10,14 +10,16 @@ import (
 )
 
 type NewThreadModal struct {
-	authorIn textinput.Model
-	textIn   textarea.Model
-	focused  int
-	taskID   string
-	width    int
+	authorIn   textinput.Model
+	textIn     textarea.Model
+	focused    int
+	taskID     string
+	filePath   string
+	hunkHeader string
+	width      int
 }
 
-func NewNewThreadModal(taskID string, width int) *NewThreadModal {
+func NewNewThreadModal(taskID, filePath, hunkHeader string, width int) *NewThreadModal {
 	author := textinput.New()
 	author.Placeholder = "Author (e.g., human:aidan)"
 	author.SetValue("human:aidan")
@@ -35,7 +37,7 @@ func NewNewThreadModal(taskID string, width int) *NewThreadModal {
 	text.FocusedStyle = focusedStyle
 	text.BlurredStyle = blurredStyle
 
-	return &NewThreadModal{authorIn: author, textIn: text, taskID: taskID, width: width}
+	return &NewThreadModal{authorIn: author, textIn: text, taskID: taskID, filePath: filePath, hunkHeader: hunkHeader, width: width}
 }
 
 func (m *NewThreadModal) SetWidth(w int) {
@@ -69,9 +71,11 @@ func (m *NewThreadModal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *NewThreadModal) Author() string { return m.authorIn.Value() }
-func (m *NewThreadModal) Text() string   { return m.textIn.Value() }
-func (m *NewThreadModal) TaskID() string { return m.taskID }
+func (m *NewThreadModal) Author() string     { return m.authorIn.Value() }
+func (m *NewThreadModal) Text() string       { return m.textIn.Value() }
+func (m *NewThreadModal) TaskID() string     { return m.taskID }
+func (m *NewThreadModal) FilePath() string   { return m.filePath }
+func (m *NewThreadModal) HunkHeader() string { return m.hunkHeader }
 
 func (m *NewThreadModal) View() string {
 	var sb strings.Builder
@@ -79,6 +83,6 @@ func (m *NewThreadModal) View() string {
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Author") + "\n  " + m.authorIn.View() + "\n\n")
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Message") + "\n" + m.textIn.View() + "\n\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"[tab] switch · [ctrl+s] create · [esc] cancel"))
+		"[tab] switch · [S] create · [esc] cancel"))
 	return sb.String()
 }

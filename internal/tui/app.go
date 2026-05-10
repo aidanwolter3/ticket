@@ -37,6 +37,7 @@ type appScreen int
 const (
 	screenList appScreen = iota // split-pane: list left, detail right
 	screenThreads
+	screenReviewPanel
 	screenNoteModal
 	screenReplyModal
 	screenNewThreadModal
@@ -74,11 +75,13 @@ type App struct {
 	ticketDetail *views.TicketDetailView
 
 	// overlay screens
-	threadsView     *views.ThreadsView
-	noteModal       *views.NoteModal
-	replyModal      *views.ReplyModal
-	newThreadModal  *views.NewThreadModal
-	editDraftModal  *views.EditDraftModal
+	threadsView      *views.ThreadsView
+	reviewPanelView  *views.ReviewPanelView
+	noteModal        *views.NoteModal
+	replyModal       *views.ReplyModal
+	newThreadModal   *views.NewThreadModal
+	newThreadReturn  appScreen // screen to return to after newThreadModal
+	editDraftModal   *views.EditDraftModal
 
 	// agent attach state
 	attachFollow    <-chan []string
@@ -191,6 +194,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.threadsView != nil {
 			a.threadsView.SetSize(a.width, a.height)
 		}
+		if a.reviewPanelView != nil {
+			a.reviewPanelView.SetSize(a.width, a.height)
+		}
 		if a.replyModal != nil {
 			a.replyModal.SetWidth(a.width)
 		}
@@ -206,7 +212,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		// Global shortcuts (only when not in a modal/form, and not when the agent
 		// pane is focused — all keys except ctrl+] are forwarded to the agent PTY).
-		if (a.screen == screenList || a.screen == screenThreads) && a.rightPaneMode != "agent" {
+		if (a.screen == screenList || a.screen == screenThreads || a.screen == screenReviewPanel) && a.rightPaneMode != "agent" {
 			switch msg.String() {
 			case "ctrl+c":
 				return a, tea.Quit
@@ -223,6 +229,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateList(msg)
 	case screenThreads:
 		return a.updateThreads(msg)
+	case screenReviewPanel:
+		return a.updateReviewPanel(msg)
 	case screenConfirmDelete:
 		return a.updateConfirmDelete(msg)
 	case screenConfirmRedraft:
@@ -289,19 +297,6 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Detail-panel hotkeys — act on the currently highlighted ticket
 		switch km.String() {
-		case "t":
-			id := a.currentTicketID()
-			if id != "" {
-				tv, err := views.NewThreadsView(a.store, id)
-				if err != nil {
-					a.setErr(err)
-					return a, nil
-				}
-				tv.SetSize(a.width, a.height)
-				a.threadsView = tv
-				a.screen = screenThreads
-			}
-			return a, nil
 		case "n":
 			if a.currentTicketID() != "" {
 				a.noteModal = views.NewNoteModal()
@@ -325,6 +320,22 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if st == model.StatusReady || st == model.StatusInProgress || st == model.StatusInReview {
 						a.pendingRedraftID = t.ID
 						a.screen = screenConfirmRedraft
+					}
+				}
+			}
+			return a, nil
+		case "R":
+			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil {
+				t := a.ticketDetail.Ticket()
+				if t.Status == model.StatusInReview {
+					id := a.currentTicketID()
+					rpv, err := views.NewReviewPanelView(a.store, id)
+					if err != nil {
+						a.setErr(err)
+					} else {
+						rpv.SetSize(a.width, a.height)
+						a.reviewPanelView = rpv
+						a.screen = screenReviewPanel
 					}
 				}
 			}
@@ -512,7 +523,7 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			if a.threadsView != nil {
 				id := a.threadsView.TicketID()
-				if err := workflow.SubmitReview(a.store, id, io.Discard, io.Discard); err != nil {
+				if err := workflow.SubmitReview(a.store, id, "human", nil, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready (review submitted)", id)
@@ -560,7 +571,8 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.setErr(fmt.Errorf("no task selected"))
 					return a, nil
 				}
-				a.newThreadModal = views.NewNewThreadModal(taskID, a.width)
+				a.newThreadModal = views.NewNewThreadModal(taskID, "", "", a.width)
+				a.newThreadReturn = screenThreads
 				a.screen = screenNewThreadModal
 			}
 			return a, nil
@@ -568,6 +580,84 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	_, cmd := a.threadsView.Update(msg)
 	return a, cmd
+}
+
+// --- Review panel screen ---
+
+func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch km.String() {
+		case "esc":
+			a.reloadCurrentDetail()
+			a.screen = screenList
+			return a, nil
+		case "c":
+			if a.reviewPanelView != nil {
+				taskID := a.reviewPanelView.SelectedTaskID()
+				if taskID == "" {
+					a.setErr(fmt.Errorf("no task selected"))
+					return a, nil
+				}
+				filePath, hunkHeader := a.reviewPanelView.HunkContext()
+				a.newThreadModal = views.NewNewThreadModal(taskID, filePath, hunkHeader, a.width)
+				a.newThreadReturn = screenReviewPanel
+				a.screen = screenNewThreadModal
+			}
+			return a, nil
+		case "a":
+			if a.reviewPanelView != nil {
+				id := a.reviewPanelView.TicketID()
+				t, err := a.store.GetTicket(id)
+				if err != nil {
+					a.setErr(err)
+					return a, nil
+				}
+				hasOpen := false
+				for _, task := range t.Tasks {
+					threads, err := a.store.GetThreadsForTask(task.ID)
+					if err == nil {
+						for _, th := range threads {
+							if th.Status == model.ThreadOpen || th.Status == model.ThreadNeedsAttention {
+								hasOpen = true
+							}
+						}
+					}
+				}
+				if hasOpen {
+					a.statusMsg = "cannot approve: ticket has open threads"
+					a.statusErr = true
+				} else if err := a.store.TransitionTicket(id, model.StatusApproved); err != nil {
+					a.setErr(err)
+				} else {
+					a.statusMsg = fmt.Sprintf("%s → approved", id)
+					a.statusErr = false
+					a.ticketsView.Refresh()
+					a.loadCurrentDetail()
+					a.screen = screenList
+				}
+			}
+			return a, nil
+		case "S":
+			if a.reviewPanelView != nil {
+				id := a.reviewPanelView.TicketID()
+				if err := workflow.SubmitReview(a.store, id, "human", a.launcher, io.Discard, io.Discard); err != nil {
+					a.setErr(err)
+				} else {
+					a.statusMsg = fmt.Sprintf("%s → ready (review submitted)", id)
+					a.statusErr = false
+					a.reloadCurrentDetail()
+					a.ticketsView.Refresh()
+					a.screen = screenList
+				}
+			}
+			return a, nil
+		}
+	}
+	if a.reviewPanelView != nil {
+		_, cmd := a.reviewPanelView.Update(msg)
+		return a, cmd
+	}
+	return a, nil
 }
 
 // --- Confirm dispatch ---
@@ -793,32 +883,46 @@ func (a *App) updateReplyModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 // --- New thread modal ---
 
 func (a *App) updateNewThreadModal(msg tea.Msg) (tea.Model, tea.Cmd) {
+	returnTo := a.newThreadReturn
+	if returnTo == 0 {
+		returnTo = screenThreads
+	}
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
 		case "esc":
-			a.screen = screenThreads
+			a.screen = returnTo
 			return a, nil
-		case "ctrl+s":
+		case "ctrl+s", "S":
 			if a.newThreadModal.Text() != "" {
 				ticketID := ""
 				if a.threadsView != nil {
 					ticketID = a.threadsView.TicketID()
 				}
-				dt, err := a.store.CreateDraftThread(ticketID, a.newThreadModal.TaskID(), "", "")
+				if ticketID == "" && a.reviewPanelView != nil {
+					ticketID = a.reviewPanelView.TicketID()
+				}
+				filePath := a.newThreadModal.FilePath()
+				hunkHeader := a.newThreadModal.HunkHeader()
+				dt, err := a.store.CreateDraftThread(ticketID, a.newThreadModal.TaskID(), filePath, hunkHeader)
 				if err != nil {
 					a.setErr(err)
-					a.screen = screenThreads
+					a.screen = returnTo
 					return a, nil
 				}
 				if _, err := a.store.AddDraftMessage(dt.ID, ticketID, false, a.newThreadModal.Author(), a.newThreadModal.Text()); err != nil {
 					a.setErr(err)
 				} else {
-					a.statusMsg = "Thread staged (submit with ctrl+s in threads view)"
+					a.statusMsg = "Thread staged (submit with [S] in review panel)"
 					a.statusErr = false
-					a.threadsView.Reload()
+					if a.threadsView != nil {
+						a.threadsView.Reload()
+					}
+					if a.reviewPanelView != nil {
+						a.reviewPanelView.Reload()
+					}
 				}
 			}
-			a.screen = screenThreads
+			a.screen = returnTo
 			return a, nil
 		}
 	}
@@ -879,6 +983,10 @@ func (a *App) View() string {
 	case screenThreads:
 		if a.threadsView != nil {
 			sb.WriteString(a.threadsView.View())
+		}
+	case screenReviewPanel:
+		if a.reviewPanelView != nil {
+			sb.WriteString(a.reviewPanelView.View())
 		}
 	case screenNoteModal:
 		if a.noteModal != nil {
