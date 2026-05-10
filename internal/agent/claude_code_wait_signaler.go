@@ -87,11 +87,14 @@ func writeClaudeHooks(worktreePath, waitPath, runPath string) error {
 			}},
 			"Notification": {{
 				Matcher: "permission_prompt",
-				Hooks: []claudeHookCmd{{
-					Type:    "command",
-					Command: "osascript -e 'display notification \"Permission prompt\" with title \"Claude Code\"'",
-					Async:   true,
-				}},
+				Hooks: []claudeHookCmd{
+					{Type: "command", Command: "touch " + waitPath},
+					{
+						Type:    "command",
+						Command: "osascript -e 'display notification \"Permission prompt\" with title \"Claude Code\"'",
+						Async:   true,
+					},
+				},
 			}},
 			"PreToolUse": {
 				{
