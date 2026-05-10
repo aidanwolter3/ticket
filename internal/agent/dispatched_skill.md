@@ -76,8 +76,9 @@ Do not move to the next task until the current task's verifiable result passes, 
 3. Create a fixup commit per task: `git commit --fixup=<task_commit_hash>` where `task_commit_hash` is the `commit_hash` field from the task. If a task has no `commit_hash`, create a normal commit with message `<ticket-id> <task-id>: address review — <short summary>` instead.
 4. After all fixup commits are staged, run:
    ```bash
-   GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash main
+   GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base_branch>
    ```
+   where `base_branch` is `main` (or the repo default branch).
 5. After the rebase, each amended task's commit hash has changed. For each amended task, find the new hash:
    ```bash
    git log --reverse --format="%H %s" main..<feature_branch>
