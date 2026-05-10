@@ -20,6 +20,7 @@ func RunTask(args []string, defaultDB string) {
 		fmt.Fprintln(os.Stderr, "  ls         <ticket-id>")
 		fmt.Fprintln(os.Stderr, "  update     <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]")
 		fmt.Fprintln(os.Stderr, "  move       <task-id> <position>")
+		fmt.Fprintln(os.Stderr, "  set-commit <task-id> <hash>")
 		fmt.Fprintln(os.Stderr, "  complete   <task-id> [--most-recent-commit] [--commit <hash>]")
 		fmt.Fprintln(os.Stderr, "  uncomplete <task-id>")
 		fmt.Fprintln(os.Stderr, "  delete     <task-id>")
@@ -36,6 +37,8 @@ func RunTask(args []string, defaultDB string) {
 		runTaskUpdate(args[1:], defaultDB)
 	case "move":
 		runTaskMove(args[1:], defaultDB)
+	case "set-commit":
+		runTaskSetCommit(args[1:], defaultDB)
 	case "complete":
 		runTaskComplete(args[1:], defaultDB, false)
 	case "uncomplete":
@@ -327,6 +330,36 @@ func runTaskUpdate(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 	fmt.Printf("%s updated\n", taskID)
+}
+
+func runTaskSetCommit(args []string, defaultDB string) {
+	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
+		fmt.Fprintln(os.Stderr, "usage: ticket task set-commit [--db path] <task-id> <hash>")
+		os.Exit(1)
+	}
+	taskID := args[0]
+
+	s, fs := parseAndOpen("task set-commit", args[1:], defaultDB, nil)
+	defer s.Close()
+
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: ticket task set-commit [--db path] <task-id> <hash>")
+		os.Exit(1)
+	}
+	hash := fs.Arg(0)
+
+	task, err := s.GetTask(taskID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	task.CommitHash = hash
+	if err := s.UpdateTask(task); err != nil {
+		fmt.Fprintf(os.Stderr, "update task: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("%s commit set to %s\n", taskID, hash)
 }
 
 func runTaskMove(args []string, defaultDB string) {

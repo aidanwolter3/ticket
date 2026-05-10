@@ -24,6 +24,8 @@ Usage:
                                               add a new task to a ticket
   ticket task ls [--db path] [--json] <ticket-id>
                                               list tasks for a ticket
+  ticket task set-commit [--db path] <task-id> <hash>
+                                              set the commit hash for a task
   ticket task complete [--db path] [--most-recent-commit] [--commit <hash>] <task-id>
                                               mark a task complete; --commit records an explicit hash; --most-recent-commit resolves HEAD from worktree_path or repo_path
   ticket task uncomplete [--db path] <task-id>
