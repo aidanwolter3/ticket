@@ -200,6 +200,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.agentTermView != nil {
 			a.agentTermView.SetSize(a.rightW, a.bodyHeight())
+			a.launcher.ResizeSession(a.attachSessionID, a.rightW, a.bodyHeight()) //nolint:errcheck
 		}
 		return a, nil
 
@@ -1026,6 +1027,7 @@ func (a *App) enterAttachView(sess *model.AgentSession) tea.Cmd {
 	a.attachUnsub = unsub
 	a.attachTicketID = sess.TicketID
 	a.attachSessionID = sess.ID
+	a.launcher.ResizeSession(sess.ID, a.rightW, a.bodyHeight()) //nolint:errcheck
 	if a.agentTermView != nil && len(initialLines) > 0 {
 		a.agentTermView.SetLines(initialLines)
 	}

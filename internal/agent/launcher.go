@@ -287,6 +287,19 @@ func (l *Launcher) runAgent(sessionID string, em *emulator.Emulator, logFile *os
 	}
 }
 
+// ResizeSession resizes the PTY for the given session to cols×rows so the
+// agent program (e.g. Claude Code) wraps and lays out text to match the
+// visible pane dimensions in the TUI.
+func (l *Launcher) ResizeSession(sessionID string, cols, rows int) error {
+	l.mu.Lock()
+	em := l.emulators[sessionID]
+	l.mu.Unlock()
+	if em == nil {
+		return nil
+	}
+	return em.Resize(cols, rows)
+}
+
 // Terminate sends SIGTERM to the agent process and marks the session terminated.
 func (l *Launcher) Terminate(ticketID string) error {
 	sess, err := l.store.GetAgentSessionByTicket(ticketID)
