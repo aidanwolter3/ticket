@@ -38,13 +38,30 @@ ticket in-review T1
 
 ### 3. Human: review
 
-Open the TUI (`ticket`) and navigate to the ticket in review. Use the threads screen (`t`) to leave comments, reply to threads, and mark issues as needing attention. Press `ctrl+s` to submit the review — this transitions the ticket back to `ready` and auto-generates amendment tasks for any unresolved threads.
+Open the TUI (`ticket`) and navigate to the `in_review` ticket. Press `[R]` to open the **review panel** — a split-pane view with tasks on the left and the git diff for the selected task on the right.
+
+- **Navigate tasks** with `↑/k` and `↓/j` in the left pane. Tasks without a commit are greyed out and show a placeholder instead of a diff.
+- **Switch panes** with `Tab`. When the right pane is focused, `↑/k` and `↓/j` scroll the diff.
+- **Leave a hunk-anchored comment** with `[c]` — captures the file path and the nearest `@@` hunk header above the current scroll position. A modal opens to type the comment. After confirmation the thread appears inline directly below the hunk it was anchored to.
+- **Submit the review** with `[S]` — sends all staged comments to the agent, auto-generates amendment tasks, and transitions the ticket back to `ready`.
+- **Approve** with `[a]` once all threads are resolved — transitions to `approved` (requires no open threads).
 
 ### 4. Agent: amend
 
+When the ticket returns to `ready` with `needs_attention` threads, the agent addresses each thread using fixup commits:
+
 ```sh
-# ... address review feedback via the generated amendment tasks ...
-ticket in-review T1
+# For each amended task (task_commit_hash is the task's stored commit_hash):
+git commit --fixup=<task_commit_hash>
+
+# After all fixup commits are staged, autosquash:
+GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash main
+
+# Update stored commit hashes after rebase:
+ticket task set-commit <task-id> <new-hash>
+
+# Force-push the cleaned history:
+git push --force-with-lease origin <feature-branch>
 ```
 
 Repeat steps 3–4 until satisfied.
