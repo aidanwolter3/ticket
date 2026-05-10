@@ -3,6 +3,8 @@ package views
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -88,10 +90,17 @@ func (v *AgentTermView) View() string {
 	return strings.Join(rows, "\n")
 }
 
+// padOrTruncate sizes s to exactly width visible characters.
+// Uses charmbracelet/x/ansi for correct handling of escape sequences,
+// wide characters, and grapheme clusters. A SGR reset is appended after
+// truncation so no active attribute bleeds into subsequent output.
 func padOrTruncate(s string, width int) string {
-	runes := []rune(s)
-	if len(runes) > width {
-		return string(runes[:width])
+	visibleLen := ansi.StringWidth(s)
+	if visibleLen > width {
+		return ansi.Truncate(s, width, "") + "\033[0m"
 	}
-	return string(runes) + strings.Repeat(" ", width-len(runes))
+	if visibleLen < width {
+		return s + strings.Repeat(" ", width-visibleLen)
+	}
+	return s
 }

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/google/uuid"
@@ -500,22 +501,13 @@ func splitIntoRows(rendered string, height, width int) []string {
 }
 
 // padRow pads a row to the specified width, accounting for ANSI escape codes.
+// It always appends a SGR reset (\033[0m) before the trailing spaces so that
+// any active attribute (e.g. underline) from the row's content does not bleed
+// into the padding or into the next row when rows are joined with \n.
 func padRow(row string, width int) string {
-	visibleLen := 0
-	inEscape := false
-	for _, r := range row {
-		if r == '\033' {
-			inEscape = true
-		} else if inEscape {
-			if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || r == '~' {
-				inEscape = false
-			}
-		} else {
-			visibleLen++
-		}
+	const reset = "\033[0m"
+	if visibleLen := ansi.StringWidth(row); visibleLen < width {
+		return row + reset + strings.Repeat(" ", width-visibleLen)
 	}
-	if visibleLen < width {
-		return row + strings.Repeat(" ", width-visibleLen)
-	}
-	return row
+	return row + reset
 }
