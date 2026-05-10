@@ -73,13 +73,19 @@ Run `ticket` with no arguments to open the interactive interface.
 |-----|--------|
 | `↑/k` `↓/j` | Navigate ticket list |
 | `r` | Mark draft ticket as ready |
-| `R` | Redraft (destroy worktree, return to draft) |
+| `R` | Revert ready ticket to draft |
 | `t` | Open threads view |
+| `[` / `]` | Scroll detail pane up / down |
+| `g` | Dispatch agent |
+| `enter` | Attach agent session |
+| `shift+tab` | Cycle to next agent |
+| `ctrl+]` | Detach agent |
 | `a` | Approve in-review ticket |
 | `m` | Merge approved ticket |
 | `n` | Add note |
+| `X` | Revert to draft (in-progress / in-review) |
+| `C` | Add conflict-resolution task and requeue |
 | `D` | Delete ticket |
-| `?` | Toggle help |
 | `q` | Quit |
 
 **Threads view** (`t` from any ticket):
