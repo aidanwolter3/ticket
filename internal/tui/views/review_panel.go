@@ -259,15 +259,10 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 			isHunk = true
 		}
 
-		// Truncate to right pane width to prevent lipgloss wrapping overflow.
-		if runes := []rune(raw); len(runes) > rw {
-			raw = string(runes[:rw])
-		}
-
 		// Expand tabs to spaces so rune count matches visual width, then truncate.
 		raw = strings.ReplaceAll(raw, "\t", "    ")
-		if runes := []rune(raw); len(runes) > rightW {
-			raw = string(runes[:rightW])
+		if runes := []rune(raw); len(runes) > rw {
+			raw = string(runes[:rw])
 		}
 
 		// Syntax-color the line.
