@@ -20,7 +20,7 @@ draft → ready → in_progress → in_review → approved → merged
 ### 1. Human: create a ticket
 
 ```sh
-ticket draft "Add login feature" --repo /path/to/repo
+ticket draft --title "Add login feature" --repo /path/to/repo
 ticket task add T1 --title "Implement JWT auth" --verifiable-result "Tests pass"
 ticket task add T1 --title "Add /login endpoint"
 ticket ready T1 human:alice
@@ -105,18 +105,24 @@ Run `ticket` with no arguments to open the interactive interface.
 
 ```sh
 # Ticket lifecycle
-ticket draft <title> [--repo <path>] [--description <text>] [--branch <name>]
-ticket ls [--status <status>]
+ticket draft --title <title> --repo <path> [--description <text>] [--json]
+ticket import [file]
+ticket ls [--status <status>] [--json]
 ticket get <id>
-ticket ready <id> <author>
-ticket redraft <id> <author>
+ticket transition <id> <status> <author>
+ticket note add <ticket-id> <author> <text>
+ticket ready <ticket-id> <author>
+ticket redraft <ticket-id> <author>
 ticket approve <id> <author>
 ticket merge <id> <author>
 ticket delete <id>
+ticket purge --yes
+ticket block <ticket-id> <blocker-id>
+ticket unblock <ticket-id> <blocker-id>
 
 # Tasks
 ticket task add <ticket-id> --title <title> [--description <text>] [--verifiable-result <text>]
-ticket task ls <ticket-id>
+ticket task ls [--json] <ticket-id>
 ticket task update <task-id> [--title <title>] [--description <text>] [--verifiable-result <text>]
 ticket task move <task-id> <position>
 ticket task complete <task-id>
@@ -127,8 +133,11 @@ ticket review-submit <ticket-id> <author>
 ticket thread reply <thread-id> <author> <text>
 ticket thread transition <thread-id> <status> <author>
 
+# Agent
+ticket agent clear <ticket-id>
+
 # Config
-ticket config set <key> <value>    # e.g. worktrees=false
+ticket config set <key> <value>
 ticket config get <key>
 ticket config ls
 ```
