@@ -14,10 +14,13 @@ import (
 
 // renderedLine is a line in the right pane with hunk context for [c] anchoring.
 type renderedLine struct {
-	text     string
+	text     string // pre-styled fixed content (header, annotations); rendered as-is
+	rawText  string // tab-expanded unstyled diff text; horizontal-scrolled at render time
+	lineKind string // styling to apply to rawText: "add", "del", "hunk", "bold", ""
 	filePath string
 	hunkHdr  string
-	isHunk   bool // true when this line is itself a @@ hunk header
+	threadID string // non-empty for thread annotation lines
+	isHunk   bool   // true when this line is itself a @@ hunk header
 }
 
 // ReviewPanelView is the full-screen code-review split-pane overlay.
@@ -29,6 +32,7 @@ type ReviewPanelView struct {
 	taskListOffset int
 	lines          []renderedLine
 	offset         int
+	hOffset        int // horizontal scroll offset for diff lines
 	width          int
 	height         int
 	threads        []*model.Thread
@@ -116,16 +120,15 @@ func (v *ReviewPanelView) HunkContext() (filePath, hunkHeader string) {
 func (v *ReviewPanelView) buildDiffLines() {
 	v.lines = nil
 	v.offset = 0
+	v.hOffset = 0
 	if v.taskCursor >= len(v.tasks) {
 		return
 	}
 	task := v.tasks[v.taskCursor]
 	rw := v.rightW()
 
-	// Task header: title + description above the diff.
-	titleLine := lipgloss.NewStyle().Bold(true).Render(
-		fmt.Sprintf("Task %d: %s", task.Position, task.Title))
-	v.lines = append(v.lines, renderedLine{text: titleLine})
+	// Task header: title (h-scrollable) + description (word-wrapped, fixed) above the diff.
+	v.lines = append(v.lines, renderedLine{rawText: fmt.Sprintf("Task %d: %s", task.Position, task.Title), lineKind: "bold"})
 	v.lines = append(v.lines, renderedLine{text: ""})
 	for _, l := range strings.Split(wrapText(task.Description, rw-2), "\n") {
 		v.lines = append(v.lines, renderedLine{text: l})
@@ -191,10 +194,25 @@ func (v *ReviewPanelView) threadsByHunk() map[string]*hunkThreads {
 	return m
 }
 
+// applyLineKind applies syntax highlighting to a visible diff line slice.
+func applyLineKind(kind, text string) string {
+	switch kind {
+	case "add":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(text)
+	case "del":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(text)
+	case "hunk":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(text)
+	case "bold":
+		return lipgloss.NewStyle().Bold(true).Render(text)
+	default:
+		return text
+	}
+}
+
 func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 	// Note: v.lines already contains the task header prepended by buildDiffLines — append here.
 	htMap := v.threadsByHunk()
-	rightW := v.rightW()
 
 	currentFile := ""
 	currentHunk := ""
@@ -214,10 +232,7 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 			icon := components.ThreadStatusIcon(th.Status)
 			line := fmt.Sprintf("    ┆ %s %s %s", icon, summary,
 				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(msgCount))
-			if rightW > 0 && len([]rune(line)) > rightW {
-				line = string([]rune(line)[:rightW])
-			}
-			v.lines = append(v.lines, renderedLine{text: line, filePath: fp, hunkHdr: hh})
+			v.lines = append(v.lines, renderedLine{text: line, filePath: fp, hunkHdr: hh, threadID: th.ID})
 		}
 		for _, dt := range ht.draft {
 			summary := "(empty draft)"
@@ -231,14 +246,10 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 			icon := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("◌")
 			line := fmt.Sprintf("    ┆ %s %s %s", icon, summary,
 				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[draft]"))
-			if rightW > 0 && len([]rune(line)) > rightW {
-				line = string([]rune(line)[:rightW])
-			}
 			v.lines = append(v.lines, renderedLine{text: line, filePath: fp, hunkHdr: hh})
 		}
 	}
 
-	rw := v.rightW()
 	for _, raw := range rawLines {
 		isHunk := false
 		if strings.HasPrefix(raw, "diff --git ") {
@@ -259,32 +270,28 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 			isHunk = true
 		}
 
-		// Expand tabs to spaces so rune count matches visual width, then truncate.
-		raw = strings.ReplaceAll(raw, "\t", "    ")
-		if runes := []rune(raw); len(runes) > rw {
-			raw = string(runes[:rw])
-		}
-
-		// Syntax-color the line.
-		var displayLine string
+		// Determine line kind for syntax highlighting.
+		var lk string
 		switch {
 		case strings.HasPrefix(raw, "+++") || strings.HasPrefix(raw, "---"):
-			displayLine = lipgloss.NewStyle().Bold(true).Render(raw)
+			lk = "bold"
 		case strings.HasPrefix(raw, "+"):
-			displayLine = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(raw)
+			lk = "add"
 		case strings.HasPrefix(raw, "-"):
-			displayLine = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(raw)
+			lk = "del"
 		case strings.HasPrefix(raw, "@@"):
-			displayLine = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(raw)
+			lk = "hunk"
 		case strings.HasPrefix(raw, "diff --git") ||
 			strings.HasPrefix(raw, "index ") ||
 			strings.HasPrefix(raw, "new file") ||
 			strings.HasPrefix(raw, "deleted file"):
-			displayLine = lipgloss.NewStyle().Bold(true).Render(raw)
-		default:
-			displayLine = raw
+			lk = "bold"
 		}
-		v.lines = append(v.lines, renderedLine{text: displayLine, filePath: currentFile, hunkHdr: currentHunk, isHunk: isHunk})
+
+		// Expand tabs to spaces so rune width matches visual width.
+		expanded := strings.ReplaceAll(raw, "\t", "    ")
+
+		v.lines = append(v.lines, renderedLine{rawText: expanded, lineKind: lk, filePath: currentFile, hunkHdr: currentHunk, isHunk: isHunk})
 	}
 	// Flush annotations after the last hunk.
 	flushHunkAnnotations(currentFile, currentHunk)
@@ -341,6 +348,12 @@ func (v *ReviewPanelView) clampOffset() {
 	}
 }
 
+func (v *ReviewPanelView) clampHOffset() {
+	if v.hOffset < 0 {
+		v.hOffset = 0
+	}
+}
+
 func (v *ReviewPanelView) updateTaskListOffset() {
 	bh := v.bodyH()
 	if v.taskCursor < v.taskListOffset {
@@ -387,6 +400,11 @@ func (v *ReviewPanelView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			v.clampOffset()
 		case "n":
 			v.jumpToNextHunk()
+		case "<":
+			v.hOffset -= 4
+			v.clampHOffset()
+		case ">":
+			v.hOffset += 4
 		}
 	}
 	return v, nil
@@ -446,7 +464,23 @@ func (v *ReviewPanelView) View() string {
 		start = len(v.lines)
 	}
 	for _, rl := range v.lines[start:end] {
-		rightLines = append(rightLines, rl.text)
+		var displayLine string
+		if rl.rawText != "" {
+			// Apply horizontal offset: slice the tab-expanded raw text, then style.
+			runes := []rune(rl.rawText)
+			var visible string
+			if v.hOffset < len(runes) {
+				endIdx := v.hOffset + rightW
+				if endIdx > len(runes) {
+					endIdx = len(runes)
+				}
+				visible = string(runes[v.hOffset:endIdx])
+			}
+			displayLine = applyLineKind(rl.lineKind, visible)
+		} else {
+			displayLine = rl.text
+		}
+		rightLines = append(rightLines, displayLine)
 	}
 	for len(rightLines) < bodyH {
 		rightLines = append(rightLines, "")
@@ -462,7 +496,7 @@ func (v *ReviewPanelView) View() string {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
-	hint := "[↑↓/jk] navigate tasks · [[] scroll up · []] scroll down · [n] next hunk · [c] comment · [a] approve · [S] submit · [esc] back"
+	hint := "[↑↓/jk] tasks · [[] up · []] down · [<][>] scroll h · [n] hunk · [c] comment · [v] threads · [a] approve · [S] submit · [esc] back"
 	hintLine := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hint)
 
 	return body + "\n" + hintLine

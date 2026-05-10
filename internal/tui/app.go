@@ -75,13 +75,14 @@ type App struct {
 	ticketDetail *views.TicketDetailView
 
 	// overlay screens
-	threadsView      *views.ThreadsView
-	reviewPanelView  *views.ReviewPanelView
-	noteModal        *views.NoteModal
-	replyModal       *views.ReplyModal
-	newThreadModal   *views.NewThreadModal
-	newThreadReturn  appScreen // screen to return to after newThreadModal
-	editDraftModal   *views.EditDraftModal
+	threadsView        *views.ThreadsView
+	threadsReturnScreen appScreen // screen to return to when esc-ing from threadsView
+	reviewPanelView    *views.ReviewPanelView
+	noteModal          *views.NoteModal
+	replyModal         *views.ReplyModal
+	newThreadModal     *views.NewThreadModal
+	newThreadReturn    appScreen // screen to return to after newThreadModal
+	editDraftModal     *views.EditDraftModal
 
 	// agent attach state
 	attachFollow    <-chan []string
@@ -517,8 +518,14 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
 		case "esc":
-			a.reloadCurrentDetail()
-			a.screen = screenList
+			returnTo := a.threadsReturnScreen
+			a.threadsReturnScreen = 0
+			if returnTo == screenReviewPanel {
+				a.screen = screenReviewPanel
+			} else {
+				a.reloadCurrentDetail()
+				a.screen = screenList
+			}
 			return a, nil
 		case "ctrl+s":
 			if a.threadsView != nil {
@@ -602,6 +609,20 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.newThreadModal = views.NewNewThreadModal(taskID, filePath, hunkHeader, a.width)
 				a.newThreadReturn = screenReviewPanel
 				a.screen = screenNewThreadModal
+			}
+			return a, nil
+		case "v":
+			if a.reviewPanelView != nil {
+				id := a.reviewPanelView.TicketID()
+				tv, err := views.NewThreadsView(a.store, id)
+				if err != nil {
+					a.setErr(err)
+				} else {
+					tv.SetSize(a.width, a.height)
+					a.threadsView = tv
+					a.threadsReturnScreen = screenReviewPanel
+					a.screen = screenThreads
+				}
 			}
 			return a, nil
 		case "a":
