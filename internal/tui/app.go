@@ -930,7 +930,11 @@ func (a *App) View() string {
 
 func (a *App) renderTabBar() string {
 	label := lipgloss.NewStyle().Bold(true).Underline(true).UnderlineSpaces(false).Padding(0, 1).Render("Tickets")
-	hints := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("q quit")
+	hintText := "q quit"
+	if a.nextWaitingTicketID() != "" {
+		hintText = "shift+tab cycle agents · q quit"
+	}
+	hints := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hintText)
 	return label + "   " + hints
 }
 
