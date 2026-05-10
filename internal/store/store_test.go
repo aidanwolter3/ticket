@@ -642,6 +642,78 @@ func TestDraftMessageEditDelete(t *testing.T) {
 	assert.Len(t, state.NewThreads[0].Messages, 1)
 }
 
+func TestDraftThreadHunkAnchor(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusInReview}
+	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "internal/foo/bar.go", "@@ -10,7 +10,8 @@")
+	require.NoError(t, err)
+	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human:alice", "rename this variable")
+	require.NoError(t, err)
+
+	state, err := s.GetDraftState(ticket.ID)
+	require.NoError(t, err)
+	require.Len(t, state.NewThreads, 1)
+	assert.Equal(t, "internal/foo/bar.go", state.NewThreads[0].FilePath)
+	assert.Equal(t, "@@ -10,7 +10,8 @@", state.NewThreads[0].HunkHeader)
+	assert.Equal(t, task.ID, state.NewThreads[0].TaskID)
+	require.Len(t, state.NewThreads[0].Messages, 1)
+	assert.Equal(t, "rename this variable", state.NewThreads[0].Messages[0].Text)
+}
+
+func TestFlushDraftState_PreservesHunkAnchor(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusInReview}
+	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "cmd/main.go", "@@ -5,3 +5,4 @@")
+	require.NoError(t, err)
+	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human:alice", "extract this into a helper")
+	require.NoError(t, err)
+
+	_, err = s.FlushDraftState(ticket.ID)
+	require.NoError(t, err)
+
+	threads, err := s.GetThreadsForTask(task.ID)
+	require.NoError(t, err)
+	require.Len(t, threads, 1)
+	assert.Equal(t, "cmd/main.go", threads[0].FilePath)
+	assert.Equal(t, "@@ -5,3 +5,4 @@", threads[0].HunkHeader)
+	assert.Equal(t, model.ThreadNeedsAttention, threads[0].Status)
+}
+
+func TestUpdateTask_CommitHash(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	assert.Empty(t, task.CommitHash)
+
+	// Simulate "ticket task set-commit" by calling UpdateTask with a hash.
+	task.CommitHash = "abc1234def5678"
+	require.NoError(t, s.UpdateTask(task))
+
+	got, err := s.GetTask(task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "abc1234def5678", got.CommitHash)
+
+	// Updating other fields should not clobber the hash.
+	task.Title = "Renamed task"
+	require.NoError(t, s.UpdateTask(task))
+
+	got, err = s.GetTask(task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "abc1234def5678", got.CommitHash)
+	assert.Equal(t, "Renamed task", got.Title)
+}
+
 func TestDeleteDraftMessageAutoDeletesEmptyThread(t *testing.T) {
 	s := newTestStore(t)
 	ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
