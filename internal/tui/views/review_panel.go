@@ -17,6 +17,7 @@ type renderedLine struct {
 	text     string
 	filePath string
 	hunkHdr  string
+	isHunk   bool // true when this line is itself a @@ hunk header
 }
 
 // ReviewPanelView is the full-screen code-review split-pane overlay.
@@ -26,7 +27,6 @@ type ReviewPanelView struct {
 	tasks          []model.Task
 	taskCursor     int
 	taskListOffset int
-	focusRight     bool
 	lines          []renderedLine
 	offset         int
 	width          int
@@ -36,7 +36,7 @@ type ReviewPanelView struct {
 }
 
 func NewReviewPanelView(s *store.Store, ticketID string) (*ReviewPanelView, error) {
-	v := &ReviewPanelView{store: s, focusRight: true}
+	v := &ReviewPanelView{store: s}
 	return v, v.load(ticketID)
 }
 
@@ -238,7 +238,9 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 		}
 	}
 
+	rw := v.rightW()
 	for _, raw := range rawLines {
+		isHunk := false
 		if strings.HasPrefix(raw, "diff --git ") {
 			// Flush annotations for previous hunk before starting a new file.
 			flushHunkAnnotations(currentFile, currentHunk)
@@ -254,6 +256,12 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 			// Flush annotations for previous hunk before starting a new hunk.
 			flushHunkAnnotations(currentFile, currentHunk)
 			currentHunk = raw
+			isHunk = true
+		}
+
+		// Truncate to right pane width to prevent lipgloss wrapping overflow.
+		if runes := []rune(raw); len(runes) > rw {
+			raw = string(runes[:rw])
 		}
 
 		// Expand tabs to spaces so rune count matches visual width, then truncate.
@@ -281,7 +289,7 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 		default:
 			displayLine = raw
 		}
-		v.lines = append(v.lines, renderedLine{text: displayLine, filePath: currentFile, hunkHdr: currentHunk})
+		v.lines = append(v.lines, renderedLine{text: displayLine, filePath: currentFile, hunkHdr: currentHunk, isHunk: isHunk})
 	}
 	// Flush annotations after the last hunk.
 	flushHunkAnnotations(currentFile, currentHunk)
@@ -351,33 +359,39 @@ func (v *ReviewPanelView) updateTaskListOffset() {
 	}
 }
 
+func (v *ReviewPanelView) jumpToNextHunk() {
+	for i := v.offset + 1; i < len(v.lines); i++ {
+		if v.lines[i].isHunk {
+			v.offset = i
+			v.clampOffset()
+			return
+		}
+	}
+}
+
 func (v *ReviewPanelView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
-		case "tab":
-			v.focusRight = !v.focusRight
 		case "up", "k":
-			if v.focusRight {
-				v.offset--
-				v.clampOffset()
-			} else {
-				if v.taskCursor > 0 {
-					v.taskCursor--
-					v.buildDiffLines()
-					v.updateTaskListOffset()
-				}
+			if v.taskCursor > 0 {
+				v.taskCursor--
+				v.buildDiffLines()
+				v.updateTaskListOffset()
 			}
 		case "down", "j":
-			if v.focusRight {
-				v.offset++
-				v.clampOffset()
-			} else {
-				if v.taskCursor < len(v.tasks)-1 {
-					v.taskCursor++
-					v.buildDiffLines()
-					v.updateTaskListOffset()
-				}
+			if v.taskCursor < len(v.tasks)-1 {
+				v.taskCursor++
+				v.buildDiffLines()
+				v.updateTaskListOffset()
 			}
+		case "[":
+			v.offset--
+			v.clampOffset()
+		case "]":
+			v.offset++
+			v.clampOffset()
+		case "n":
+			v.jumpToNextHunk()
 		}
 	}
 	return v, nil
@@ -410,10 +424,8 @@ func (v *ReviewPanelView) View() string {
 		} else {
 			line = text
 		}
-		if i == v.taskCursor && !v.focusRight {
+		if i == v.taskCursor {
 			line = lipgloss.NewStyle().Reverse(true).Render(line)
-		} else if i == v.taskCursor {
-			line = lipgloss.NewStyle().Underline(true).Render(line)
 		}
 		allTaskLines = append(allTaskLines, line)
 	}
@@ -446,25 +458,16 @@ func (v *ReviewPanelView) View() string {
 	}
 	rightContent := strings.Join(rightLines, "\n")
 
-	borderColor := lipgloss.Color("7")
-	if v.focusRight {
-		borderColor = lipgloss.Color("4")
-	}
 	rightPane := lipgloss.NewStyle().
 		Width(rightW).
 		Height(bodyH).
 		Border(lipgloss.NormalBorder(), false, false, false, true).
-		BorderForeground(borderColor).
+		BorderForeground(lipgloss.Color("4")).
 		Render(rightContent)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
-	var hint string
-	if v.focusRight {
-		hint = "[tab] tasks · [↑↓/jk] scroll diff · [c] comment · [a] approve · [S] submit · [esc] back"
-	} else {
-		hint = "[tab] diff · [↑↓/jk] navigate tasks · [c] comment · [a] approve · [S] submit · [esc] back"
-	}
+	hint := "[↑↓/jk] navigate tasks · [[] scroll up · []] scroll down · [n] next hunk · [c] comment · [a] approve · [S] submit · [esc] back"
 	hintLine := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hint)
 
 	return body + "\n" + hintLine
