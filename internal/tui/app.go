@@ -316,16 +316,14 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.ticketDetail.ScrollDown(3)
 			}
 			return a, nil
-		case "R":
-			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == model.StatusReady {
-				id := a.currentTicketID()
-				if err := a.store.TransitionTicket(id, "draft", "human"); err != nil {
-					a.setErr(err)
-				} else {
-					a.statusMsg = fmt.Sprintf("%s → draft", id)
-					a.statusErr = false
-					a.ticketsView.Refresh()
-					a.loadCurrentDetail()
+		case "X":
+			if a.ticketDetail != nil {
+				if t := a.ticketDetail.Ticket(); t != nil {
+					st := t.Status
+					if st == model.StatusReady || st == model.StatusInProgress || st == model.StatusInReview {
+						a.pendingRedraftID = t.ID
+						a.screen = screenConfirmRedraft
+					}
 				}
 			}
 			return a, nil
@@ -339,17 +337,6 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.statusErr = false
 					a.ticketsView.Refresh()
 					a.loadCurrentDetail()
-				}
-			}
-			return a, nil
-		case "X":
-			if a.ticketDetail != nil {
-				if t := a.ticketDetail.Ticket(); t != nil {
-					st := t.Status
-					if st == model.StatusInProgress || st == model.StatusInReview {
-						a.pendingRedraftID = t.ID
-						a.screen = screenConfirmRedraft
-					}
 				}
 			}
 			return a, nil

@@ -118,7 +118,7 @@ func (v *TicketDetailView) View() string {
 		case model.StatusDraft:
 			hint += " · [r] mark ready"
 		case model.StatusReady:
-			hint += " · [R] back to draft · [g] dispatch agent"
+			hint += " · [X] back to draft · [g] dispatch agent"
 			if v.agentSession != nil {
 				hint += " · [enter] attach"
 			}
