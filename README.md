@@ -96,6 +96,8 @@ Run `ticket` with no arguments to open the interactive interface.
 | `n` | New thread |
 | `r` | Reply to thread |
 | `x` | Resolve / reopen thread |
+| `e` | Edit draft message |
+| `D` | Delete draft message |
 | `ctrl+s` | Submit review |
 | `esc` | Back |
 
