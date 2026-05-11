@@ -86,7 +86,7 @@ func runTaskAdd(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	task, err := workflow.AddTask(s, ticketID, *title, *description, *verifiableResult, *noCommit)
+	task, err := workflow.AddTask(s, ticketID, *title, *description, *verifiableResult, *noCommit, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "create task: %v\n", err)
 		os.Exit(1)

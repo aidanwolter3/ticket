@@ -9,8 +9,8 @@ import (
 	"github.com/aidanwolter/ticket/internal/store"
 )
 
-// AddTask creates a new task on the given ticket.
-func AddTask(s *store.Store, ticketID, title, description, verifiableResult string, noCommit bool) (*model.Task, error) {
+// AddTask creates a new task on the given ticket. Pass round=0 to use the default (1).
+func AddTask(s *store.Store, ticketID, title, description, verifiableResult string, noCommit bool, round int) (*model.Task, error) {
 	position := 1
 	last, err := s.LastTaskForTicket(ticketID)
 	if err != nil {
@@ -27,6 +27,7 @@ func AddTask(s *store.Store, ticketID, title, description, verifiableResult stri
 		VerifiableResult: verifiableResult,
 		NoCommit:         noCommit,
 		Position:         position,
+		Round:            round,
 	}
 	if err := s.CreateTask(task); err != nil {
 		return nil, fmt.Errorf("add task: %w", err)
