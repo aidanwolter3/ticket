@@ -70,11 +70,8 @@ Repeat steps 3–4 until satisfied.
 
 ### 5. Human: approve and merge
 
-```sh
-# or use TUI keybindings: [a] approve, [m] merge
-ticket approve T1
-ticket merge T1    # fast-forward merges branch, cleans up worktree
-```
+Use TUI keybindings: `[a]` to approve (transitions `in_review → approved`), `[m]` to merge
+(fast-forward merges branch, cleans up worktree, transitions to `merged`).
 
 ## Installation
 
@@ -126,29 +123,29 @@ Run `ticket` with no arguments to open the interactive interface.
 # Ticket lifecycle
 ticket draft --title <title> --repo <path> [--description <text>] [--json]
 ticket import [file]
-ticket ls [--status <status>] [--json]
+ticket ls [--status <status>] [--backlog] [--json]
 ticket get <id>
-ticket transition <id> <status> <author>
-ticket note add <ticket-id> <author> <text>
-ticket ready <ticket-id> <author>
-ticket redraft <ticket-id> <author>
-ticket approve <id> <author>
-ticket merge <id> <author>
+ticket ready <ticket-id>
+ticket redraft <ticket-id>
+ticket backlog <ticket-id>
+ticket unbacklog <ticket-id>
 ticket delete <id>
 ticket purge --yes
 ticket block <ticket-id> <blocker-id>
 ticket unblock <ticket-id> <blocker-id>
+ticket update <id> [--title <title>] [--description <text>]
 
 # Tasks
 ticket task add <ticket-id> --title <title> [--description <text>] [--verifiable-result <text>] [--no-commit]
 ticket task ls [--json] <ticket-id>
+ticket task get [--json] <task-id>
 ticket task update <task-id> [--title <title>] [--description <text>] [--verifiable-result <text>] [--no-commit]
 ticket task move <task-id> <position>
 ticket task delete <task-id>
 
-# Review
+# Threads
 ticket thread reply <thread-id> <author> <text>
-ticket thread transition <thread-id> <status> <author>
+ticket thread transition <thread-id> <status> [author]
 
 # Agent surface (use ticket --agent --help for full list)
 ticket --agent in-progress <ticket-id>
@@ -157,6 +154,7 @@ ticket --agent task complete [--most-recent-commit | --commit <hash>] <task-id>
 ticket --agent task complete <task-id>           # only for no_commit tasks
 ticket --agent task uncomplete <task-id>
 ticket --agent task set-commit <task-id> <hash>
+ticket --agent note add <ticket-id> <author> <text>
 
 # Agent admin
 ticket agent clear <ticket-id>
@@ -166,6 +164,8 @@ ticket config set <key> <value>
 ticket config get <key>
 ticket config ls
 ```
+
+Approve and merge are human-only operations performed via the TUI (`[a]` to approve, `[m]` to merge).
 
 ## Data model
 
@@ -197,14 +197,17 @@ Default config location: `~/.local/share/ticket/tickets.db` (same database, conf
 ```
 cmd/ticket/        entry point — dispatches to cli or tui, launches TUI when run with no args
 internal/
-  cli/             CLI interface — one file per subcommand (draft, approve, merge, …)
+  cli/             CLI interface — one file per subcommand (draft, ready, task, …)
   tui/             TUI interface — Bubbletea app, views, and reusable components
     views/         full-screen views (ticket list, ticket detail, threads)
     components/    reusable widgets (progress bar, status icon)
-  workflow/        orchestration layer — ready, merge, redraft
+  workflow/
+    human/         orchestration layer for human operations: draft, ready, redraft, merge,
+                   task/thread management, and agent transition proxies
+    agent/         standalone agent workflow functions (start-work, submit-for-review, etc.)
   store/           SQLite persistence — schema, migrations, per-entity CRUD
   model/           data types and state machine rules
   ids/             sequential ID generation (T1, T2, …)
 ```
 
-`cli/` and `tui/` are parallel interfaces on top of the same `workflow/` and `store/` layer. Neither calls the other.
+`cli/` and `tui/` are parallel interfaces that both go through `workflow/human` — neither imports `store` directly. A `depguard` linter rule enforces this boundary.

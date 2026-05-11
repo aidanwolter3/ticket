@@ -34,10 +34,8 @@ Usage:
                                               record that <ticket-id> is blocked by <blocker-id>
   ticket unblock [--db path] <ticket-id> <blocker-id>
                                               remove that dependency
-  ticket ready [--db path] <ticket-id> <author>
-                                              transition a draft ticket to ready
-  ticket redraft [--db path] <ticket-id> <author>
-                                              destroy worktree+branch and move ticket back to draft (human only)
+  ticket ready [--db path] <ticket-id>         transition a draft ticket to ready
+  ticket redraft [--db path] <ticket-id>       destroy worktree+branch and move ticket back to draft (human only)
   ticket config set [--db path] <key> <value> set a config value
   ticket config get [--db path] <key>         get a config value (worktrees defaults to true)
   ticket config ls  [--db path]               list all config settings with defaults
