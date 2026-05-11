@@ -231,7 +231,7 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 	var commitHash *string
 	s, fs := parseAndOpen("task "+subCmd, args, defaultDB, func(f *flag.FlagSet) {
 		if !undo {
-			mostRecentCommit = f.Bool("most-recent-commit", false, "resolve HEAD commit hash from repo_path and record it")
+			mostRecentCommit = f.Bool("most-recent-commit", false, "resolve HEAD commit hash from worktree_path (or repo_path) and record it")
 			commitHash = f.String("commit", "", "explicit commit hash to record")
 		}
 	})
@@ -259,11 +259,15 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 			fmt.Fprintf(os.Stderr, "get ticket: %v\n", getErr)
 			os.Exit(1)
 		}
-		if ticket.RepoPath == "" {
-			fmt.Fprintln(os.Stderr, "error: ticket has no repo_path set")
+		gitPath := ticket.WorktreePath
+		if gitPath == "" {
+			gitPath = ticket.RepoPath
+		}
+		if gitPath == "" {
+			fmt.Fprintln(os.Stderr, "error: ticket has no worktree_path or repo_path set")
 			os.Exit(1)
 		}
-		out, runErr := exec.Command("git", "-C", ticket.RepoPath, "rev-parse", "HEAD").Output()
+		out, runErr := exec.Command("git", "-C", gitPath, "rev-parse", "HEAD").Output()
 		if runErr != nil {
 			fmt.Fprintf(os.Stderr, "git rev-parse HEAD: %v\n", runErr)
 			os.Exit(1)
