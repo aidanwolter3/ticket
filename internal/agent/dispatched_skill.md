@@ -67,13 +67,13 @@ Implement each task in order. For each task:
      ```bash
      ticket --agent task complete <task-id>
      ```
-   - Otherwise (the default), record the commit hash:
-     ```bash
-     ticket --agent task complete --commit $COMMIT_HASH <task-id>
-     ```
-     You may also use `--most-recent-commit` as a convenience instead of `--commit $COMMIT_HASH`:
+   - Otherwise (the default), record the commit hash using `--most-recent-commit`:
      ```bash
      ticket --agent task complete --most-recent-commit <task-id>
+     ```
+     Or equivalently, pass the hash explicitly:
+     ```bash
+     ticket --agent task complete --commit $COMMIT_HASH <task-id>
      ```
 
 Do not move to the next task until the current task's verifiable result passes, its commit is made (or the task is `no_commit`), and it is marked complete.
