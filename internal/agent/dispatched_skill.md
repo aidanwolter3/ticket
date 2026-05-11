@@ -22,7 +22,7 @@ Only humans approve and merge tickets. Agents are dispatched to tickets and tran
 |---|---|---|
 | `ready` | `in_progress` | via TUI dispatch |
 | `in_progress` | `in_review` | after all tasks committed |
-| `in_review` | `in_progress` | to address review feedback |
+| `in_review` | `in_progress` | via TUI re-dispatch |
 | `needs_attention` thread | `open` thread | after posting amendment reply |
 
 Human-only: `in_review → approved` (use `ticket approve`), `approved → merged` (use `ticket merge`).
@@ -58,27 +58,41 @@ Implement each task in order. For each task:
 3. Commit **all changes for this task in a single commit**:
    - Commit on the feature branch (already set up in the worktree).
    - Commit message format: `<ticket-id> <task-id>: <task title>` — e.g. `T-012 TS-003: add argon2 hashing`
-4. Mark the task complete:
+   - Capture the commit hash immediately after committing:
+     ```bash
+     COMMIT_HASH=$(git rev-parse HEAD)
+     ```
+4. Mark the task complete with the commit hash:
    ```bash
-   ticket task complete <task-id> agent:claude
+   ticket task complete <task-id> --commit $COMMIT_HASH
    ```
 
 Do not move to the next task until the current task's verifiable result passes, its commit is made, and it is marked complete.
 
 #### For amendments
 
-Review every thread on every task whose status is `ready`. For each such thread:
-
-1. Read the full thread message history to understand what the reviewer asked for.
-2. Make the requested change.
-3. Run any relevant verifiable result checks.
-4. Commit the fix: `<ticket-id> <task-id>: address review — <short summary>`
-5. Reply to the thread:
+1. Read all threads with status `needs_attention` across all tasks using `ticket get --json <id>`.
+2. For each thread: understand the request, make the code change, run the `verifiable_result` check, stage the changes with `git add`.
+3. Create a fixup commit per task: `git commit --fixup=<task_commit_hash>` where `task_commit_hash` is the `commit_hash` field from the task. If a task has no `commit_hash`, create a normal commit with message `<ticket-id> <task-id>: address review — <short summary>` instead.
+4. After all fixup commits are staged, run:
+   ```bash
+   GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash main
+   ```
+5. After the rebase, each amended task's commit hash has changed. For each amended task, find the new hash:
+   ```bash
+   git log --reverse --format="%H %s" main..<feature_branch>
+   ```
+   Match the line whose subject starts with `<ticket-id> <task-id>:`. Then update the stored hash:
+   ```bash
+   ticket task set-commit <task-id> <new-hash>
+   ```
+6. Force-push:
+   ```bash
+   git push --force-with-lease origin <feature_branch>
+   ```
+7. For each addressed thread: reply with the description of what changed and flip back to open:
    ```bash
    ticket thread reply <thread-id> agent:claude '<description of what was changed>'
-   ```
-6. Flip the thread back to open:
-   ```bash
    ticket thread transition <thread-id> open agent:claude
    ```
 
