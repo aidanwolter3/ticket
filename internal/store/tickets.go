@@ -124,9 +124,9 @@ func (s *Store) checkTransitionPreconditions(id string, from, to model.Status) e
 	return nil
 }
 
-// PromoteTicket transitions a draft ticket to ready and returns the ticket so
+// ReadyTicket transitions a draft ticket to ready and returns the ticket so
 // the caller can set up the worktree.
-func (s *Store) PromoteTicket(ticketID string) (*model.Ticket, error) {
+func (s *Store) ReadyTicket(ticketID string) (*model.Ticket, error) {
 	if err := s.TransitionTicket(ticketID, model.StatusReady); err != nil {
 		return nil, err
 	}

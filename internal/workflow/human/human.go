@@ -69,7 +69,7 @@ func Update(s *store.Store, ticketID string, title, description *string) error {
 // If launcher is nil, a new one is created (suitable for CLI use where no TUI
 // attach is expected).
 func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, stderr io.Writer) error {
-	ticket, err := s.PromoteTicket(ticketID)
+	ticket, err := s.ReadyTicket(ticketID)
 	if err != nil {
 		return fmt.Errorf("promote: %w", err)
 	}
