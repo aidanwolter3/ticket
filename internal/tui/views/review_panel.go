@@ -27,10 +27,11 @@ type renderedLine struct {
 type leftItemKind int
 
 const (
-	leftKindTask        leftItemKind = iota
-	leftKindThread                   // real submitted thread
-	leftKindDraftThread              // staged (not yet submitted) draft thread
-	leftKindMessage                  // individual message inside an expanded thread
+	leftKindTask         leftItemKind = iota
+	leftKindThread                    // real submitted thread
+	leftKindDraftThread               // staged (not yet submitted) draft thread
+	leftKindMessage                   // individual message inside an expanded thread
+	leftKindDraftMessage              // draft reply to a real thread
 )
 
 // leftItem is one navigable entry in the left pane flat list.
@@ -39,8 +40,9 @@ type leftItem struct {
 	taskIdx      int
 	thread       *model.Thread
 	draftThread  *model.DraftThread
-	stagedAction string // "resolve"/"reopen"/"" for thread items
-	msgIdx       int    // for leftKindMessage: index into thread.Messages
+	draftMsg     *model.DraftMessage // for leftKindDraftMessage: draft reply to a real thread
+	stagedAction string              // "resolve"/"reopen"/"" for thread items
+	msgIdx       int                 // for leftKindMessage: index into thread.Messages
 }
 
 // ReviewPanelView is the full-screen code-review split-pane overlay.
@@ -135,16 +137,22 @@ func (v *ReviewPanelView) SelectedTaskID() string {
 	return ""
 }
 
-// SelectedDraftMessage returns the first draft message of the selected draft thread, or nil.
+// SelectedDraftMessage returns the draft message at the current cursor, or nil.
+// Handles both draft thread messages and draft reply messages.
 func (v *ReviewPanelView) SelectedDraftMessage() *model.DraftMessage {
 	if v.leftCursor >= len(v.leftItems) {
 		return nil
 	}
 	item := v.leftItems[v.leftCursor]
-	if item.kind != leftKindDraftThread || item.draftThread == nil || len(item.draftThread.Messages) == 0 {
-		return nil
+	switch item.kind {
+	case leftKindDraftThread:
+		if item.draftThread != nil && len(item.draftThread.Messages) > 0 {
+			return &item.draftThread.Messages[0]
+		}
+	case leftKindDraftMessage:
+		return item.draftMsg
 	}
-	return &item.draftThread.Messages[0]
+	return nil
 }
 
 // SelectedThread returns the real thread at the current left cursor, or nil.
@@ -210,6 +218,17 @@ func (v *ReviewPanelView) buildLeftItems() {
 						thread:  th,
 						msgIdx:  mi,
 					})
+				}
+				if v.draftState != nil {
+					for _, dm := range v.draftState.RepliesFor(th.ID) {
+						dmCopy := dm
+						v.leftItems = append(v.leftItems, leftItem{
+							kind:     leftKindDraftMessage,
+							taskIdx:  i,
+							thread:   th,
+							draftMsg: &dmCopy,
+						})
+					}
 				}
 			}
 		}
@@ -720,6 +739,27 @@ func (v *ReviewPanelView) View() string {
 			}
 			draftLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[draft]")
 			line := fmt.Sprintf("  %s %s %s", icon, summary, draftLabel)
+			if idx == v.leftCursor {
+				line = lipgloss.NewStyle().Reverse(true).Render(line)
+			}
+			allLeftLines = append(allLeftLines, line)
+
+		case leftKindDraftMessage:
+			dm := item.draftMsg
+			if dm == nil {
+				break
+			}
+			authorStr := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(dm.Author + " [draft]")
+			maxW := leftW - 8 - len([]rune(dm.Author)) - 8
+			if maxW < 1 {
+				maxW = 1
+			}
+			firstLine := strings.SplitN(dm.Text, "\n", 2)[0]
+			runes := []rune(firstLine)
+			if len(runes) > maxW {
+				firstLine = string(runes[:maxW]) + "…"
+			}
+			line := fmt.Sprintf("      %s: %s", authorStr, firstLine)
 			if idx == v.leftCursor {
 				line = lipgloss.NewStyle().Reverse(true).Render(line)
 			}
