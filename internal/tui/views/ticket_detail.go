@@ -125,7 +125,7 @@ func (v *TicketDetailView) View() string {
 		case model.StatusInProgress:
 			hint += " · [X] revert to draft"
 		case model.StatusInReview:
-			hint += " · [R] review · [X] revert to draft · [a] approve"
+			hint += " · [R] review · [X] revert to draft · [a] approve · [C] resolve conflicts"
 		case model.StatusApproved:
 			hint += " · [m] merge · [C] resolve conflicts"
 		}
