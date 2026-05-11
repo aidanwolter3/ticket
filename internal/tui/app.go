@@ -80,6 +80,7 @@ type App struct {
 	reviewPanelView    *views.ReviewPanelView
 	noteModal          *views.NoteModal
 	replyModal         *views.ReplyModal
+	replyModalReturn   appScreen // screen to return to after replyModal
 	newThreadModal     *views.NewThreadModal
 	newThreadReturn    appScreen // screen to return to after newThreadModal
 	editDraftModal     *views.EditDraftModal
@@ -567,6 +568,7 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.threadsView != nil {
 				if th := a.threadsView.SelectedThread(); th != nil {
 					a.replyModal = views.NewReplyModal(th.ID, a.width)
+					a.replyModalReturn = screenThreads
 					a.screen = screenReplyModal
 				}
 			}
@@ -611,17 +613,34 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.screen = screenNewThreadModal
 			}
 			return a, nil
-		case "v":
+		case "r":
 			if a.reviewPanelView != nil {
-				id := a.reviewPanelView.TicketID()
-				tv, err := views.NewThreadsView(a.store, id)
-				if err != nil {
-					a.setErr(err)
-				} else {
-					tv.SetSize(a.width, a.height)
-					a.threadsView = tv
-					a.threadsReturnScreen = screenReviewPanel
-					a.screen = screenThreads
+				if th := a.reviewPanelView.SelectedThread(); th != nil {
+					a.replyModal = views.NewReplyModal(th.ID, a.width)
+					a.replyModalReturn = screenReviewPanel
+					a.screen = screenReplyModal
+				}
+			}
+			return a, nil
+		case "x":
+			if a.reviewPanelView != nil {
+				if th := a.reviewPanelView.SelectedThread(); th != nil {
+					ticketID := a.reviewPanelView.TicketID()
+					switch th.Status {
+					case model.ThreadOpen, model.ThreadNeedsAttention:
+						if ds, _ := a.store.GetDraftState(ticketID); ds != nil && ds.ActionFor(th.ID) == model.DraftActionResolve {
+							a.setErr(a.store.ClearDraftAction(th.ID))
+						} else {
+							a.setErr(a.store.SetDraftAction(th.ID, ticketID, model.DraftActionResolve))
+						}
+					case model.ThreadResolved:
+						if ds, _ := a.store.GetDraftState(ticketID); ds != nil && ds.ActionFor(th.ID) == model.DraftActionReopen {
+							a.setErr(a.store.ClearDraftAction(th.ID))
+						} else {
+							a.setErr(a.store.SetDraftAction(th.ID, ticketID, model.DraftActionReopen))
+						}
+					}
+					a.reviewPanelView.Reload()
 				}
 			}
 			return a, nil
@@ -874,10 +893,14 @@ func (a *App) updateEditDraftMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 // --- Reply modal ---
 
 func (a *App) updateReplyModal(msg tea.Msg) (tea.Model, tea.Cmd) {
+	returnTo := a.replyModalReturn
+	if returnTo == 0 {
+		returnTo = screenThreads
+	}
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
 		case "esc":
-			a.screen = screenThreads
+			a.screen = returnTo
 			return a, nil
 		case "ctrl+s":
 			if a.replyModal.Text() != "" {
@@ -885,15 +908,23 @@ func (a *App) updateReplyModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if a.threadsView != nil {
 					ticketID = a.threadsView.TicketID()
 				}
+				if a.reviewPanelView != nil && returnTo == screenReviewPanel {
+					ticketID = a.reviewPanelView.TicketID()
+				}
 				if _, err := a.store.AddDraftMessage(a.replyModal.ThreadID(), ticketID, true, a.replyModal.Author(), a.replyModal.Text()); err != nil {
 					a.setErr(err)
 				} else {
-					a.statusMsg = "Reply staged (submit with ctrl+s in threads view)"
+					a.statusMsg = "Reply staged"
 					a.statusErr = false
-					a.threadsView.Reload()
+					if a.threadsView != nil {
+						a.threadsView.Reload()
+					}
+					if a.reviewPanelView != nil {
+						a.reviewPanelView.Reload()
+					}
 				}
 			}
-			a.screen = screenThreads
+			a.screen = returnTo
 			return a, nil
 		}
 	}

@@ -23,24 +23,51 @@ type renderedLine struct {
 	isHunk   bool   // true when this line is itself a @@ hunk header
 }
 
+// leftItemKind identifies the type of an item in the left pane.
+type leftItemKind int
+
+const (
+	leftKindTask   leftItemKind = iota
+	leftKindThread              // real submitted thread
+)
+
+// leftItem is one navigable entry in the left pane flat list.
+type leftItem struct {
+	kind         leftItemKind
+	taskIdx      int
+	thread       *model.Thread
+	stagedAction string // "resolve"/"reopen"/"" for thread items
+}
+
 // ReviewPanelView is the full-screen code-review split-pane overlay.
 type ReviewPanelView struct {
-	store          *store.Store
-	ticket         *model.Ticket
-	tasks          []model.Task
-	taskCursor     int
-	taskListOffset int
-	lines          []renderedLine
-	offset         int
-	hOffset        int // horizontal scroll offset for diff lines
-	width          int
-	height         int
-	threads        []*model.Thread
-	draftState     *model.DraftState
+	store      *store.Store
+	ticket     *model.Ticket
+	tasks      []model.Task
+	threads    []*model.Thread
+	draftState *model.DraftState
+
+	// Left pane state.
+	leftItems      []leftItem
+	leftCursor     int
+	leftListOffset int
+	expandedTasks  map[string]bool // taskID → threads shown
+	expandedThread string          // thread ID whose messages are shown inline
+
+	// Right pane state (diff).
+	lines   []renderedLine
+	offset  int
+	hOffset int // horizontal scroll offset
+
+	width  int
+	height int
 }
 
 func NewReviewPanelView(s *store.Store, ticketID string) (*ReviewPanelView, error) {
-	v := &ReviewPanelView{store: s}
+	v := &ReviewPanelView{
+		store:         s,
+		expandedTasks: make(map[string]bool),
+	}
 	return v, v.load(ticketID)
 }
 
@@ -69,6 +96,7 @@ func (v *ReviewPanelView) load(ticketID string) error {
 	}
 	v.draftState = ds
 
+	v.buildLeftItems()
 	v.buildDiffLines()
 	return nil
 }
@@ -77,8 +105,7 @@ func (v *ReviewPanelView) Reload() error {
 	if v.ticket == nil {
 		return nil
 	}
-	id := v.ticket.ID
-	return v.load(id)
+	return v.load(v.ticket.ID)
 }
 
 func (v *ReviewPanelView) TicketID() string {
@@ -88,11 +115,67 @@ func (v *ReviewPanelView) TicketID() string {
 	return v.ticket.ID
 }
 
+// selectedTaskIndex returns the taskIdx for the current left cursor.
+func (v *ReviewPanelView) selectedTaskIndex() int {
+	if v.leftCursor < len(v.leftItems) {
+		return v.leftItems[v.leftCursor].taskIdx
+	}
+	return 0
+}
+
 func (v *ReviewPanelView) SelectedTaskID() string {
-	if v.taskCursor < len(v.tasks) {
-		return v.tasks[v.taskCursor].ID
+	idx := v.selectedTaskIndex()
+	if idx < len(v.tasks) {
+		return v.tasks[idx].ID
 	}
 	return ""
+}
+
+// SelectedThread returns the real thread at the current left cursor, or nil.
+func (v *ReviewPanelView) SelectedThread() *model.Thread {
+	if v.leftCursor < len(v.leftItems) {
+		item := v.leftItems[v.leftCursor]
+		if item.kind == leftKindThread {
+			return item.thread
+		}
+	}
+	return nil
+}
+
+// threadsByTask returns a map of taskID → threads for quick lookup.
+func (v *ReviewPanelView) threadsByTask() map[string][]*model.Thread {
+	m := make(map[string][]*model.Thread)
+	for _, th := range v.threads {
+		m[th.TaskID] = append(m[th.TaskID], th)
+	}
+	return m
+}
+
+// buildLeftItems rebuilds the flat left-pane item list from current state.
+func (v *ReviewPanelView) buildLeftItems() {
+	tbt := v.threadsByTask()
+	v.leftItems = nil
+	for i, task := range v.tasks {
+		v.leftItems = append(v.leftItems, leftItem{kind: leftKindTask, taskIdx: i})
+		if !v.expandedTasks[task.ID] {
+			continue
+		}
+		for _, th := range tbt[task.ID] {
+			staged := ""
+			if v.draftState != nil {
+				staged = v.draftState.ActionFor(th.ID)
+			}
+			v.leftItems = append(v.leftItems, leftItem{
+				kind:         leftKindThread,
+				taskIdx:      i,
+				thread:       th,
+				stagedAction: staged,
+			})
+		}
+	}
+	if v.leftCursor >= len(v.leftItems) {
+		v.leftCursor = max(0, len(v.leftItems)-1)
+	}
 }
 
 // HunkContext returns the file_path and hunk_header for the hunk at or above the
@@ -110,7 +193,6 @@ func (v *ReviewPanelView) HunkContext() (filePath, hunkHeader string) {
 			}
 		}
 	}
-	// Fall back to whatever the offset line has (may be empty).
 	if idx < len(v.lines) {
 		return v.lines[idx].filePath, v.lines[idx].hunkHdr
 	}
@@ -121,13 +203,13 @@ func (v *ReviewPanelView) buildDiffLines() {
 	v.lines = nil
 	v.offset = 0
 	v.hOffset = 0
-	if v.taskCursor >= len(v.tasks) {
+	taskIdx := v.selectedTaskIndex()
+	if taskIdx >= len(v.tasks) {
 		return
 	}
-	task := v.tasks[v.taskCursor]
+	task := v.tasks[taskIdx]
 	rw := v.rightW()
 
-	// Task header: title (h-scrollable) + description (word-wrapped, fixed) above the diff.
 	v.lines = append(v.lines, renderedLine{rawText: fmt.Sprintf("Task %d: %s", task.Position, task.Title), lineKind: "bold"})
 	v.lines = append(v.lines, renderedLine{text: ""})
 	for _, l := range strings.Split(wrapText(task.Description, rw-2), "\n") {
@@ -194,7 +276,6 @@ func (v *ReviewPanelView) threadsByHunk() map[string]*hunkThreads {
 	return m
 }
 
-// applyLineKind applies syntax highlighting to a visible diff line slice.
 func applyLineKind(kind, text string) string {
 	switch kind {
 	case "add":
@@ -211,7 +292,6 @@ func applyLineKind(kind, text string) string {
 }
 
 func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
-	// Note: v.lines already contains the task header prepended by buildDiffLines — append here.
 	htMap := v.threadsByHunk()
 
 	currentFile := ""
@@ -253,7 +333,6 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 	for _, raw := range rawLines {
 		isHunk := false
 		if strings.HasPrefix(raw, "diff --git ") {
-			// Flush annotations for previous hunk before starting a new file.
 			flushHunkAnnotations(currentFile, currentHunk)
 			parts := strings.Fields(raw)
 			if len(parts) >= 4 {
@@ -264,13 +343,11 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 			}
 			currentHunk = ""
 		} else if strings.HasPrefix(raw, "@@ ") {
-			// Flush annotations for previous hunk before starting a new hunk.
 			flushHunkAnnotations(currentFile, currentHunk)
 			currentHunk = raw
 			isHunk = true
 		}
 
-		// Determine line kind for syntax highlighting.
 		var lk string
 		switch {
 		case strings.HasPrefix(raw, "+++") || strings.HasPrefix(raw, "---"):
@@ -288,12 +365,9 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 			lk = "bold"
 		}
 
-		// Expand tabs to spaces so rune width matches visual width.
 		expanded := strings.ReplaceAll(raw, "\t", "    ")
-
 		v.lines = append(v.lines, renderedLine{rawText: expanded, lineKind: lk, filePath: currentFile, hunkHdr: currentHunk, isHunk: isHunk})
 	}
-	// Flush annotations after the last hunk.
 	flushHunkAnnotations(currentFile, currentHunk)
 }
 
@@ -318,7 +392,6 @@ func (v *ReviewPanelView) leftW() int {
 }
 
 func (v *ReviewPanelView) bodyH() int {
-	// Subtract 4: tab bar + divider + hint line (rendered by this view) + status bar (rendered by App).
 	h := v.height - 4
 	if h < 1 {
 		h = 1
@@ -354,16 +427,16 @@ func (v *ReviewPanelView) clampHOffset() {
 	}
 }
 
-func (v *ReviewPanelView) updateTaskListOffset() {
+func (v *ReviewPanelView) updateLeftListOffset() {
 	bh := v.bodyH()
-	if v.taskCursor < v.taskListOffset {
-		v.taskListOffset = v.taskCursor
+	if v.leftCursor < v.leftListOffset {
+		v.leftListOffset = v.leftCursor
 	}
-	if v.taskCursor >= v.taskListOffset+bh {
-		v.taskListOffset = v.taskCursor - bh + 1
+	if v.leftCursor >= v.leftListOffset+bh {
+		v.leftListOffset = v.leftCursor - bh + 1
 	}
-	if v.taskListOffset < 0 {
-		v.taskListOffset = 0
+	if v.leftListOffset < 0 {
+		v.leftListOffset = 0
 	}
 }
 
@@ -377,20 +450,46 @@ func (v *ReviewPanelView) jumpToNextHunk() {
 	}
 }
 
+// toggleThreadExpansion expands or collapses threads for the task at the current cursor.
+func (v *ReviewPanelView) toggleThreadExpansion() {
+	if v.leftCursor >= len(v.leftItems) {
+		return
+	}
+	item := v.leftItems[v.leftCursor]
+	taskID := v.tasks[item.taskIdx].ID
+	v.expandedTasks[taskID] = !v.expandedTasks[taskID]
+	v.buildLeftItems()
+	v.updateLeftListOffset()
+}
+
 func (v *ReviewPanelView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok {
+		prevTaskIdx := v.selectedTaskIndex()
 		switch km.String() {
 		case "up", "k":
-			if v.taskCursor > 0 {
-				v.taskCursor--
-				v.buildDiffLines()
-				v.updateTaskListOffset()
+			if v.leftCursor > 0 {
+				v.leftCursor--
+				v.updateLeftListOffset()
 			}
 		case "down", "j":
-			if v.taskCursor < len(v.tasks)-1 {
-				v.taskCursor++
-				v.buildDiffLines()
-				v.updateTaskListOffset()
+			if v.leftCursor < len(v.leftItems)-1 {
+				v.leftCursor++
+				v.updateLeftListOffset()
+			}
+		case "enter":
+			if v.leftCursor < len(v.leftItems) {
+				item := v.leftItems[v.leftCursor]
+				if item.kind == leftKindTask {
+					v.toggleThreadExpansion()
+				} else if item.kind == leftKindThread {
+					// Toggle inline message display for this thread.
+					thID := item.thread.ID
+					if v.expandedThread == thID {
+						v.expandedThread = ""
+					} else {
+						v.expandedThread = thID
+					}
+				}
 			}
 		case "[":
 			v.offset--
@@ -406,6 +505,10 @@ func (v *ReviewPanelView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case ">":
 			v.hOffset += 4
 		}
+		// Rebuild diff only when task selection changes.
+		if v.selectedTaskIndex() != prevTaskIdx {
+			v.buildDiffLines()
+		}
 	}
 	return v, nil
 }
@@ -415,39 +518,103 @@ func (v *ReviewPanelView) View() string {
 	rightW := v.rightW()
 	bodyH := v.bodyH()
 
-	// ── Left pane: task list ───────────────────────────────────────────────
-	var allTaskLines []string
-	for i, task := range v.tasks {
-		titleMaxW := leftW - 5
-		if titleMaxW < 1 {
-			titleMaxW = 1
+	// ── Left pane: task list with inline threads ───────────────────────────
+	tbt := v.threadsByTask()
+	var allLeftLines []string
+	for idx, item := range v.leftItems {
+		switch item.kind {
+		case leftKindTask:
+			task := v.tasks[item.taskIdx]
+			threadCount := len(tbt[task.ID])
+
+			// Build suffix showing thread count and expand hint.
+			suffix := ""
+			if threadCount > 0 {
+				marker := "▶"
+				if v.expandedTasks[task.ID] {
+					marker = "▼"
+				}
+				suffix = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
+					fmt.Sprintf(" %s%d", marker, threadCount))
+			}
+
+			titleMaxW := leftW - 5 - len([]rune(suffix))
+			if titleMaxW < 1 {
+				titleMaxW = 1
+			}
+			title := task.Title
+			if len([]rune(title)) > titleMaxW {
+				title = string([]rune(title)[:titleMaxW]) + "…"
+			}
+			icon := "○"
+			if task.CompletedAt != nil {
+				icon = "✓"
+			}
+			text := fmt.Sprintf("%d.%s %s", task.Position, icon, title)
+			var line string
+			if task.CommitHash == "" {
+				line = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(text) + suffix
+			} else {
+				line = text + suffix
+			}
+			if idx == v.leftCursor {
+				line = lipgloss.NewStyle().Reverse(true).Render(line)
+			}
+			allLeftLines = append(allLeftLines, line)
+
+		case leftKindThread:
+			th := item.thread
+			icon := v.threadIcon(th.Status, item.stagedAction)
+
+			suffix := ""
+			switch item.stagedAction {
+			case model.DraftActionResolve:
+				suffix = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[→resolved]")
+			case model.DraftActionReopen:
+				suffix = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[→open]")
+			}
+
+			// Available width for summary: leftW minus indent(2) + icon(1) + space(1) + suffix.
+			summaryW := leftW - 4 - len([]rune(suffix))
+			if summaryW < 1 {
+				summaryW = 1
+			}
+			summary := th.Summary()
+			if len([]rune(summary)) > summaryW {
+				summary = string([]rune(summary)[:summaryW]) + "…"
+			}
+
+			msgCount := fmt.Sprintf("(%d)", len(th.Messages))
+			line := fmt.Sprintf("  %s %s%s %s", icon, summary, suffix,
+				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(msgCount))
+
+			if idx == v.leftCursor {
+				line = lipgloss.NewStyle().Reverse(true).Render(line)
+			}
+			allLeftLines = append(allLeftLines, line)
+
+			// When this thread is expanded, show messages inline below.
+			if v.expandedThread == th.ID {
+				for _, msg := range th.Messages {
+					author := lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(msg.Author)
+					msgW := leftW - 6
+					if msgW < 1 {
+						msgW = 1
+					}
+					for _, l := range strings.Split(wrapText(msg.Text, msgW), "\n") {
+						allLeftLines = append(allLeftLines, fmt.Sprintf("    %s: %s", author, l))
+					}
+				}
+			}
 		}
-		title := task.Title
-		if len([]rune(title)) > titleMaxW {
-			title = string([]rune(title)[:titleMaxW]) + "…"
-		}
-		icon := "○"
-		if task.CompletedAt != nil {
-			icon = "✓"
-		}
-		text := fmt.Sprintf("%d.%s %s", task.Position, icon, title)
-		var line string
-		if task.CommitHash == "" {
-			line = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(text)
-		} else {
-			line = text
-		}
-		if i == v.taskCursor {
-			line = lipgloss.NewStyle().Reverse(true).Render(line)
-		}
-		allTaskLines = append(allTaskLines, line)
 	}
-	// Render only the visible window of tasks (respects taskListOffset for scrolling).
+
+	// Render only the visible window (respects leftListOffset for scrolling).
 	leftDisplay := make([]string, bodyH)
 	for i := range leftDisplay {
-		idx := v.taskListOffset + i
-		if idx < len(allTaskLines) {
-			leftDisplay[i] = allTaskLines[idx]
+		idx := v.leftListOffset + i
+		if idx < len(allLeftLines) {
+			leftDisplay[i] = allLeftLines[idx]
 		}
 	}
 	leftContent := strings.Join(leftDisplay, "\n")
@@ -466,7 +633,6 @@ func (v *ReviewPanelView) View() string {
 	for _, rl := range v.lines[start:end] {
 		var displayLine string
 		if rl.rawText != "" {
-			// Apply horizontal offset: slice the tab-expanded raw text, then style.
 			runes := []rune(rl.rawText)
 			var visible string
 			if v.hOffset < len(runes) {
@@ -496,8 +662,19 @@ func (v *ReviewPanelView) View() string {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
-	hint := "[↑↓/jk] tasks · [[] up · []] down · [<][>] scroll h · [n] hunk · [c] comment · [v] threads · [a] approve · [S] submit · [esc] back"
+	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [[] up · []] down · [<][>] h-scroll · [n] hunk · [c] comment · [a] approve · [S] submit · [esc] back"
 	hintLine := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hint)
 
 	return body + "\n" + hintLine
+}
+
+// threadIcon returns the display icon for a thread, taking staged action into account.
+func (v *ReviewPanelView) threadIcon(status model.ThreadStatus, staged string) string {
+	if staged == model.DraftActionResolve {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("✓")
+	}
+	if staged == model.DraftActionReopen {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("●")
+	}
+	return components.ThreadStatusIcon(status)
 }
