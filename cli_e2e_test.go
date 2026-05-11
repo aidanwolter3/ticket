@@ -462,7 +462,7 @@ func TestCLI_BlockingEnforcement(t *testing.T) {
 	require.NoError(t, s.ConfigSet("agent.command", globalEchoAgent+" {}"))
 
 	// Step 4: ticket ready id2 → exits 0 (ready transition succeeds).
-	// Promote checks blockers, sees id1 is draft (not approved/merged), skips auto-dispatch.
+	// Ready checks blockers, sees id1 is draft (not approved/merged), skips auto-dispatch.
 	_, _, code = run(t, db, "ready", "--db", db, id2)
 	require.Equal(t, 0, code)
 
@@ -492,7 +492,7 @@ func TestCLI_BlockingEnforcement(t *testing.T) {
 		require.NoError(t, s.TransitionTicket(id1, st))
 	}
 
-	// Step 8: ticket ready id2 → exits 0; this time Promote sees no blockers and
+	// Step 8: ticket ready id2 → exits 0; this time Ready sees no blockers and
 	// launches echo_agent.
 	_, _, code = run(t, db, "ready", "--db", db, id2)
 	require.Equal(t, 0, code)
@@ -502,7 +502,7 @@ func TestCLI_BlockingEnforcement(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, sess, "agent session should be created when blockers are satisfied")
 
-	// Step 10: verify status=in_progress (Promote auto-transitions after agent launch).
+	// Step 10: verify status=in_progress (Ready auto-transitions after agent launch).
 	stdout, _, code = run(t, db, "get", "--db", db, "--json", id2)
 	require.Equal(t, 0, code)
 	tj = decodeJSON(t, stdout)

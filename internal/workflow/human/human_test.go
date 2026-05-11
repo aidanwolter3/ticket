@@ -599,10 +599,10 @@ func TestRedraft_ResetsTaskStatuses(t *testing.T) {
 	assert.Equal(t, model.StatusDraft, got.Status)
 }
 
-// TestPromote_CreatesWorktreeForMissingPath verifies that when auto_dispatch is
-// enabled and a ticket has RepoPath+FeatureBranch but no WorktreePath, Promote
+// TestReady_CreatesWorktreeForMissingPath verifies that when auto_dispatch is
+// enabled and a ticket has RepoPath+FeatureBranch but no WorktreePath, Ready
 // creates the worktree on disk and persists the path before launching the agent.
-func TestPromote_CreatesWorktreeForMissingPath(t *testing.T) {
+func TestReady_CreatesWorktreeForMissingPath(t *testing.T) {
 	repoPath := gitRepo(t)
 	git := func(args ...string) {
 		t.Helper()
@@ -630,19 +630,19 @@ func TestPromote_CreatesWorktreeForMissingPath(t *testing.T) {
 	require.NoError(t, s.ConfigSet("agent.command", "echo {}"))
 
 	launcher := agent.NewLauncher(s)
-	err := Promote(s, ticket.ID, launcher, io.Discard, io.Discard)
+	err := Ready(s, ticket.ID, launcher, io.Discard, io.Discard)
 	require.NoError(t, err)
 
 	got, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
-	assert.NotEmpty(t, got.WorktreePath, "WorktreePath should be set after Promote")
+	assert.NotEmpty(t, got.WorktreePath, "WorktreePath should be set after Ready")
 	_, statErr := os.Stat(got.WorktreePath)
 	assert.NoError(t, statErr, "worktree directory should exist on disk")
 }
 
-// TestPromote_SkipsAutoDispatchWithOpenBlocker verifies that when auto_dispatch is
-// enabled and a ticket has an unresolved blocker, Promote skips launch and logs the reason.
-func TestPromote_SkipsAutoDispatchWithOpenBlocker(t *testing.T) {
+// TestReady_SkipsAutoDispatchWithOpenBlocker verifies that when auto_dispatch is
+// enabled and a ticket has an unresolved blocker, Ready skips launch and logs the reason.
+func TestReady_SkipsAutoDispatchWithOpenBlocker(t *testing.T) {
 	s := newTestStore(t)
 
 	blocker := &model.Ticket{Title: "Blocker", Type: model.TypeTicket, Status: model.StatusDraft}
@@ -659,8 +659,8 @@ func TestPromote_SkipsAutoDispatchWithOpenBlocker(t *testing.T) {
 
 	launcher := agent.NewLauncher(s)
 	var errBuf bytes.Buffer
-	err := Promote(s, ticket.ID, launcher, io.Discard, &errBuf)
-	require.NoError(t, err, "Promote must not return an error when skipping due to blockers")
+	err := Ready(s, ticket.ID, launcher, io.Discard, &errBuf)
+	require.NoError(t, err, "Ready must not return an error when skipping due to blockers")
 	assert.Contains(t, errBuf.String(), "skipped", "reason for skipping must be logged to stderr")
 	assert.Contains(t, errBuf.String(), blocker.ID)
 
@@ -669,9 +669,9 @@ func TestPromote_SkipsAutoDispatchWithOpenBlocker(t *testing.T) {
 	assert.Nil(t, sess, "no agent session should be created when blockers are unresolved")
 }
 
-// TestPromote_AutoDispatchWithApprovedBlocker verifies that when all blockers are
-// approved (or merged), Promote proceeds with auto-dispatch.
-func TestPromote_AutoDispatchWithApprovedBlocker(t *testing.T) {
+// TestReady_AutoDispatchWithApprovedBlocker verifies that when all blockers are
+// approved (or merged), Ready proceeds with auto-dispatch.
+func TestReady_AutoDispatchWithApprovedBlocker(t *testing.T) {
 	repoPath := gitRepo(t)
 	s := newTestStore(t)
 
@@ -695,7 +695,7 @@ func TestPromote_AutoDispatchWithApprovedBlocker(t *testing.T) {
 
 	launcher := agent.NewLauncher(s)
 	var errBuf bytes.Buffer
-	err := Promote(s, ticket.ID, launcher, io.Discard, &errBuf)
+	err := Ready(s, ticket.ID, launcher, io.Discard, &errBuf)
 	require.NoError(t, err)
 	assert.NotContains(t, errBuf.String(), "skipped", "should not skip when blocker is approved")
 
@@ -704,9 +704,9 @@ func TestPromote_AutoDispatchWithApprovedBlocker(t *testing.T) {
 	assert.NotNil(t, sess, "agent session should be created when all blockers are approved")
 }
 
-// TestPromote_SkipsLaunchOnWorktreeCreationFailure verifies that when worktree
-// creation fails, Promote logs an error and does not launch an agent.
-func TestPromote_SkipsLaunchOnWorktreeCreationFailure(t *testing.T) {
+// TestReady_SkipsLaunchOnWorktreeCreationFailure verifies that when worktree
+// creation fails, Ready logs an error and does not launch an agent.
+func TestReady_SkipsLaunchOnWorktreeCreationFailure(t *testing.T) {
 	s := newTestStore(t)
 	ticket := &model.Ticket{
 		Title:    "bad repo test",
@@ -724,8 +724,8 @@ func TestPromote_SkipsLaunchOnWorktreeCreationFailure(t *testing.T) {
 
 	launcher := agent.NewLauncher(s)
 	var errBuf bytes.Buffer
-	err := Promote(s, ticket.ID, launcher, io.Discard, &errBuf)
-	require.NoError(t, err, "Promote itself should not return an error")
+	err := Ready(s, ticket.ID, launcher, io.Discard, &errBuf)
+	require.NoError(t, err, "Ready itself should not return an error")
 	assert.Contains(t, errBuf.String(), "worktree creation failed", "error should be logged to stderr")
 
 	sess, err := s.GetAgentSessionByTicket(ticket.ID)

@@ -186,7 +186,7 @@ ticket config set agent.auto_dispatch true             # auto-dispatch agents wh
 |-----|---------|-------------|
 | `worktrees` | `true` | Create a git worktree when a ticket becomes ready |
 | `agent.command` | _(unset)_ | Command to run as an agent; `{}` is replaced with the dispatched skill file contents |
-| `agent.auto_dispatch` | `false` | If `true`, automatically dispatch an agent whenever a ticket is promoted to `ready` |
+| `agent.auto_dispatch` | `false` | If `true`, automatically dispatch an agent whenever a ticket transitions to `ready` |
 
 `agent.command` must contain `{}` — the system substitutes the dispatched skill file contents in its place. Setting it without `{}` is a validation error.
 
@@ -201,7 +201,7 @@ internal/
   tui/             TUI interface — Bubbletea app, views, and reusable components
     views/         full-screen views (ticket list, ticket detail, threads)
     components/    reusable widgets (progress bar, status icon)
-  workflow/        orchestration layer — promote, merge, redraft
+  workflow/        orchestration layer — ready, merge, redraft
   store/           SQLite persistence — schema, migrations, per-entity CRUD
   model/           data types and state machine rules
   ids/             sequential ID generation (T1, T2, …)
