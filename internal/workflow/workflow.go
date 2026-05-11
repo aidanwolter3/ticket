@@ -245,6 +245,10 @@ func Redraft(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("redraft: %w", err)
 	}
 
+	if ticket.Status == model.StatusDraft {
+		return fmt.Errorf("ticket %s is already draft", ticketID)
+	}
+
 	if sess, err := s.GetAgentSessionByTicket(ticketID); err == nil && sess != nil {
 		if proc, err := os.FindProcess(sess.PID); err == nil {
 			proc.Signal(syscall.SIGTERM) //nolint:errcheck

@@ -508,3 +508,60 @@ func TestCLI_BlockingEnforcement(t *testing.T) {
 	tj = decodeJSON(t, stdout)
 	assert.Equal(t, "in_progress", tj["status"])
 }
+
+func TestCLI_Redraft(t *testing.T) {
+	if globalBuildFailed || globalTicketBin == "" {
+		t.Skip("ticket binary could not be built")
+	}
+
+	db, s := newTestDB(t)
+	repoPath := cliGitRepo(t)
+
+	// Seed via store: ticket in in_progress with one completed task and active session.
+	ticket := &model.Ticket{
+		Title:    "Redraft Test",
+		Type:     model.TypeTicket,
+		Status:   model.StatusDraft,
+		RepoPath: repoPath,
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+	ticketID := ticket.ID
+
+	task := &model.Task{TicketID: ticketID, Title: "task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.CompleteTask(task.ID))
+
+	require.NoError(t, s.TransitionTicket(ticketID, model.StatusReady))
+	require.NoError(t, s.TransitionTicket(ticketID, model.StatusInProgress))
+
+	// Create a fake agent session (PID doesn't need to be real; Redraft ignores signal errors).
+	_, err := s.CreateAgentSession(ticketID, 99999999, "/tmp/fake.log")
+	require.NoError(t, err)
+
+	// Step 2: redraft via CLI.
+	stdout, stderr, code := run(t, db, "redraft", "--db", db, ticketID)
+	require.Equal(t, 0, code, "redraft should exit 0; stdout=%q stderr=%q", stdout, stderr)
+
+	// Step 3: verify status=draft.
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj := decodeJSON(t, stdout)
+	assert.Equal(t, "draft", tj["status"])
+
+	// Step 4: verify task completed_at is null (uncompleted by Redraft).
+	require.NotNil(t, tj["tasks"])
+	tasks := tj["tasks"].([]any)
+	require.Len(t, tasks, 1)
+	task1 := tasks[0].(map[string]any)
+	assert.Nil(t, task1["completed_at"], "task should be uncompleted after redraft")
+
+	// Step 5: verify active agent session is gone (Redraft marks it terminated).
+	activeSess, err := s.GetAgentSessionByTicket(ticketID)
+	require.NoError(t, err)
+	assert.Nil(t, activeSess, "active session should be terminated after redraft")
+
+	// Rejection case: redraft a ticket that is already draft → exits non-zero.
+	_, stderr, code = run(t, db, "redraft", "--db", db, ticketID)
+	assert.NotEqual(t, 0, code, "redraft of already-draft ticket should fail")
+	assert.NotEmpty(t, stderr, "error message should appear on stderr")
+}
