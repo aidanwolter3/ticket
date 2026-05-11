@@ -602,6 +602,12 @@ func (v *ReviewPanelView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "]":
 			v.offset++
 			v.clampOffset()
+		case "d":
+			v.offset += v.bodyH() / 2
+			v.clampOffset()
+		case "u":
+			v.offset -= v.bodyH() / 2
+			v.clampOffset()
 		case "n":
 			v.jumpToNextHunk()
 		case "N":
@@ -849,7 +855,7 @@ func (v *ReviewPanelView) View() string {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
-	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [e] edit draft · [[]] v-scroll · [<>] h-scroll · [n/N] hunk · [c] comment · [a] approve · [ctrl+s] submit · [esc] back"
+	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [e] edit draft · [[]] v-scroll · [du] hop · [<>] h-scroll · [n/N] hunk · [c] comment · [a] approve · [ctrl+s] submit · [esc] back"
 	hintLine := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hint)
 
 	return body + "\n" + hintLine
