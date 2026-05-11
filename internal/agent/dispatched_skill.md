@@ -111,7 +111,7 @@ Do not move to the next task until the current task's verifiable result passes, 
 If you made any non-obvious decisions — a constraint, a tradeoff, a workaround — record them:
 
 ```bash
-ticket note add <id> agent:claude '<note text>'
+ticket --agent note add <id> agent:claude '<note text>'
 ```
 
 Skip this step if there is nothing non-obvious to say.
@@ -132,23 +132,19 @@ Tell the user:
 
 ## Human-only commands (reference)
 
-### ticket approve
+### Approve (TUI-only)
 
 Transitions `in_review → approved`. Requires no open threads.
 
-```bash
-ticket approve <id>
-```
+Humans use the TUI: press `[a]` on the ticket in the `in_review` state.
 
-### ticket merge
+### Merge (TUI-only)
 
 Fast-forward merges the feature branch into main, deletes the branch, removes the worktree, transitions to `merged`.
 
-```bash
-ticket merge <id>
-```
+Humans use the TUI: press `[m]` on the ticket in the `approved` state.
 
-Preconditions: ticket is `approved`, all tasks complete, no open threads, `feature_branch` and `repo_path` are set. If the branch has diverged, the command errors — rebase manually then retry.
+Preconditions: ticket is `approved`, all tasks complete, no open threads, `feature_branch` and `repo_path` are set.
 
 ### ticket config
 
