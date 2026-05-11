@@ -6,6 +6,8 @@ You are working inside a git worktree at `.worktrees/{{TICKET_ID}}/`. Always run
 
 Never use `git -C <path>` when your working directory is already that path — run `git` commands directly. The `-C` flag triggers an unnecessary permission prompt when the working directory is already correct.
 
+Never run `git push` or any command that writes to a remote. Pushing is reserved for the human.
+
 ## Status lifecycle
 
 `draft → ready → in_progress → in_review → approved → merged`
