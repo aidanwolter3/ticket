@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+
+	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
 func RunBlock(args []string, defaultDB string) {
@@ -16,7 +18,7 @@ func RunBlock(args []string, defaultDB string) {
 	ticketID := fs.Arg(0)
 	blockerID := fs.Arg(1)
 
-	if err := s.AddBlocker(ticketID, blockerID); err != nil {
+	if err := workflow.BlockTicket(s, ticketID, blockerID); err != nil {
 		fmt.Fprintf(os.Stderr, "block failed: %v\n", err)
 		os.Exit(1)
 	}
@@ -35,7 +37,7 @@ func RunUnblock(args []string, defaultDB string) {
 	ticketID := fs.Arg(0)
 	blockerID := fs.Arg(1)
 
-	if err := s.RemoveBlocker(ticketID, blockerID); err != nil {
+	if err := workflow.UnblockTicket(s, ticketID, blockerID); err != nil {
 		fmt.Fprintf(os.Stderr, "unblock failed: %v\n", err)
 		os.Exit(1)
 	}

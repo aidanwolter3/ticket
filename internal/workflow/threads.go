@@ -7,12 +7,13 @@ import (
 	"github.com/aidanwolter/ticket/internal/store"
 )
 
-// ReplyToThread adds a message to a thread.
-func ReplyToThread(s *store.Store, threadID, author, text string) error {
-	if _, err := s.AddMessage(threadID, author, text); err != nil {
-		return fmt.Errorf("reply to thread: %w", err)
+// ReplyToThread adds a message to a thread and returns the new message.
+func ReplyToThread(s *store.Store, threadID, author, text string) (*model.Message, error) {
+	msg, err := s.AddMessage(threadID, author, text)
+	if err != nil {
+		return nil, fmt.Errorf("reply to thread: %w", err)
 	}
-	return nil
+	return msg, nil
 }
 
 // TransitionThread transitions a thread to a new status.

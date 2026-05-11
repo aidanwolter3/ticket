@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/aidanwolter/ticket/internal/model"
+	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
 func RunThread(args []string, defaultDB string) {
@@ -37,7 +38,7 @@ func runThreadReply(args []string, defaultDB string) {
 	author := fs.Arg(1)
 	text := fs.Arg(2)
 
-	msg, err := s.AddMessage(threadID, author, text)
+	msg, err := workflow.ReplyToThread(s, threadID, author, text)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "thread reply failed: %v\n", err)
 		os.Exit(1)
@@ -57,7 +58,7 @@ func runThreadTransition(args []string, defaultDB string) {
 	newStatus := model.ThreadStatus(fs.Arg(1))
 	author := fs.Arg(2)
 
-	if err := s.TransitionThread(threadID, newStatus, author); err != nil {
+	if err := workflow.TransitionThread(s, threadID, newStatus, author); err != nil {
 		fmt.Fprintf(os.Stderr, "thread transition failed: %v\n", err)
 		os.Exit(1)
 	}
