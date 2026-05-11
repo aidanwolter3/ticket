@@ -378,9 +378,12 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 			if maxSummaryW > 60 {
 				maxSummaryW = 60
 			}
+			if maxSummaryW < 2 {
+				maxSummaryW = 2
+			}
 			summary := th.Summary()
 			if len([]rune(summary)) > maxSummaryW {
-				summary = string([]rune(summary)[:maxSummaryW]) + "…"
+				summary = string([]rune(summary)[:maxSummaryW-1]) + "…"
 			}
 			icon := components.ThreadStatusIcon(th.Status)
 			line := fmt.Sprintf("    ┆ %s %s %s", icon, summary,
@@ -393,14 +396,14 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 			if maxSummaryW > 60 {
 				maxSummaryW = 60
 			}
-			if maxSummaryW < 1 {
-				maxSummaryW = 1
+			if maxSummaryW < 2 {
+				maxSummaryW = 2
 			}
 			summary := "(empty draft)"
 			if len(dt.Messages) > 0 {
 				s := strings.SplitN(dt.Messages[0].Text, "\n", 2)[0]
 				if len([]rune(s)) > maxSummaryW {
-					s = string([]rune(s)[:maxSummaryW]) + "…"
+					s = string([]rune(s)[:maxSummaryW-1]) + "…"
 				}
 				summary = s
 			}
@@ -711,12 +714,12 @@ func (v *ReviewPanelView) View() string {
 			msgCountPlain := fmt.Sprintf("(%d)", len(th.Messages))
 			// Available width: leftW minus indent(2) + icon(1) + space(1) + suffix + space(1) + msgCount.
 			summaryW := leftW - 4 - len([]rune(suffixPlain)) - 1 - len([]rune(msgCountPlain))
-			if summaryW < 1 {
-				summaryW = 1
+			if summaryW < 2 {
+				summaryW = 2
 			}
 			summary := th.Summary()
 			if len([]rune(summary)) > summaryW {
-				summary = string([]rune(summary)[:summaryW]) + "…"
+				summary = string([]rune(summary)[:summaryW-1]) + "…"
 			}
 
 			line := fmt.Sprintf("  %s %s%s %s", icon, summary, suffix,
