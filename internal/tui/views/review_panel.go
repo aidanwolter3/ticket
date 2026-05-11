@@ -572,13 +572,11 @@ func (v *ReviewPanelView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						v.expandedThread = thID
 					}
 					v.buildLeftItems()
-					// When collapsing, return cursor to the thread item.
-					if wasExpanded {
-						for i, li := range v.leftItems {
-							if li.kind == leftKindThread && li.thread != nil && li.thread.ID == thID {
-								v.leftCursor = i
-								break
-							}
+					// Always reposition cursor on the thread item itself.
+					for i, li := range v.leftItems {
+						if li.kind == leftKindThread && li.thread != nil && li.thread.ID == thID {
+							v.leftCursor = i
+							break
 						}
 					}
 					v.updateLeftListOffset()
