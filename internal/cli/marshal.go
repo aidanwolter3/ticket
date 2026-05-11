@@ -34,6 +34,7 @@ type taskJSON struct {
 	Position         int          `json:"position"`
 	Title            string       `json:"title"`
 	Description      string       `json:"description,omitempty"`
+	NoCommit         bool         `json:"no_commit,omitempty"`
 	CommitHash       string       `json:"commit_hash,omitempty"`
 	VerifiableResult string       `json:"verifiable_result,omitempty"`
 	CompletedAt      *time.Time   `json:"completed_at,omitempty"`
@@ -106,6 +107,7 @@ func toTaskJSON(t *model.Task) taskJSON {
 		Position:         t.Position,
 		Title:            t.Title,
 		Description:      t.Description,
+		NoCommit:         t.NoCommit,
 		CommitHash:       t.CommitHash,
 		VerifiableResult: t.VerifiableResult,
 		CompletedAt:      t.CompletedAt,

@@ -15,7 +15,7 @@ import (
 func RunTask(args []string, defaultDB string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket task <subcommand>")
-		fmt.Fprintln(os.Stderr, "  add        <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>]")
+		fmt.Fprintln(os.Stderr, "  add        <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>] [--no-commit]")
 		fmt.Fprintln(os.Stderr, "  get        <task-id>")
 		fmt.Fprintln(os.Stderr, "  ls         <ticket-id>")
 		fmt.Fprintln(os.Stderr, "  update     <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]")
@@ -53,16 +53,18 @@ func RunTask(args []string, defaultDB string) {
 
 func runTaskAdd(args []string, defaultDB string) {
 	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
-		fmt.Fprintln(os.Stderr, "usage: ticket task add [--db path] <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>]")
+		fmt.Fprintln(os.Stderr, "usage: ticket task add [--db path] <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>] [--no-commit]")
 		os.Exit(1)
 	}
 	ticketID := args[0]
 
 	var title, description, verifiableResult *string
+	var noCommit *bool
 	s, _ := parseAndOpen("task add", args[1:], defaultDB, func(f *flag.FlagSet) {
 		title = f.String("title", "", "task title (required)")
 		description = f.String("description", "", "task description")
 		verifiableResult = f.String("verifiable-result", "", "verifiable result")
+		noCommit = f.Bool("no-commit", false, "task produces no commit (e.g. verification-only)")
 	})
 	defer s.Close()
 
@@ -86,6 +88,7 @@ func runTaskAdd(args []string, defaultDB string) {
 		Title:            *title,
 		Description:      *description,
 		VerifiableResult: *verifiableResult,
+		NoCommit:         *noCommit,
 		Position:         position,
 	}
 	if err := s.CreateTask(task); err != nil {
@@ -288,24 +291,32 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 
 func runTaskUpdate(args []string, defaultDB string) {
 	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
-		fmt.Fprintln(os.Stderr, "usage: ticket task update [--db path] <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]")
+		fmt.Fprintln(os.Stderr, "usage: ticket task update [--db path] <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>] [--no-commit]")
 		os.Exit(1)
 	}
 	taskID := args[0]
 
 	var title, description, verifiableResult *string
-	s, _ := parseAndOpen("task update", args[1:], defaultDB, func(f *flag.FlagSet) {
+	var noCommit *bool
+	s, fs := parseAndOpen("task update", args[1:], defaultDB, func(f *flag.FlagSet) {
 		title = f.String("title", "", "new task title")
 		description = f.String("description", "", "new task description")
 		verifiableResult = f.String("verifiable-result", "", "new verifiable result")
+		noCommit = f.Bool("no-commit", false, "mark task as commit-free (verification-only)")
 	})
 	defer s.Close()
 
 	titleSet := *title != ""
 	descSet := *description != ""
 	vrSet := *verifiableResult != ""
-	if !titleSet && !descSet && !vrSet {
-		fmt.Fprintln(os.Stderr, "error: at least one of --title, --description, or --verifiable-result must be provided")
+	noCommitSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "no-commit" {
+			noCommitSet = true
+		}
+	})
+	if !titleSet && !descSet && !vrSet && !noCommitSet {
+		fmt.Fprintln(os.Stderr, "error: at least one of --title, --description, --verifiable-result, or --no-commit must be provided")
 		os.Exit(1)
 	}
 
@@ -323,6 +334,9 @@ func runTaskUpdate(args []string, defaultDB string) {
 	}
 	if vrSet {
 		task.VerifiableResult = *verifiableResult
+	}
+	if noCommitSet {
+		task.NoCommit = *noCommit
 	}
 
 	if err := s.UpdateTask(task); err != nil {
