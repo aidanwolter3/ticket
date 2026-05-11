@@ -20,7 +20,7 @@ func RunTask(args []string, defaultDB string) {
 		fmt.Fprintln(os.Stderr, "  ls         <ticket-id>")
 		fmt.Fprintln(os.Stderr, "  update     <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]")
 		fmt.Fprintln(os.Stderr, "  move       <task-id> <position>")
-		fmt.Fprintln(os.Stderr, "  complete   <task-id> [--most-recent-commit]")
+		fmt.Fprintln(os.Stderr, "  complete   <task-id> [--most-recent-commit] [--commit <hash>]")
 		fmt.Fprintln(os.Stderr, "  uncomplete <task-id> <author>")
 		fmt.Fprintln(os.Stderr, "  delete     <task-id>")
 		os.Exit(1)
@@ -228,9 +228,11 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 	}
 
 	var mostRecentCommit *bool
+	var commitHash *string
 	s, fs := parseAndOpen("task "+subCmd, args, defaultDB, func(f *flag.FlagSet) {
 		if !undo {
 			mostRecentCommit = f.Bool("most-recent-commit", false, "resolve HEAD commit hash from repo_path and record it")
+			commitHash = f.String("commit", "", "explicit commit hash to record")
 		}
 	})
 	defer s.Close()
@@ -244,6 +246,8 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 	var err error
 	if undo {
 		err = s.UncompleteTask(taskID)
+	} else if commitHash != nil && *commitHash != "" {
+		err = s.CompleteTaskWithCommit(taskID, *commitHash)
 	} else if mostRecentCommit != nil && *mostRecentCommit {
 		task, getErr := s.GetTask(taskID)
 		if getErr != nil {
