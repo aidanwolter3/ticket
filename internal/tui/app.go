@@ -638,6 +638,10 @@ func (a *App) updateConfirmDispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.setErr(fmt.Errorf("agent launch: %w", err))
 				return a, nil
 			}
+			if transErr := a.store.TransitionTicket(id, model.StatusInProgress, "agent:claude"); transErr != nil {
+				a.setErr(fmt.Errorf("transition in_progress: %w", transErr))
+				return a, nil
+			}
 
 			a.statusMsg = fmt.Sprintf("agent dispatched to %s", id)
 			a.statusErr = false

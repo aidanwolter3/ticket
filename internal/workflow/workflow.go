@@ -85,6 +85,9 @@ func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, 
 				if _, launchErr := launcher.Launch(ticketID, ticket.WorktreePath, prompt); launchErr != nil {
 					fmt.Fprintf(stderr, "auto-dispatch: launch failed: %v\n", launchErr)
 				} else {
+					if transErr := s.TransitionTicket(ticketID, model.StatusInProgress, "agent:claude"); transErr != nil {
+						fmt.Fprintf(stderr, "auto-dispatch: transition in_progress: %v\n", transErr)
+					}
 					if _, noteErr := s.AddNote(ticketID, "agent:claude", "Agent auto-dispatched"); noteErr != nil {
 						fmt.Fprintf(stderr, "auto-dispatch: add note: %v\n", noteErr)
 					}
