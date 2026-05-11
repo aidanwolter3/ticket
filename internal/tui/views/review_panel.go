@@ -27,8 +27,9 @@ type renderedLine struct {
 type leftItemKind int
 
 const (
-	leftKindTask   leftItemKind = iota
-	leftKindThread              // real submitted thread
+	leftKindTask        leftItemKind = iota
+	leftKindThread                   // real submitted thread
+	leftKindDraftThread              // staged (not yet submitted) draft thread
 )
 
 // leftItem is one navigable entry in the left pane flat list.
@@ -36,6 +37,7 @@ type leftItem struct {
 	kind         leftItemKind
 	taskIdx      int
 	thread       *model.Thread
+	draftThread  *model.DraftThread
 	stagedAction string // "resolve"/"reopen"/"" for thread items
 }
 
@@ -151,9 +153,23 @@ func (v *ReviewPanelView) threadsByTask() map[string][]*model.Thread {
 	return m
 }
 
+// draftThreadsByTask returns a map of taskID → draft threads for quick lookup.
+func (v *ReviewPanelView) draftThreadsByTask() map[string][]*model.DraftThread {
+	m := make(map[string][]*model.DraftThread)
+	if v.draftState == nil {
+		return m
+	}
+	for i := range v.draftState.NewThreads {
+		dt := &v.draftState.NewThreads[i]
+		m[dt.TaskID] = append(m[dt.TaskID], dt)
+	}
+	return m
+}
+
 // buildLeftItems rebuilds the flat left-pane item list from current state.
 func (v *ReviewPanelView) buildLeftItems() {
 	tbt := v.threadsByTask()
+	dtbt := v.draftThreadsByTask()
 	v.leftItems = nil
 	for i, task := range v.tasks {
 		v.leftItems = append(v.leftItems, leftItem{kind: leftKindTask, taskIdx: i})
@@ -170,6 +186,13 @@ func (v *ReviewPanelView) buildLeftItems() {
 				taskIdx:      i,
 				thread:       th,
 				stagedAction: staged,
+			})
+		}
+		for _, dt := range dtbt[task.ID] {
+			v.leftItems = append(v.leftItems, leftItem{
+				kind:        leftKindDraftThread,
+				taskIdx:     i,
+				draftThread: dt,
 			})
 		}
 	}
@@ -520,12 +543,13 @@ func (v *ReviewPanelView) View() string {
 
 	// ── Left pane: task list with inline threads ───────────────────────────
 	tbt := v.threadsByTask()
+	dtbt := v.draftThreadsByTask()
 	var allLeftLines []string
 	for idx, item := range v.leftItems {
 		switch item.kind {
 		case leftKindTask:
 			task := v.tasks[item.taskIdx]
-			threadCount := len(tbt[task.ID])
+			threadCount := len(tbt[task.ID]) + len(dtbt[task.ID])
 
 			// Build suffix showing thread count and expand hint.
 			suffix := ""
@@ -597,7 +621,8 @@ func (v *ReviewPanelView) View() string {
 			if v.expandedThread == th.ID {
 				for _, msg := range th.Messages {
 					author := lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(msg.Author)
-					msgW := leftW - 6
+					// Wrap text to fit within leftW: subtract indent(4) + rawAuthor + ": "(2)
+					msgW := leftW - 4 - len(msg.Author) - 2
 					if msgW < 1 {
 						msgW = 1
 					}
@@ -606,6 +631,27 @@ func (v *ReviewPanelView) View() string {
 					}
 				}
 			}
+
+		case leftKindDraftThread:
+			dt := item.draftThread
+			icon := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("◌")
+			summary := "(empty draft)"
+			if len(dt.Messages) > 0 {
+				summary = dt.Messages[0].Text
+			}
+			summaryW := leftW - 4 - 7 // indent(2) + icon(1) + space(1) + " [draft]"(7)
+			if summaryW < 1 {
+				summaryW = 1
+			}
+			if len([]rune(summary)) > summaryW {
+				summary = string([]rune(summary)[:summaryW]) + "…"
+			}
+			draftLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[draft]")
+			line := fmt.Sprintf("  %s %s %s", icon, summary, draftLabel)
+			if idx == v.leftCursor {
+				line = lipgloss.NewStyle().Reverse(true).Render(line)
+			}
+			allLeftLines = append(allLeftLines, line)
 		}
 	}
 
@@ -662,7 +708,7 @@ func (v *ReviewPanelView) View() string {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
-	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [[] up · []] down · [<][>] h-scroll · [n] hunk · [c] comment · [a] approve · [S] submit · [esc] back"
+	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [[] up · []] down · [<>] h-scroll · [n] hunk · [c] comment · [a] approve · [S] submit · [esc] back"
 	hintLine := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hint)
 
 	return body + "\n" + hintLine
