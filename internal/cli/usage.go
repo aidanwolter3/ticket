@@ -35,7 +35,7 @@ Usage:
   ticket unblock [--db path] <ticket-id> <blocker-id>
                                               remove that dependency
   ticket ready [--db path] <ticket-id> <author>
-                                              promote a draft ticket to ready
+                                              transition a draft ticket to ready
   ticket redraft [--db path] <ticket-id> <author>
                                               destroy worktree+branch and move ticket back to draft (human only)
   ticket config set [--db path] <key> <value> set a config value

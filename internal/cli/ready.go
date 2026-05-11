@@ -18,7 +18,7 @@ func RunReady(args []string, wf *human.Workflow) {
 	}
 	ticketID := fs.Arg(0)
 
-	if err := wf.Promote(ticketID, os.Stdout, os.Stderr); err != nil {
+	if err := wf.Ready(ticketID, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}

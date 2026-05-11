@@ -64,14 +64,14 @@ func Update(s *store.Store, ticketID string, title, description *string) error {
 	return nil
 }
 
-// Promote transitions a draft ticket to ready. If agent.auto_dispatch is true
+// Ready transitions a draft ticket to ready. If agent.auto_dispatch is true
 // and agent.command is set, an agent is launched automatically using launcher.
 // If launcher is nil, a new one is created (suitable for CLI use where no TUI
 // attach is expected).
-func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, stderr io.Writer) error {
+func Ready(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, stderr io.Writer) error {
 	ticket, err := s.ReadyTicket(ticketID)
 	if err != nil {
-		return fmt.Errorf("promote: %w", err)
+		return fmt.Errorf("ready: %w", err)
 	}
 
 	autoDispatch, _, _ := s.ConfigGet("agent.auto_dispatch")

@@ -43,8 +43,8 @@ func (w *Workflow) Update(ticketID string, title, description *string) error {
 	return Update(w.s, ticketID, title, description)
 }
 
-func (w *Workflow) Promote(ticketID string, stdout, stderr io.Writer) error {
-	return Promote(w.s, ticketID, w.launcher, stdout, stderr)
+func (w *Workflow) Ready(ticketID string, stdout, stderr io.Writer) error {
+	return Ready(w.s, ticketID, w.launcher, stdout, stderr)
 }
 
 func (w *Workflow) SubmitReview(ticketID, author string, stdout, stderr io.Writer) error {
