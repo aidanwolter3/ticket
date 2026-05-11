@@ -731,15 +731,16 @@ func (v *ReviewPanelView) View() string {
 			th := item.thread
 			msg := th.Messages[item.msgIdx]
 			author := lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(msg.Author)
-			// Format: "      <author>: <firstLine>" — indent(6) + author + ": "(2) + firstLine
+			// Format: "      <author>: <firstLine>" — indent(6) + author + ": "(2) = 8 overhead
+			// maxW is the max allowed firstLine length including any appended "…"
 			maxW := leftW - 8 - len(msg.Author)
-			if maxW < 1 {
-				maxW = 1
+			if maxW < 2 {
+				maxW = 2
 			}
 			firstLine := strings.SplitN(msg.Text, "\n", 2)[0]
 			runes := []rune(firstLine)
 			if len(runes) > maxW {
-				firstLine = string(runes[:maxW]) + "…"
+				firstLine = string(runes[:maxW-1]) + "…"
 			}
 			line := fmt.Sprintf("      %s: %s", author, firstLine)
 			if idx == v.leftCursor {
@@ -754,12 +755,12 @@ func (v *ReviewPanelView) View() string {
 			if len(dt.Messages) > 0 {
 				summary = strings.SplitN(dt.Messages[0].Text, "\n", 2)[0]
 			}
-			summaryW := leftW - 4 - 7 // indent(2) + icon(1) + space(1) + " [draft]"(7)
-			if summaryW < 1 {
-				summaryW = 1
+			summaryW := leftW - 12 // indent(2) + icon(1) + space(1) + " [draft]"(7) + "…"(1) = 12
+			if summaryW < 2 {
+				summaryW = 2
 			}
 			if len([]rune(summary)) > summaryW {
-				summary = string([]rune(summary)[:summaryW]) + "…"
+				summary = string([]rune(summary)[:summaryW-1]) + "…"
 			}
 			draftLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[draft]")
 			line := fmt.Sprintf("  %s %s %s", icon, summary, draftLabel)
@@ -775,13 +776,13 @@ func (v *ReviewPanelView) View() string {
 			}
 			authorStr := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(dm.Author + " [draft]")
 			maxW := leftW - 8 - len([]rune(dm.Author)) - 8
-			if maxW < 1 {
-				maxW = 1
+			if maxW < 2 {
+				maxW = 2
 			}
 			firstLine := strings.SplitN(dm.Text, "\n", 2)[0]
 			runes := []rune(firstLine)
 			if len(runes) > maxW {
-				firstLine = string(runes[:maxW]) + "…"
+				firstLine = string(runes[:maxW-1]) + "…"
 			}
 			line := fmt.Sprintf("      %s: %s", authorStr, firstLine)
 			if idx == v.leftCursor {
