@@ -14,8 +14,6 @@ Usage:
   ticket get [--db path] <id>                 get a single ticket as JSON (includes tasks and threads)
   ticket update [--db path] <id> [--title <title>] [--description <desc>]
                                               update a ticket's title or description
-  ticket transition [--db path] <id> <status> <author>
-                                              transition a ticket's status
   ticket note add [--db path] <ticket-id> <author> <text>
                                               add a note to a ticket
   ticket thread reply [--db path] <thread-id> <author> <text>
@@ -45,8 +43,6 @@ Usage:
 
   ticket review-submit [--db path] <id> <author>
                                               flip all active threads→ready and ticket→ready (human only; requires ≥1 active thread)
-  ticket approve [--db path] <id> <author>    approve an in_review ticket (human only)
-  ticket merge [--db path] <id> <author>      ff-merge, delete branch, remove worktree (human only)
   ticket config set [--db path] <key> <value> set a config value
   ticket config get [--db path] <key>         get a config value (worktrees defaults to true)
   ticket config ls  [--db path]               list all config settings with defaults

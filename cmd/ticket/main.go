@@ -31,8 +31,6 @@ func main() {
 			cli.RunList(os.Args[2:], defaultDB)
 		case "get":
 			cli.RunGet(os.Args[2:], defaultDB)
-		case "transition":
-			cli.RunTransition(os.Args[2:], defaultDB)
 		case "ready":
 			cli.RunReady(os.Args[2:], defaultDB)
 		case "redraft":
@@ -55,10 +53,6 @@ func main() {
 			cli.RunConfig(os.Args[2:], defaultDB)
 		case "review-submit":
 			cli.RunReviewSubmit(os.Args[2:], defaultDB)
-		case "approve":
-			cli.RunApprove(os.Args[2:], defaultDB)
-		case "merge":
-			cli.RunMerge(os.Args[2:], defaultDB)
 		case "update":
 			cli.RunUpdate(os.Args[2:], defaultDB)
 		case "agent":
