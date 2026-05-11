@@ -1,0 +1,28 @@
+package cli
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/aidanwolter/ticket/internal/model"
+)
+
+func RunInProgress(args []string, defaultDB string) {
+	s, fs := parseAndOpen(string(model.StatusInProgress), args, defaultDB, nil)
+	defer s.Close()
+
+	if fs.NArg() < 2 {
+		fmt.Fprintln(os.Stderr, "usage: ticket in-progress [--db path] <ticket-id> <author>")
+		fmt.Fprintln(os.Stderr, "  author: agent:<name>")
+		os.Exit(1)
+	}
+	ticketID := fs.Arg(0)
+	author := fs.Arg(1)
+
+	if err := s.TransitionTicket(ticketID, model.StatusInProgress, author); err != nil {
+		fmt.Fprintf(os.Stderr, "in-progress: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%s → in_progress\n", ticketID)
+}
