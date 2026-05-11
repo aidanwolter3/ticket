@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/aidanwolter/ticket/internal/model"
-	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/components"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -45,9 +44,17 @@ type leftItem struct {
 	msgIdx       int                 // for leftKindMessage: index into thread.Messages
 }
 
+// reviewPanelStore is the minimal store surface needed by ReviewPanelView.
+type reviewPanelStore interface {
+	GetTicket(id string) (*model.Ticket, error)
+	GetTasksForTicket(ticketID string) ([]model.Task, error)
+	GetAllThreadsForTicket(ticketID string) ([]*model.Thread, error)
+	GetDraftState(ticketID string) (*model.DraftState, error)
+}
+
 // ReviewPanelView is the full-screen code-review split-pane overlay.
 type ReviewPanelView struct {
-	store      *store.Store
+	store      reviewPanelStore
 	ticket     *model.Ticket
 	tasks      []model.Task
 	threads    []*model.Thread
@@ -69,7 +76,7 @@ type ReviewPanelView struct {
 	height int
 }
 
-func NewReviewPanelView(s *store.Store, ticketID string) (*ReviewPanelView, error) {
+func NewReviewPanelView(s reviewPanelStore, ticketID string) (*ReviewPanelView, error) {
 	v := &ReviewPanelView{
 		store:         s,
 		expandedTasks: make(map[string]bool),

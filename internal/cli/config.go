@@ -1,35 +1,38 @@
 package cli
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
-func RunConfig(args []string, defaultDB string) {
+func RunConfig(args []string, wf *human.Workflow) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket config <set|get|ls> [args...]")
 		os.Exit(1)
 	}
 	switch args[0] {
 	case "set":
-		runConfigSet(args[1:], defaultDB)
+		runConfigSet(args[1:], wf)
 	case "get":
-		runConfigGet(args[1:], defaultDB)
+		runConfigGet(args[1:], wf)
 	case "ls":
-		runConfigList(args[1:], defaultDB)
+		runConfigList(args[1:], wf)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown config subcommand: %s\n", args[0])
 		os.Exit(1)
 	}
 }
 
-func runConfigSet(args []string, defaultDB string) {
-	s, fs := parseAndOpen("config set", args, defaultDB, nil)
-	defer s.Close()
+func runConfigSet(args []string, wf *human.Workflow) {
+	fs := flag.NewFlagSet("config set", flag.ExitOnError)
+	fs.Parse(args)
 
 	if fs.NArg() < 2 {
-		fmt.Fprintln(os.Stderr, "usage: ticket config set [--db path] <key> <value>")
+		fmt.Fprintln(os.Stderr, "usage: ticket config set <key> <value>")
 		os.Exit(1)
 	}
 	key := fs.Arg(0)
@@ -40,7 +43,7 @@ func runConfigSet(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	if err := s.ConfigSet(key, value); err != nil {
+	if err := wf.ConfigSet(key, value); err != nil {
 		fmt.Fprintf(os.Stderr, "config set: %v\n", err)
 		os.Exit(1)
 	}
@@ -57,11 +60,10 @@ var knownConfigKeys = []struct {
 	{"worktrees", "true"},
 }
 
-func runConfigList(args []string, defaultDB string) {
-	s, _ := parseAndOpen("config ls", args, defaultDB, nil)
-	defer s.Close()
+func runConfigList(args []string, wf *human.Workflow) {
+	flag.NewFlagSet("config ls", flag.ExitOnError).Parse(args)
 
-	stored, err := s.ConfigList()
+	stored, err := wf.ConfigList()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config ls: %v\n", err)
 		os.Exit(1)
@@ -78,12 +80,12 @@ func runConfigList(args []string, defaultDB string) {
 	}
 }
 
-func runConfigGet(args []string, defaultDB string) {
-	s, fs := parseAndOpen("config get", args, defaultDB, nil)
-	defer s.Close()
+func runConfigGet(args []string, wf *human.Workflow) {
+	fs := flag.NewFlagSet("config get", flag.ExitOnError)
+	fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ticket config get [--db path] <key>")
+		fmt.Fprintln(os.Stderr, "usage: ticket config get <key>")
 		os.Exit(1)
 	}
 	key := fs.Arg(0)
@@ -93,7 +95,7 @@ func runConfigGet(args []string, defaultDB string) {
 		"worktrees": "true",
 	}
 
-	value, ok, err := s.ConfigGet(key)
+	value, ok, err := wf.ConfigGet(key)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config get: %v\n", err)
 		os.Exit(1)

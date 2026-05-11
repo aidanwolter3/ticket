@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/aidanwolter/ticket/internal/model"
-	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/components"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,8 +15,16 @@ import (
 	comp "github.com/aidanwolter/ticket/internal/tui/components"
 )
 
+// ticketDetailStore is the minimal store surface needed by TicketDetailView.
+type ticketDetailStore interface {
+	GetTicket(id string) (*model.Ticket, error)
+	GetThreadsForTask(taskID string) ([]*model.Thread, error)
+	GetNotesForTicket(ticketID string) ([]*model.Note, error)
+	GetAgentSessionByTicket(ticketID string) (*model.AgentSession, error)
+}
+
 type TicketDetailView struct {
-	store        *store.Store
+	store        ticketDetailStore
 	ticket       *model.Ticket
 	notes        []*model.Note
 	blockers     []*model.Ticket
@@ -28,7 +35,7 @@ type TicketDetailView struct {
 	err          error
 }
 
-func NewTicketDetailView(s *store.Store, ticketID string) (*TicketDetailView, error) {
+func NewTicketDetailView(s ticketDetailStore, ticketID string) (*TicketDetailView, error) {
 	v := &TicketDetailView{store: s}
 	if err := v.loadTicket(ticketID); err != nil {
 		return nil, err

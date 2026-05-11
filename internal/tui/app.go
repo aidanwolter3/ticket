@@ -13,7 +13,6 @@ import (
 	"github.com/aidanwolter/ticket/internal/agent"
 	"github.com/aidanwolter/ticket/internal/bubbleterm/emulator"
 	"github.com/aidanwolter/ticket/internal/model"
-	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/views"
 	"github.com/aidanwolter/ticket/internal/workflow/human"
 	tea "github.com/charmbracelet/bubbletea"
@@ -53,7 +52,7 @@ func tickDB() tea.Cmd {
 }
 
 type App struct {
-	store            *store.Store
+	wf               *human.Workflow
 	launcher         *agent.Launcher
 	tab              appTab
 	screen           appScreen
@@ -93,17 +92,17 @@ type App struct {
 	agentTermView   *views.AgentTermView
 }
 
-func New(s *store.Store) *App {
+func New(wf *human.Workflow) *App {
 	a := &App{
-		store:       s,
-		launcher:    agent.NewLauncher(s),
+		wf:          wf,
+		launcher:    wf.Launcher(),
 		tab:         tabTickets,
 		screen:      screenList,
 		width:       80,
 		height:      24,
 		leftW:       28,
 		rightW:      51,
-		ticketsView: views.NewTicketsView(s),
+		ticketsView: views.NewTicketsView(wf),
 	}
 	a.loadCurrentDetail()
 	return a
@@ -137,7 +136,7 @@ func (a *App) loadDetailForID(id string) {
 		a.ticketDetail = nil
 		return
 	}
-	td, err := views.NewTicketDetailView(a.store, id)
+	td, err := views.NewTicketDetailView(a.wf, id)
 	if err != nil {
 		a.ticketDetail = nil
 		return
@@ -322,7 +321,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				t := a.ticketDetail.Ticket()
 				if t.Status == model.StatusInReview {
 					id := a.currentTicketID()
-					rpv, err := views.NewReviewPanelView(a.store, id)
+					rpv, err := views.NewReviewPanelView(a.wf, id)
 					if err != nil {
 						a.setErr(err)
 					} else {
@@ -336,7 +335,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == "draft" {
 				id := a.currentTicketID()
-				if err := human.Promote(a.store, id, a.launcher, io.Discard, io.Discard); err != nil {
+				if err := a.wf.Promote(id, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready", id)
@@ -349,14 +348,14 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "a":
 			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == "in_review" {
 				id := a.currentTicketID()
-				t, err := a.store.GetTicket(id)
+				t, err := a.wf.GetTicket(id)
 				if err != nil {
 					a.setErr(err)
 					return a, nil
 				}
 				hasOpen := false
 				for _, task := range t.Tasks {
-					threads, err := a.store.GetThreadsForTask(task.ID)
+					threads, err := a.wf.GetThreadsForTask(task.ID)
 					if err == nil {
 						for _, th := range threads {
 							if th.Status == model.ThreadOpen || th.Status == model.ThreadNeedsAttention {
@@ -368,7 +367,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if hasOpen {
 					a.statusMsg = "cannot approve: ticket has open threads"
 					a.statusErr = true
-				} else if err := a.store.TransitionTicket(id, model.StatusApproved); err != nil {
+				} else if err := a.wf.TransitionTicket(id, model.StatusApproved); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → approved", id)
@@ -384,7 +383,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if a.ticketDetail.Ticket().Status != "approved" {
 					a.statusMsg = fmt.Sprintf("%s is not approved", id)
 					a.statusErr = true
-				} else if err := human.Merge(a.store, id, io.Discard, io.Discard); err != nil {
+				} else if err := a.wf.Merge(id, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → merged", id)
@@ -403,34 +402,34 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 						maxRound = tk.Round
 					}
 				}
-				if _, err := human.AddTask(a.store, t.ID,
+				if _, err := a.wf.AddTask(t.ID,
 					"Sync this worktree so that it has the latest commits from 'main' and fix any merge conflicts",
 					"", "", false, maxRound+1,
 				); err != nil {
 					a.setErr(err)
 					return a, nil
 				}
-				if err := a.store.TransitionTicket(t.ID, model.StatusReady); err != nil {
+				if err := a.wf.TransitionTicket(t.ID, model.StatusReady); err != nil {
 					a.setErr(err)
 					return a, nil
 				}
 				a.statusMsg = fmt.Sprintf("%s → ready (resolve-conflicts task added)", t.ID)
 				a.statusErr = false
-				autoDispatch, _, _ := a.store.ConfigGet("agent.auto_dispatch")
-				cmdTemplate, _, _ := a.store.ConfigGet("agent.command")
+				autoDispatch, _, _ := a.wf.ConfigGet("agent.auto_dispatch")
+				cmdTemplate, _, _ := a.wf.ConfigGet("agent.command")
 				if autoDispatch == "true" && cmdTemplate != "" {
-					existing, _ := a.store.GetAgentSessionByTicket(t.ID)
+					existing, _ := a.wf.GetAgentSessionByTicket(t.ID)
 					if existing == nil {
 						if prompt, pErr := agent.BuildPrompt(cmdTemplate); pErr == nil {
 							if _, launchErr := a.launcher.Launch(t.ID, t.WorktreePath, prompt); launchErr != nil {
 								a.statusMsg = fmt.Sprintf("auto-dispatch failed: %v", launchErr)
 								a.statusErr = true
 							} else {
-								if transErr := a.store.TransitionTicket(t.ID, model.StatusInProgress); transErr != nil {
+								if transErr := a.wf.TransitionTicket(t.ID, model.StatusInProgress); transErr != nil {
 									a.statusMsg = fmt.Sprintf("auto-dispatch: transition in_progress: %v", transErr)
 									a.statusErr = true
 								}
-								a.store.AddNote(t.ID, "agent:claude", "Agent auto-dispatched") //nolint:errcheck
+								a.wf.AddNote(t.ID, "agent:claude", "Agent auto-dispatched") //nolint:errcheck
 							}
 						}
 					}
@@ -451,13 +450,13 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case "g":
 			if t := a.ticketsView.SelectedTicket(); t != nil && t.Status == model.StatusReady {
-				cmd, _, err := a.store.ConfigGet("agent.command")
+				cmd, _, err := a.wf.ConfigGet("agent.command")
 				if err != nil || cmd == "" {
 					a.statusMsg = `agent.command not configured — run: ticket config set agent.command "..."`
 					a.statusErr = true
 					return a, nil
 				}
-				sess, err := a.store.GetAgentSessionByTicket(t.ID)
+				sess, err := a.wf.GetAgentSessionByTicket(t.ID)
 				if err == nil && sess != nil {
 					a.statusMsg = fmt.Sprintf("agent already active for %s (state: %s)", t.ID, sess.State)
 					a.statusErr = true
@@ -471,7 +470,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if id := a.nextWaitingTicketID(); id != "" {
 				a.ticketsView.SelectTicketByID(id)
 				a.loadCurrentDetail()
-				sess, _ := a.store.GetAgentSessionByTicket(id)
+				sess, _ := a.wf.GetAgentSessionByTicket(id)
 				if sess != nil {
 					a.rightPaneMode = "agent"
 					atv := views.NewAgentTermView(id)
@@ -493,9 +492,9 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case "enter":
 			if t := a.ticketsView.SelectedTicket(); t != nil {
-				sess, _ := a.store.GetAgentSessionByTicket(t.ID)
+				sess, _ := a.wf.GetAgentSessionByTicket(t.ID)
 				if sess == nil {
-					sess, _ = a.store.GetLatestAgentSessionByTicket(t.ID)
+					sess, _ = a.wf.GetLatestAgentSessionByTicket(t.ID)
 				}
 				if sess != nil {
 					a.rightPaneMode = "agent"
@@ -536,12 +535,11 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			if a.threadsView != nil {
 				id := a.threadsView.TicketID()
-				if err := human.SubmitReview(a.store, id, "human", nil, io.Discard, io.Discard); err != nil {
+				if err := a.wf.SubmitReview(id, "human", io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready (review submitted)", id)
 					a.statusErr = false
-					a.threadsView.Reload()
 					a.reloadCurrentDetail()
 					a.ticketsView.Refresh()
 					a.screen = screenList
@@ -560,7 +558,7 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "D":
 			if a.threadsView != nil {
 				if dm := a.threadsView.SelectedDraftMessage(); dm != nil {
-					if err := a.store.DeleteDraftMessage(dm.ID); err != nil {
+					if err := a.wf.DeleteDraftMessage(dm.ID); err != nil {
 						a.setErr(err)
 					} else {
 						a.statusMsg = "Draft message deleted"
@@ -634,22 +632,22 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 					ticketID := a.reviewPanelView.TicketID()
 					switch th.Status {
 					case model.ThreadOpen, model.ThreadNeedsAttention:
-						if ds, _ := a.store.GetDraftState(ticketID); ds != nil && ds.ActionFor(th.ID) == model.DraftActionResolve {
-							if err := a.store.ClearDraftAction(th.ID); err != nil {
+						if ds, _ := a.wf.GetDraftState(ticketID); ds != nil && ds.ActionFor(th.ID) == model.DraftActionResolve {
+							if err := a.wf.ClearDraftAction(th.ID); err != nil {
 								a.setErr(err)
 							}
 						} else {
-							if err := a.store.SetDraftAction(th.ID, ticketID, model.DraftActionResolve); err != nil {
+							if err := a.wf.SetDraftAction(th.ID, ticketID, model.DraftActionResolve); err != nil {
 								a.setErr(err)
 							}
 						}
 					case model.ThreadResolved:
-						if ds, _ := a.store.GetDraftState(ticketID); ds != nil && ds.ActionFor(th.ID) == model.DraftActionReopen {
-							if err := a.store.ClearDraftAction(th.ID); err != nil {
+						if ds, _ := a.wf.GetDraftState(ticketID); ds != nil && ds.ActionFor(th.ID) == model.DraftActionReopen {
+							if err := a.wf.ClearDraftAction(th.ID); err != nil {
 								a.setErr(err)
 							}
 						} else {
-							if err := a.store.SetDraftAction(th.ID, ticketID, model.DraftActionReopen); err != nil {
+							if err := a.wf.SetDraftAction(th.ID, ticketID, model.DraftActionReopen); err != nil {
 								a.setErr(err)
 							}
 						}
@@ -661,14 +659,14 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "a":
 			if a.reviewPanelView != nil {
 				id := a.reviewPanelView.TicketID()
-				t, err := a.store.GetTicket(id)
+				t, err := a.wf.GetTicket(id)
 				if err != nil {
 					a.setErr(err)
 					return a, nil
 				}
 				hasOpen := false
 				for _, task := range t.Tasks {
-					threads, err := a.store.GetThreadsForTask(task.ID)
+					threads, err := a.wf.GetThreadsForTask(task.ID)
 					if err == nil {
 						for _, th := range threads {
 							if th.Status == model.ThreadOpen || th.Status == model.ThreadNeedsAttention {
@@ -680,7 +678,7 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if hasOpen {
 					a.statusMsg = "cannot approve: ticket has open threads"
 					a.statusErr = true
-				} else if err := a.store.TransitionTicket(id, model.StatusApproved); err != nil {
+				} else if err := a.wf.TransitionTicket(id, model.StatusApproved); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → approved", id)
@@ -694,7 +692,7 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			if a.reviewPanelView != nil {
 				id := a.reviewPanelView.TicketID()
-				if err := human.SubmitReview(a.store, id, "human", a.launcher, io.Discard, io.Discard); err != nil {
+				if err := a.wf.SubmitReview(id, "human", io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready (review submitted)", id)
@@ -717,7 +715,7 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "D":
 			if a.reviewPanelView != nil {
 				if dm := a.reviewPanelView.SelectedDraftMessage(); dm != nil {
-					if err := a.store.DeleteDraftMessage(dm.ID); err != nil {
+					if err := a.wf.DeleteDraftMessage(dm.ID); err != nil {
 						a.setErr(err)
 					} else {
 						a.statusMsg = "Draft message deleted"
@@ -746,14 +744,14 @@ func (a *App) updateConfirmDispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.pendingDispatchID = ""
 			a.screen = screenList
 
-			cmdTemplate, _, err := a.store.ConfigGet("agent.command")
+			cmdTemplate, _, err := a.wf.ConfigGet("agent.command")
 			if err != nil || cmdTemplate == "" {
 				a.statusMsg = `agent.command not configured`
 				a.statusErr = true
 				return a, nil
 			}
 
-			t, err := a.store.GetTicket(id)
+			t, err := a.wf.GetTicket(id)
 			if err != nil {
 				a.setErr(err)
 				return a, nil
@@ -791,7 +789,7 @@ func (a *App) updateConfirmDispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.setErr(fmt.Errorf("create worktree: %s", msg))
 					return a, nil
 				}
-				if saveErr := a.store.SetWorktreePath(id, worktreeAbs, t.RepoPath, featureBranch); saveErr != nil {
+				if saveErr := a.wf.SetWorktreePath(id, worktreeAbs, t.RepoPath, featureBranch); saveErr != nil {
 					exec.Command("git", "-C", t.RepoPath, "worktree", "remove", "--force", worktreeAbs).Run() //nolint:errcheck
 					a.setErr(fmt.Errorf("save worktree_path: %w", saveErr))
 					return a, nil
@@ -804,7 +802,7 @@ func (a *App) updateConfirmDispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.setErr(fmt.Errorf("agent launch: %w", err))
 				return a, nil
 			}
-			if transErr := a.store.TransitionTicket(id, model.StatusInProgress); transErr != nil {
+			if transErr := a.wf.TransitionTicket(id, model.StatusInProgress); transErr != nil {
 				a.setErr(fmt.Errorf("transition in_progress: %w", transErr))
 				return a, nil
 			}
@@ -825,7 +823,7 @@ func (a *App) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
 		case "y", "Y":
-			if err := human.Delete(a.store, a.pendingDeleteID); err != nil {
+			if err := a.wf.Delete(a.pendingDeleteID); err != nil {
 				a.setErr(err)
 			} else {
 				a.statusMsg = fmt.Sprintf("Deleted %s", a.pendingDeleteID)
@@ -852,7 +850,7 @@ func (a *App) updateConfirmRedraft(msg tea.Msg) (tea.Model, tea.Cmd) {
 			id := a.pendingRedraftID
 			a.pendingRedraftID = ""
 			a.screen = screenList
-			if err := human.Redraft(a.store, id, io.Discard, io.Discard); err != nil {
+			if err := a.wf.Redraft(id, io.Discard, io.Discard); err != nil {
 				a.setErr(err)
 			} else {
 				a.statusMsg = fmt.Sprintf("%s → draft", id)
@@ -882,7 +880,7 @@ func (a *App) updateEditDraftMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case "ctrl+s":
 			if a.editDraftModal != nil && a.editDraftModal.Text() != "" {
-				if err := a.store.UpdateDraftMessage(a.editDraftModal.MsgID(), a.editDraftModal.Text()); err != nil {
+				if err := a.wf.UpdateDraftMessage(a.editDraftModal.MsgID(), a.editDraftModal.Text()); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = "Draft message updated"
@@ -927,7 +925,7 @@ func (a *App) updateReplyModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if a.reviewPanelView != nil && returnTo == screenReviewPanel {
 					ticketID = a.reviewPanelView.TicketID()
 				}
-				if _, err := a.store.AddDraftMessage(a.replyModal.ThreadID(), ticketID, true, a.replyModal.Author(), a.replyModal.Text()); err != nil {
+				if _, err := a.wf.AddDraftMessage(a.replyModal.ThreadID(), ticketID, true, a.replyModal.Author(), a.replyModal.Text()); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = "Reply staged"
@@ -971,13 +969,13 @@ func (a *App) updateNewThreadModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				filePath := a.newThreadModal.FilePath()
 				hunkHeader := a.newThreadModal.HunkHeader()
-				dt, err := a.store.CreateDraftThread(ticketID, a.newThreadModal.TaskID(), filePath, hunkHeader)
+				dt, err := a.wf.CreateDraftThread(ticketID, a.newThreadModal.TaskID(), filePath, hunkHeader)
 				if err != nil {
 					a.setErr(err)
 					a.screen = returnTo
 					return a, nil
 				}
-				if _, err := a.store.AddDraftMessage(dt.ID, ticketID, false, a.newThreadModal.Author(), a.newThreadModal.Text()); err != nil {
+				if _, err := a.wf.AddDraftMessage(dt.ID, ticketID, false, a.newThreadModal.Author(), a.newThreadModal.Text()); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = "Thread staged (submit with [ctrl+s] in review panel)"
@@ -1225,7 +1223,7 @@ func keyMsgBytes(msg tea.KeyMsg) []byte {
 // Called on every DB tick so the session is cleaned up promptly after the agent
 // finishes its work and submits for review.
 func (a *App) terminateSilentReviewedSessions() {
-	sessions, err := a.store.ListActiveAgentSessions()
+	sessions, err := a.wf.ListActiveAgentSessions()
 	if err != nil {
 		return
 	}
@@ -1233,7 +1231,7 @@ func (a *App) terminateSilentReviewedSessions() {
 		if sess.State != model.AgentWaiting {
 			continue
 		}
-		ticket, err := a.store.GetTicket(sess.TicketID)
+		ticket, err := a.wf.GetTicket(sess.TicketID)
 		if err != nil || ticket == nil {
 			continue
 		}
@@ -1247,7 +1245,7 @@ func (a *App) terminateSilentReviewedSessions() {
 // state after the currently focused ticket, cycling through the visible list.
 // Returns empty string if no agents are waiting.
 func (a *App) nextWaitingTicketID() string {
-	sessions, err := a.store.ListActiveAgentSessions()
+	sessions, err := a.wf.ListActiveAgentSessions()
 	if err != nil {
 		return ""
 	}

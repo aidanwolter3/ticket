@@ -7,11 +7,10 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/aidanwolter/ticket/internal/workflow/agent"
 	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
-func RunTask(args []string, defaultDB string) {
+func RunTask(args []string, wf *human.Workflow) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket task <subcommand>")
 		fmt.Fprintln(os.Stderr, "  add    <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>] [--no-commit]")
@@ -25,17 +24,17 @@ func RunTask(args []string, defaultDB string) {
 	}
 	switch args[0] {
 	case "add":
-		runTaskAdd(args[1:], defaultDB)
+		runTaskAdd(args[1:], wf)
 	case "get":
-		runTaskGet(args[1:], defaultDB)
+		runTaskGet(args[1:], wf)
 	case "ls":
-		runTaskList(args[1:], defaultDB)
+		runTaskList(args[1:], wf)
 	case "update":
-		runTaskUpdate(args[1:], defaultDB)
+		runTaskUpdate(args[1:], wf)
 	case "move":
-		runTaskMove(args[1:], defaultDB)
+		runTaskMove(args[1:], wf)
 	case "delete":
-		runTaskDelete(args[1:], defaultDB)
+		runTaskDelete(args[1:], wf)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown task subcommand: %s\n", args[0])
 		fmt.Fprintf(os.Stderr, "note: complete, uncomplete, set-commit require 'ticket --agent task %s'\n", args[0])
@@ -44,7 +43,7 @@ func RunTask(args []string, defaultDB string) {
 }
 
 // RunAgentTask handles agent-only task subcommands (complete, uncomplete, set-commit).
-func RunAgentTask(args []string, defaultDB string) {
+func RunAgentTask(args []string, wf *human.Workflow) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket --agent task <subcommand>")
 		fmt.Fprintln(os.Stderr, "  complete   [--most-recent-commit | --commit <hash>] <task-id>")
@@ -54,40 +53,37 @@ func RunAgentTask(args []string, defaultDB string) {
 	}
 	switch args[0] {
 	case "complete":
-		runTaskComplete(args[1:], defaultDB, false)
+		runTaskComplete(args[1:], wf, false)
 	case "uncomplete":
-		runTaskComplete(args[1:], defaultDB, true)
+		runTaskComplete(args[1:], wf, true)
 	case "set-commit":
-		runTaskSetCommit(args[1:], defaultDB)
+		runTaskSetCommit(args[1:], wf)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown agent task subcommand: %s\n", args[0])
 		os.Exit(1)
 	}
 }
 
-func runTaskAdd(args []string, defaultDB string) {
+func runTaskAdd(args []string, wf *human.Workflow) {
 	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
-		fmt.Fprintln(os.Stderr, "usage: ticket task add [--db path] <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>] [--no-commit]")
+		fmt.Fprintln(os.Stderr, "usage: ticket task add <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>] [--no-commit]")
 		os.Exit(1)
 	}
 	ticketID := args[0]
 
-	var title, description, verifiableResult *string
-	var noCommit *bool
-	s, _ := parseAndOpen("task add", args[1:], defaultDB, func(f *flag.FlagSet) {
-		title = f.String("title", "", "task title (required)")
-		description = f.String("description", "", "task description")
-		verifiableResult = f.String("verifiable-result", "", "verifiable result")
-		noCommit = f.Bool("no-commit", false, "task produces no commit (e.g. verification-only)")
-	})
-	defer s.Close()
+	fs := flag.NewFlagSet("task add", flag.ExitOnError)
+	title := fs.String("title", "", "task title (required)")
+	description := fs.String("description", "", "task description")
+	verifiableResult := fs.String("verifiable-result", "", "verifiable result")
+	noCommit := fs.Bool("no-commit", false, "task produces no commit (e.g. verification-only)")
+	fs.Parse(args[1:])
 
 	if *title == "" {
 		fmt.Fprintln(os.Stderr, "error: --title is required")
 		os.Exit(1)
 	}
 
-	task, err := human.AddTask(s, ticketID, *title, *description, *verifiableResult, *noCommit, 0)
+	task, err := wf.AddTask(ticketID, *title, *description, *verifiableResult, *noCommit, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "create task: %v\n", err)
 		os.Exit(1)
@@ -95,26 +91,24 @@ func runTaskAdd(args []string, defaultDB string) {
 	fmt.Println(task.ID)
 }
 
-func runTaskGet(args []string, defaultDB string) {
-	var jsonOut *bool
-	s, fs := parseAndOpen("task get", args, defaultDB, func(f *flag.FlagSet) {
-		jsonOut = f.Bool("json", false, "output task as JSON")
-	})
-	defer s.Close()
+func runTaskGet(args []string, wf *human.Workflow) {
+	fs := flag.NewFlagSet("task get", flag.ExitOnError)
+	jsonOut := fs.Bool("json", false, "output task as JSON")
+	fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ticket task get [--db path] [--json] <task-id>")
+		fmt.Fprintln(os.Stderr, "usage: ticket task get [--json] <task-id>")
 		os.Exit(1)
 	}
 	taskID := fs.Arg(0)
 
-	task, err := s.GetTask(taskID)
+	task, err := wf.GetTask(taskID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
-	threads, err := s.GetThreadsForTask(taskID)
+	threads, err := wf.GetThreadsForTask(taskID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "load threads: %v\n", err)
 		os.Exit(1)
@@ -161,20 +155,18 @@ func runTaskGet(args []string, defaultDB string) {
 	}
 }
 
-func runTaskList(args []string, defaultDB string) {
-	var jsonOut *bool
-	s, fs := parseAndOpen("task ls", args, defaultDB, func(f *flag.FlagSet) {
-		jsonOut = f.Bool("json", false, "output tasks as JSON")
-	})
-	defer s.Close()
+func runTaskList(args []string, wf *human.Workflow) {
+	fs := flag.NewFlagSet("task ls", flag.ExitOnError)
+	jsonOut := fs.Bool("json", false, "output tasks as JSON")
+	fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ticket task ls [--db path] [--json] <ticket-id>")
+		fmt.Fprintln(os.Stderr, "usage: ticket task ls [--json] <ticket-id>")
 		os.Exit(1)
 	}
 	ticketID := fs.Arg(0)
 
-	tasks, err := s.GetTasksForTicket(ticketID)
+	tasks, err := wf.GetTasksForTicket(ticketID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "get tasks: %v\n", err)
 		os.Exit(1)
@@ -207,60 +199,59 @@ func runTaskList(args []string, defaultDB string) {
 	w.Flush()
 }
 
-func runTaskDelete(args []string, defaultDB string) {
-	s, fs := parseAndOpen("task delete", args, defaultDB, nil)
-	defer s.Close()
+func runTaskDelete(args []string, wf *human.Workflow) {
+	fs := flag.NewFlagSet("task delete", flag.ExitOnError)
+	fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ticket task delete [--db path] <task-id>")
+		fmt.Fprintln(os.Stderr, "usage: ticket task delete <task-id>")
 		os.Exit(1)
 	}
 	taskID := fs.Arg(0)
 
-	if err := human.DeleteTask(s, taskID); err != nil {
+	if err := wf.DeleteTask(taskID); err != nil {
 		fmt.Fprintf(os.Stderr, "delete task: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("%s deleted\n", taskID)
 }
 
-func runTaskComplete(args []string, defaultDB string, undo bool) {
+func runTaskComplete(args []string, wf *human.Workflow, undo bool) {
 	subCmd := "complete"
 	if undo {
 		subCmd = "uncomplete"
 	}
 
+	fs := flag.NewFlagSet("task "+subCmd, flag.ExitOnError)
 	var mostRecentCommit *bool
 	var commitHash *string
-	s, fs := parseAndOpen("task "+subCmd, args, defaultDB, func(f *flag.FlagSet) {
-		if !undo {
-			mostRecentCommit = f.Bool("most-recent-commit", false, "resolve HEAD commit hash from worktree_path (or repo_path) and record it")
-			commitHash = f.String("commit", "", "explicit commit hash to record")
-		}
-	})
-	defer s.Close()
+	if !undo {
+		mostRecentCommit = fs.Bool("most-recent-commit", false, "resolve HEAD commit hash from worktree_path (or repo_path) and record it")
+		commitHash = fs.String("commit", "", "explicit commit hash to record")
+	}
+	fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fmt.Fprintf(os.Stderr, "usage: ticket task %s [--db path] <task-id>\n", subCmd)
+		fmt.Fprintf(os.Stderr, "usage: ticket task %s <task-id>\n", subCmd)
 		os.Exit(1)
 	}
 	taskID := fs.Arg(0)
 
 	var err error
 	if undo {
-		err = agent.UncompleteTask(s, taskID)
+		err = wf.UncompleteTask(taskID)
 	} else if *mostRecentCommit {
-		err = agent.CompleteTaskMostRecentCommit(s, taskID)
+		err = wf.CompleteTaskMostRecentCommit(taskID)
 	} else if *commitHash != "" {
-		err = agent.CompleteTask(s, taskID, *commitHash)
+		err = wf.CompleteTask(taskID, *commitHash)
 	} else {
-		task, getErr := s.GetTask(taskID)
+		task, getErr := wf.GetTask(taskID)
 		if getErr != nil {
 			fmt.Fprintf(os.Stderr, "get task: %v\n", getErr)
 			os.Exit(1)
 		}
 		if task.NoCommit {
-			err = agent.CompleteTask(s, taskID, "")
+			err = wf.CompleteTask(taskID, "")
 		} else {
 			fmt.Fprintf(os.Stderr, "error: task %s requires a commit hash; use --commit <hash> or --most-recent-commit\n", taskID)
 			fmt.Fprintf(os.Stderr, "       (use --no-commit on task add/update to mark a task as commit-free)\n")
@@ -274,22 +265,19 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 	fmt.Printf("%s → %sd\n", taskID, subCmd)
 }
 
-func runTaskUpdate(args []string, defaultDB string) {
+func runTaskUpdate(args []string, wf *human.Workflow) {
 	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
-		fmt.Fprintln(os.Stderr, "usage: ticket task update [--db path] <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>] [--no-commit]")
+		fmt.Fprintln(os.Stderr, "usage: ticket task update <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>] [--no-commit]")
 		os.Exit(1)
 	}
 	taskID := args[0]
 
-	var title, description, verifiableResult *string
-	var noCommit *bool
-	s, fs := parseAndOpen("task update", args[1:], defaultDB, func(f *flag.FlagSet) {
-		title = f.String("title", "", "new task title")
-		description = f.String("description", "", "new task description")
-		verifiableResult = f.String("verifiable-result", "", "new verifiable result")
-		noCommit = f.Bool("no-commit", false, "mark task as commit-free (verification-only)")
-	})
-	defer s.Close()
+	fs := flag.NewFlagSet("task update", flag.ExitOnError)
+	title := fs.String("title", "", "new task title")
+	description := fs.String("description", "", "new task description")
+	verifiableResult := fs.String("verifiable-result", "", "new verifiable result")
+	noCommit := fs.Bool("no-commit", false, "mark task as commit-free (verification-only)")
+	fs.Parse(args[1:])
 
 	titleSet := *title != ""
 	descSet := *description != ""
@@ -319,55 +307,48 @@ func runTaskUpdate(args []string, defaultDB string) {
 	if noCommitSet {
 		noCommitPtr = noCommit
 	}
-	if err := human.UpdateTask(s, taskID, titlePtr, descPtr, vrPtr, noCommitPtr); err != nil {
+	if err := wf.UpdateTask(taskID, titlePtr, descPtr, vrPtr, noCommitPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "update task: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("%s updated\n", taskID)
 }
 
-func runTaskSetCommit(args []string, defaultDB string) {
+func runTaskSetCommit(args []string, wf *human.Workflow) {
 	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
-		fmt.Fprintln(os.Stderr, "usage: ticket task set-commit [--db path] <task-id> <hash>")
+		fmt.Fprintln(os.Stderr, "usage: ticket task set-commit <task-id> <hash>")
 		os.Exit(1)
 	}
 	taskID := args[0]
 
-	s, fs := parseAndOpen("task set-commit", args[1:], defaultDB, nil)
-	defer s.Close()
+	fs := flag.NewFlagSet("task set-commit", flag.ExitOnError)
+	fs.Parse(args[1:])
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ticket task set-commit [--db path] <task-id> <hash>")
+		fmt.Fprintln(os.Stderr, "usage: ticket task set-commit <task-id> <hash>")
 		os.Exit(1)
 	}
 	hash := fs.Arg(0)
 
-	task, err := s.GetTask(taskID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
-	}
-
-	task.CommitHash = hash
-	if err := s.UpdateTask(task); err != nil {
+	if err := wf.SetTaskCommit(taskID, hash); err != nil {
 		fmt.Fprintf(os.Stderr, "update task: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("%s commit set to %s\n", taskID, hash)
 }
 
-func runTaskMove(args []string, defaultDB string) {
+func runTaskMove(args []string, wf *human.Workflow) {
 	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
-		fmt.Fprintln(os.Stderr, "usage: ticket task move [--db path] <task-id> <position>")
+		fmt.Fprintln(os.Stderr, "usage: ticket task move <task-id> <position>")
 		os.Exit(1)
 	}
 	taskID := args[0]
 
-	s, fs := parseAndOpen("task move", args[1:], defaultDB, nil)
-	defer s.Close()
+	fs := flag.NewFlagSet("task move", flag.ExitOnError)
+	fs.Parse(args[1:])
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ticket task move [--db path] <task-id> <position>")
+		fmt.Fprintln(os.Stderr, "usage: ticket task move <task-id> <position>")
 		os.Exit(1)
 	}
 
@@ -377,7 +358,7 @@ func runTaskMove(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	if err := human.MoveTask(s, taskID, newPos); err != nil {
+	if err := wf.MoveTask(taskID, newPos); err != nil {
 		fmt.Fprintf(os.Stderr, "move task: %v\n", err)
 		os.Exit(1)
 	}

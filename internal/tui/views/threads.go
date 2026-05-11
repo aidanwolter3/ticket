@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/aidanwolter/ticket/internal/model"
-	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/components"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -30,8 +29,17 @@ type threadItem struct {
 	draftReplies []model.DraftMessage
 }
 
+// threadsStore is the minimal store surface needed by ThreadsView.
+type threadsStore interface {
+	GetDraftState(ticketID string) (*model.DraftState, error)
+	GetTasksForTicket(ticketID string) ([]model.Task, error)
+	GetThreadsForTask(taskID string) ([]*model.Thread, error)
+	ClearDraftAction(threadID string) error
+	SetDraftAction(threadID, ticketID, action string) error
+}
+
 type ThreadsView struct {
-	store      *store.Store
+	store      threadsStore
 	ticketID   string
 	items      []threadItem
 	cursor     int
@@ -42,7 +50,7 @@ type ThreadsView struct {
 	err        error
 }
 
-func NewThreadsView(s *store.Store, ticketID string) (*ThreadsView, error) {
+func NewThreadsView(s threadsStore, ticketID string) (*ThreadsView, error) {
 	v := &ThreadsView{
 		store:    s,
 		ticketID: ticketID,

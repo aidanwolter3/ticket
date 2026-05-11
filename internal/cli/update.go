@@ -8,19 +8,17 @@ import (
 	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
-func RunUpdate(args []string, defaultDB string) {
+func RunUpdate(args []string, wf *human.Workflow) {
 	if len(args) == 0 || args[0] == "" || args[0][0] == '-' {
-		fmt.Fprintln(os.Stderr, "usage: ticket update [--db path] <ticket-id> [--title <title>] [--description <desc>]")
+		fmt.Fprintln(os.Stderr, "usage: ticket update <ticket-id> [--title <title>] [--description <desc>]")
 		os.Exit(1)
 	}
 	ticketID := args[0]
 
-	var title, description *string
-	s, _ := parseAndOpen("update", args[1:], defaultDB, func(f *flag.FlagSet) {
-		title = f.String("title", "", "new ticket title")
-		description = f.String("description", "", "new ticket description")
-	})
-	defer s.Close()
+	fs := flag.NewFlagSet("update", flag.ExitOnError)
+	title := fs.String("title", "", "new ticket title")
+	description := fs.String("description", "", "new ticket description")
+	fs.Parse(args[1:])
 
 	titleSet := *title != ""
 	descSet := *description != ""
@@ -37,7 +35,7 @@ func RunUpdate(args []string, defaultDB string) {
 		descPtr = description
 	}
 
-	if err := human.Update(s, ticketID, titlePtr, descPtr); err != nil {
+	if err := wf.Update(ticketID, titlePtr, descPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "update ticket: %v\n", err)
 		os.Exit(1)
 	}

@@ -5,15 +5,20 @@ import (
 	"strings"
 
 	"github.com/aidanwolter/ticket/internal/model"
-	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/components"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
+// ticketsStore is the minimal store surface needed by TicketsView.
+type ticketsStore interface {
+	ListTickets(filter ...model.Status) ([]*model.Ticket, error)
+	GetAgentSessionByTicket(ticketID string) (*model.AgentSession, error)
+}
+
 type TicketsView struct {
-	store         *store.Store
+	store         ticketsStore
 	tickets       []*model.Ticket
 	agentSessions map[string]*model.AgentSession // ticketID → active session
 	hideMerged    bool
@@ -24,7 +29,7 @@ type TicketsView struct {
 	err           error
 }
 
-func NewTicketsView(s *store.Store) *TicketsView {
+func NewTicketsView(s ticketsStore) *TicketsView {
 	v := &TicketsView{store: s, hideMerged: true}
 	v.load()
 	return v

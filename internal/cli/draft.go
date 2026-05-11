@@ -12,16 +12,13 @@ import (
 	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
-func RunDraft(args []string, defaultDB string) {
-	var title, description, repo *string
-	var jsonOut *bool
-	s, _ := parseAndOpen(string(model.StatusDraft), args, defaultDB, func(f *flag.FlagSet) {
-		title = f.String("title", "", "ticket title (required)")
-		description = f.String("description", "", "ticket description (use - to read from stdin)")
-		repo = f.String("repo", "", "repository path (required)")
-		jsonOut = f.Bool("json", false, "output full ticket JSON instead of just the ID")
-	})
-	defer s.Close()
+func RunDraft(args []string, wf *human.Workflow) {
+	fs := flag.NewFlagSet(string(model.StatusDraft), flag.ExitOnError)
+	title := fs.String("title", "", "ticket title (required)")
+	description := fs.String("description", "", "ticket description (use - to read from stdin)")
+	repo := fs.String("repo", "", "repository path (required)")
+	jsonOut := fs.Bool("json", false, "output full ticket JSON instead of just the ID")
+	fs.Parse(args)
 
 	if *title == "" || *repo == "" {
 		fmt.Fprintln(os.Stderr, "error: --title and --repo are required")
@@ -43,7 +40,7 @@ func RunDraft(args []string, defaultDB string) {
 		desc = strings.Join(lines, "\n")
 	}
 
-	t, err := human.Draft(s, *title, desc, *repo)
+	t, err := wf.Draft(*title, desc, *repo)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "create ticket: %v\n", err)
 		os.Exit(1)

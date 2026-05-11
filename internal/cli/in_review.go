@@ -1,24 +1,24 @@
 package cli
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
-	"github.com/aidanwolter/ticket/internal/model"
-	"github.com/aidanwolter/ticket/internal/workflow/agent"
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
-func RunInReview(args []string, defaultDB string) {
-	s, fs := parseAndOpen(string(model.StatusInReview), args, defaultDB, nil)
-	defer s.Close()
+func RunInReview(args []string, wf *human.Workflow) {
+	fs := flag.NewFlagSet("in-review", flag.ExitOnError)
+	fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ticket in-review [--db path] <ticket-id>")
+		fmt.Fprintln(os.Stderr, "usage: ticket in-review <ticket-id>")
 		os.Exit(1)
 	}
 	ticketID := fs.Arg(0)
 
-	if err := agent.SubmitForReview(s, ticketID); err != nil {
+	if err := wf.SubmitForReview(ticketID); err != nil {
 		fmt.Fprintf(os.Stderr, "in-review: %v\n", err)
 		os.Exit(1)
 	}

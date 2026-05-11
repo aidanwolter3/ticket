@@ -11,6 +11,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/cli"
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui"
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -25,50 +26,71 @@ func main() {
 		return
 	}
 
-	// If the first argument looks like a flag (starts with -), skip subcommand
-	// dispatch and fall through to TUI with flag parsing.
 	if len(os.Args) >= 2 && !strings.HasPrefix(os.Args[1], "-") {
-		switch os.Args[1] {
-		case "draft":
-			cli.RunDraft(os.Args[2:], defaultDB)
-		case "import":
-			cli.RunImport(os.Args[2:], defaultDB)
-		case "ls":
-			cli.RunList(os.Args[2:], defaultDB)
-		case "get":
-			cli.RunGet(os.Args[2:], defaultDB)
-		case "ready":
-			cli.RunReady(os.Args[2:], defaultDB)
-		case "redraft":
-			cli.RunRedraft(os.Args[2:], defaultDB)
-		case "delete":
-			cli.RunDelete(os.Args[2:], defaultDB)
-		case "purge":
-			cli.RunPurge(os.Args[2:], defaultDB)
-		case "thread":
-			cli.RunThread(os.Args[2:], defaultDB)
-		case "task":
-			cli.RunTask(os.Args[2:], defaultDB)
-		case "block":
-			cli.RunBlock(os.Args[2:], defaultDB)
-		case "unblock":
-			cli.RunUnblock(os.Args[2:], defaultDB)
-		case "config":
-			cli.RunConfig(os.Args[2:], defaultDB)
-		case "update":
-			cli.RunUpdate(os.Args[2:], defaultDB)
-		case "agent":
-			cli.RunAgent(os.Args[2:], defaultDB)
-		case "help", "--help", "-h":
+		subCmd := os.Args[1]
+		args := os.Args[2:]
+
+		if subCmd == "help" || subCmd == "--help" || subCmd == "-h" {
 			cli.PrintUsage()
+			return
+		}
+
+		// purge deletes the db file; handle before opening store
+		if subCmd == "purge" {
+			dbPath := findFlag(args, "db", defaultDB)
+			cli.RunPurge(stripFlag(args, "db"), dbPath)
+			return
+		}
+
+		dbPath := findFlag(args, "db", defaultDB)
+		s, err := store.Open(dbPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to open db: %v\n", err)
+			os.Exit(1)
+		}
+		defer s.Close()
+		wf := human.New(s)
+		cleanArgs := stripFlag(args, "db")
+
+		switch subCmd {
+		case "draft":
+			cli.RunDraft(cleanArgs, wf)
+		case "import":
+			cli.RunImport(cleanArgs, wf)
+		case "ls":
+			cli.RunList(cleanArgs, wf)
+		case "get":
+			cli.RunGet(cleanArgs, wf)
+		case "ready":
+			cli.RunReady(cleanArgs, wf)
+		case "redraft":
+			cli.RunRedraft(cleanArgs, wf)
+		case "delete":
+			cli.RunDelete(cleanArgs, wf)
+		case "thread":
+			cli.RunThread(cleanArgs, wf)
+		case "task":
+			cli.RunTask(cleanArgs, wf)
+		case "block":
+			cli.RunBlock(cleanArgs, wf)
+		case "unblock":
+			cli.RunUnblock(cleanArgs, wf)
+		case "config":
+			cli.RunConfig(cleanArgs, wf)
+		case "update":
+			cli.RunUpdate(cleanArgs, wf)
+		case "agent":
+			cli.RunAgent(cleanArgs, wf)
+		case "note":
+			cli.RunNote(cleanArgs, wf)
 		default:
-			fmt.Fprintf(os.Stderr, "unknown command: %s\nRun 'ticket help' for usage.\n", os.Args[1])
+			fmt.Fprintf(os.Stderr, "unknown command: %s\nRun 'ticket help' for usage.\n", subCmd)
 			os.Exit(1)
 		}
 		return
 	}
 
-	// Launch TUI when no arguments are provided.
+	// Launch TUI when no subcommand is given.
 	fs := flag.NewFlagSet("ticket", flag.ExitOnError)
 	dbPath := fs.String("db", defaultDB, "path to SQLite database")
 	fs.Parse(os.Args[1:])
@@ -87,7 +109,8 @@ func main() {
 	}
 	defer s.Close()
 
-	app := tui.New(s)
+	wf := human.New(s)
+	app := tui.New(wf)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -101,17 +124,59 @@ func runAgent(args []string, defaultDB string) {
 		cli.PrintAgentUsage()
 		return
 	}
+
+	subArgs := args[1:]
+	dbPath := findFlag(subArgs, "db", defaultDB)
+	s, err := store.Open(dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open db: %v\n", err)
+		os.Exit(1)
+	}
+	defer s.Close()
+	wf := human.New(s)
+	cleanArgs := stripFlag(subArgs, "db")
+
 	switch args[0] {
 	case "in-progress":
-		cli.RunInProgress(args[1:], defaultDB)
+		cli.RunInProgress(cleanArgs, wf)
 	case "in-review":
-		cli.RunInReview(args[1:], defaultDB)
+		cli.RunInReview(cleanArgs, wf)
 	case "task":
-		cli.RunAgentTask(args[1:], defaultDB)
+		cli.RunAgentTask(cleanArgs, wf)
 	case "note":
-		cli.RunNote(args[1:], defaultDB)
+		cli.RunNote(cleanArgs, wf)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown agent command: %s\nRun 'ticket --agent --help' for usage.\n", args[0])
 		os.Exit(1)
 	}
+}
+
+// findFlag scans args for --name value or --name=value and returns the value,
+// falling back to defaultVal if not found.
+func findFlag(args []string, name, defaultVal string) string {
+	for i, a := range args {
+		if a == "--"+name && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(a, "--"+name+"=") {
+			return strings.TrimPrefix(a, "--"+name+"=")
+		}
+	}
+	return defaultVal
+}
+
+// stripFlag removes --name value or --name=value from args.
+func stripFlag(args []string, name string) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--"+name && i+1 < len(args) {
+			i++
+			continue
+		}
+		if strings.HasPrefix(args[i], "--"+name+"=") {
+			continue
+		}
+		out = append(out, args[i])
+	}
+	return out
 }

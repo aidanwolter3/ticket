@@ -10,23 +10,21 @@ import (
 	xterm "github.com/charmbracelet/x/term"
 
 	"github.com/aidanwolter/ticket/internal/model"
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
-func RunList(args []string, defaultDB string) {
-	var statusFilter *string
-	var jsonOut *bool
-	s, _ := parseAndOpen("ls", args, defaultDB, func(f *flag.FlagSet) {
-		statusFilter = f.String("status", "", "filter by status (draft|ready|in_progress|in_review|completed)")
-		jsonOut = f.Bool("json", false, "output full ticket data as JSON")
-	})
-	defer s.Close()
+func RunList(args []string, wf *human.Workflow) {
+	fs := flag.NewFlagSet("ls", flag.ExitOnError)
+	statusFilter := fs.String("status", "", "filter by status (draft|ready|in_progress|in_review|completed)")
+	jsonOut := fs.Bool("json", false, "output full ticket data as JSON")
+	fs.Parse(args)
 
 	var tickets []*model.Ticket
 	var err error
 	if *statusFilter != "" {
-		tickets, err = s.ListTickets(model.Status(*statusFilter))
+		tickets, err = wf.ListTickets(model.Status(*statusFilter))
 	} else {
-		tickets, err = s.ListTickets()
+		tickets, err = wf.ListTickets()
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "list tickets: %v\n", err)
@@ -90,4 +88,3 @@ func truncateRunes(s string, max int) string {
 	}
 	return string(runes[:max-1]) + "…"
 }
-

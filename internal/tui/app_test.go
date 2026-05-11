@@ -6,6 +6,7 @@ import (
 
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
 // newTestApp opens a temp DB, creates tickets with the given IDs (in order),
@@ -55,7 +56,7 @@ func newTestApp(t *testing.T, ticketIDs []string, waitingIDs []string) *App {
 		}
 	}
 
-	return New(s)
+	return New(human.New(s))
 }
 
 func TestNextWaitingTicketID_NoWaiting(t *testing.T) {
@@ -95,7 +96,7 @@ func TestNextWaitingTicketID_SingleWaiting(t *testing.T) {
 		t.Fatalf("update state: %v", err)
 	}
 
-	app := New(s)
+	app := New(human.New(s))
 
 	// Regardless of which ticket is focused, should return t2.
 	got := app.nextWaitingTicketID()
@@ -136,7 +137,7 @@ func TestNextWaitingTicketID_CyclesInOrder(t *testing.T) {
 		}
 	}
 
-	app := New(s)
+	app := New(human.New(s))
 
 	// Focus on t1 → next waiting should be t3.
 	app.ticketsView.SelectTicketByID(t1.ID)
@@ -186,7 +187,7 @@ func TestNextWaitingTicketID_WrapAround(t *testing.T) {
 		t.Fatalf("update state: %v", err)
 	}
 
-	app := New(s)
+	app := New(human.New(s))
 
 	// Focus on t3 (last) → must wrap around to t1.
 	app.ticketsView.SelectTicketByID(t3.ID)

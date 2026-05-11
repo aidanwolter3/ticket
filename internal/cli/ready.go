@@ -1,24 +1,24 @@
 package cli
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
-	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
-func RunReady(args []string, defaultDB string) {
-	s, fs := parseAndOpen(string(model.StatusReady), args, defaultDB, nil)
-	defer s.Close()
+func RunReady(args []string, wf *human.Workflow) {
+	fs := flag.NewFlagSet("ready", flag.ExitOnError)
+	fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ticket ready [--db path] <ticket-id>")
+		fmt.Fprintln(os.Stderr, "usage: ticket ready <ticket-id>")
 		os.Exit(1)
 	}
 	ticketID := fs.Arg(0)
 
-	if err := human.Promote(s, ticketID, nil, os.Stdout, os.Stderr); err != nil {
+	if err := wf.Promote(ticketID, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}

@@ -6,22 +6,22 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
-func RunGet(args []string, defaultDB string) {
-	var jsonOut *bool
-	s, fs := parseAndOpen("get", args, defaultDB, func(f *flag.FlagSet) {
-		jsonOut = f.Bool("json", false, "output raw JSON")
-	})
-	defer s.Close()
+func RunGet(args []string, wf *human.Workflow) {
+	fs := flag.NewFlagSet("get", flag.ExitOnError)
+	jsonOut := fs.Bool("json", false, "output raw JSON")
+	fs.Parse(args)
 
 	if fs.NArg() == 0 {
-		fmt.Fprintln(os.Stderr, "usage: ticket get [--db path] [--json] <id>")
+		fmt.Fprintln(os.Stderr, "usage: ticket get [--json] <id>")
 		os.Exit(1)
 	}
 	id := fs.Arg(0)
 
-	t, err := s.GetTicket(id)
+	t, err := wf.GetTicket(id)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
@@ -32,7 +32,7 @@ func RunGet(args []string, defaultDB string) {
 	// Load threads per task.
 	for i := range tj.Tasks {
 		taskID := tj.Tasks[i].ID
-		threads, err := s.GetThreadsForTask(taskID)
+		threads, err := wf.GetThreadsForTask(taskID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "load threads for task %s: %v\n", taskID, err)
 			os.Exit(1)
@@ -42,7 +42,7 @@ func RunGet(args []string, defaultDB string) {
 		}
 	}
 
-	notes, err := s.GetNotesForTicket(id)
+	notes, err := wf.GetNotesForTicket(id)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "load notes: %v\n", err)
 		os.Exit(1)
