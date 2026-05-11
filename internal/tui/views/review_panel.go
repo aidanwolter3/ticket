@@ -135,6 +135,18 @@ func (v *ReviewPanelView) SelectedTaskID() string {
 	return ""
 }
 
+// SelectedDraftMessage returns the first draft message of the selected draft thread, or nil.
+func (v *ReviewPanelView) SelectedDraftMessage() *model.DraftMessage {
+	if v.leftCursor >= len(v.leftItems) {
+		return nil
+	}
+	item := v.leftItems[v.leftCursor]
+	if item.kind != leftKindDraftThread || item.draftThread == nil || len(item.draftThread.Messages) == 0 {
+		return nil
+	}
+	return &item.draftThread.Messages[0]
+}
+
 // SelectedThread returns the real thread at the current left cursor, or nil.
 // Also returns the thread when a message inside it is selected.
 func (v *ReviewPanelView) SelectedThread() *model.Thread {
@@ -643,16 +655,19 @@ func (v *ReviewPanelView) View() string {
 			th := item.thread
 			icon := v.threadIcon(th.Status, item.stagedAction)
 
-			suffix := ""
+			var suffix, suffixPlain string
 			switch item.stagedAction {
 			case model.DraftActionResolve:
+				suffixPlain = " [→resolved]"
 				suffix = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[→resolved]")
 			case model.DraftActionReopen:
+				suffixPlain = " [→open]"
 				suffix = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[→open]")
 			}
 
-			// Available width for summary: leftW minus indent(2) + icon(1) + space(1) + suffix.
-			summaryW := leftW - 4 - len([]rune(suffix))
+			msgCountPlain := fmt.Sprintf("(%d)", len(th.Messages))
+			// Available width: leftW minus indent(2) + icon(1) + space(1) + suffix + space(1) + msgCount.
+			summaryW := leftW - 4 - len([]rune(suffixPlain)) - 1 - len([]rune(msgCountPlain))
 			if summaryW < 1 {
 				summaryW = 1
 			}
@@ -661,9 +676,8 @@ func (v *ReviewPanelView) View() string {
 				summary = string([]rune(summary)[:summaryW]) + "…"
 			}
 
-			msgCount := fmt.Sprintf("(%d)", len(th.Messages))
 			line := fmt.Sprintf("  %s %s%s %s", icon, summary, suffix,
-				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(msgCount))
+				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(msgCountPlain))
 
 			if idx == v.leftCursor {
 				line = lipgloss.NewStyle().Reverse(true).Render(line)
@@ -674,7 +688,8 @@ func (v *ReviewPanelView) View() string {
 			th := item.thread
 			msg := th.Messages[item.msgIdx]
 			author := lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(msg.Author)
-			maxW := leftW - 6 - len(msg.Author)
+			// Format: "      <author>: <firstLine>" — indent(6) + author + ": "(2) + firstLine
+			maxW := leftW - 8 - len(msg.Author)
 			if maxW < 1 {
 				maxW = 1
 			}
@@ -713,11 +728,12 @@ func (v *ReviewPanelView) View() string {
 	}
 
 	// Render only the visible window (respects leftListOffset for scrolling).
+	// Cap each line to leftW to prevent lipgloss from wrapping overlong lines.
 	leftDisplay := make([]string, bodyH)
 	for i := range leftDisplay {
 		idx := v.leftListOffset + i
 		if idx < len(allLeftLines) {
-			leftDisplay[i] = allLeftLines[idx]
+			leftDisplay[i] = lipgloss.NewStyle().MaxWidth(leftW).Render(allLeftLines[idx])
 		}
 	}
 	leftContent := strings.Join(leftDisplay, "\n")
@@ -765,7 +781,7 @@ func (v *ReviewPanelView) View() string {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
-	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [[]] v-scroll · [<>] h-scroll · [n] hunk · [c] comment · [a] approve · [S] submit · [esc] back"
+	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [e] edit draft · [[]] v-scroll · [<>] h-scroll · [n] hunk · [c] comment · [a] approve · [ctrl+s] submit · [esc] back"
 	hintLine := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hint)
 
 	return body + "\n" + hintLine
