@@ -81,6 +81,18 @@ go install ./cmd/ticket
 
 Requires Go 1.21+. The database is created automatically at `~/.local/share/ticket/tickets.db` on first run.
 
+## Claude Code skill
+
+This repository ships a `/ticket` Claude Code skill at `.claude/skills/ticket/SKILL.md`. Claude Code loads it automatically when you open this project, so the `/ticket` command is available without any manual setup.
+
+The skill lets you file new tickets from within Claude Code:
+
+```
+/ticket add a login rate-limiter to the auth service
+```
+
+The global copy at `~/.claude/skills/ticket/SKILL.md` is a symlink to this file — there is only one canonical copy.
+
 ## TUI
 
 Run `ticket` with no arguments to open the interactive interface.
