@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type ThreadStatus string
 
@@ -24,9 +27,9 @@ func (t *Thread) Summary() string {
 	if len(t.Messages) == 0 {
 		return "(empty thread)"
 	}
-	msg := t.Messages[0].Text
-	if len(msg) > 60 {
-		return msg[:60] + "…"
+	msg := strings.SplitN(t.Messages[0].Text, "\n", 2)[0]
+	if len([]rune(msg)) > 60 {
+		return string([]rune(msg)[:60]) + "…"
 	}
 	return msg
 }

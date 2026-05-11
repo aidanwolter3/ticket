@@ -370,23 +370,37 @@ func (v *ReviewPanelView) buildAnnotatedLines(rawLines []string) {
 		if ht == nil {
 			return
 		}
+		rw := v.rightW()
 		for _, th := range ht.real {
-			summary := th.Summary()
-			if len([]rune(summary)) > 60 {
-				summary = string([]rune(summary)[:60]) + "…"
-			}
 			msgCount := fmt.Sprintf("(%d msg)", len(th.Messages))
+			// "    ┆ " = 6, icon = 1, " " = 1, " " = 1, msgCount
+			maxSummaryW := rw - 6 - 1 - 1 - 1 - len([]rune(msgCount))
+			if maxSummaryW > 60 {
+				maxSummaryW = 60
+			}
+			summary := th.Summary()
+			if len([]rune(summary)) > maxSummaryW {
+				summary = string([]rune(summary)[:maxSummaryW]) + "…"
+			}
 			icon := components.ThreadStatusIcon(th.Status)
 			line := fmt.Sprintf("    ┆ %s %s %s", icon, summary,
 				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(msgCount))
 			v.lines = append(v.lines, renderedLine{text: line, filePath: fp, hunkHdr: hh, threadID: th.ID})
 		}
 		for _, dt := range ht.draft {
+			// "    ┆ " = 6, icon = 1, " " = 1, " " = 1, "[draft]" = 7
+			maxSummaryW := rw - 6 - 1 - 1 - 1 - 7
+			if maxSummaryW > 60 {
+				maxSummaryW = 60
+			}
+			if maxSummaryW < 1 {
+				maxSummaryW = 1
+			}
 			summary := "(empty draft)"
 			if len(dt.Messages) > 0 {
-				s := dt.Messages[0].Text
-				if len([]rune(s)) > 60 {
-					s = string([]rune(s)[:60]) + "…"
+				s := strings.SplitN(dt.Messages[0].Text, "\n", 2)[0]
+				if len([]rune(s)) > maxSummaryW {
+					s = string([]rune(s)[:maxSummaryW]) + "…"
 				}
 				summary = s
 			}
@@ -728,7 +742,7 @@ func (v *ReviewPanelView) View() string {
 			icon := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("◌")
 			summary := "(empty draft)"
 			if len(dt.Messages) > 0 {
-				summary = dt.Messages[0].Text
+				summary = strings.SplitN(dt.Messages[0].Text, "\n", 2)[0]
 			}
 			summaryW := leftW - 4 - 7 // indent(2) + icon(1) + space(1) + " [draft]"(7)
 			if summaryW < 1 {
