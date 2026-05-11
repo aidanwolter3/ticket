@@ -39,10 +39,10 @@ func (s *Store) CreateTask(t *model.Task) error {
 
 	_, err = s.db.Exec(`
 		INSERT INTO tasks (id, ticket_id, title, description, position, round,
-		  commit_hash, verifiable_result, completed_at, created, updated)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  no_commit, commit_hash, verifiable_result, completed_at, created, updated)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.TicketID, t.Title, t.Description, t.Position, t.Round,
-		nullStr(t.CommitHash), t.VerifiableResult, nullTime(t.CompletedAt),
+		t.NoCommit, nullStr(t.CommitHash), t.VerifiableResult, nullTime(t.CompletedAt),
 		now, now,
 	)
 	if err != nil {
@@ -56,10 +56,10 @@ func (s *Store) UpdateTask(t *model.Task) error {
 	t.Updated = time.UnixMilli(now)
 	_, err := s.db.Exec(`
 		UPDATE tasks SET title=?, description=?, position=?, round=?,
-		  commit_hash=?, verifiable_result=?, completed_at=?, updated=?
+		  no_commit=?, commit_hash=?, verifiable_result=?, completed_at=?, updated=?
 		WHERE id=?`,
 		t.Title, t.Description, t.Position, t.Round,
-		nullStr(t.CommitHash), t.VerifiableResult, nullTime(t.CompletedAt),
+		t.NoCommit, nullStr(t.CommitHash), t.VerifiableResult, nullTime(t.CompletedAt),
 		now, t.ID,
 	)
 	if err != nil {
@@ -71,7 +71,7 @@ func (s *Store) UpdateTask(t *model.Task) error {
 func (s *Store) GetTask(id string) (*model.Task, error) {
 	row := s.db.QueryRow(`
 		SELECT id, ticket_id, title, description, position, round,
-		       COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
+		       no_commit, COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
 		FROM tasks WHERE id=?`, id)
 	t, err := scanTask(row)
 	if err == sql.ErrNoRows {
@@ -83,7 +83,7 @@ func (s *Store) GetTask(id string) (*model.Task, error) {
 func (s *Store) GetTasksForTicket(ticketID string) ([]model.Task, error) {
 	rows, err := s.db.Query(`
 		SELECT id, ticket_id, title, description, position, round,
-		       COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
+		       no_commit, COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
 		FROM tasks WHERE ticket_id=? ORDER BY position`, ticketID)
 	if err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func (s *Store) loadTasksForTickets(tickets []*model.Ticket) error {
 	}
 	query := fmt.Sprintf(`
 		SELECT id, ticket_id, title, description, position, round,
-		       COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
+		       no_commit, COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
 		FROM tasks WHERE ticket_id IN (%s) ORDER BY ticket_id, position`,
 		strings.Join(placeholders, ","))
 	rows, err := s.db.Query(query, args...)
@@ -234,7 +234,7 @@ func (s *Store) MoveTask(taskID string, newPos int) error {
 func (s *Store) LastTaskForTicket(ticketID string) (*model.Task, error) {
 	row := s.db.QueryRow(`
 		SELECT id, ticket_id, title, description, position, round,
-		       COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
+		       no_commit, COALESCE(commit_hash,''), verifiable_result, completed_at, created, updated
 		FROM tasks WHERE ticket_id=? ORDER BY position DESC LIMIT 1`, ticketID)
 	t, err := scanTask(row)
 	if err == sql.ErrNoRows {
@@ -251,7 +251,7 @@ func scanTask(r scanner) (*model.Task, error) {
 		updatedMs   int64
 	)
 	err := r.Scan(&t.ID, &t.TicketID, &t.Title, &t.Description, &t.Position, &t.Round,
-		&t.CommitHash, &t.VerifiableResult, &completedMs, &createdMs, &updatedMs)
+		&t.NoCommit, &t.CommitHash, &t.VerifiableResult, &completedMs, &createdMs, &updatedMs)
 	if err != nil {
 		return nil, err
 	}

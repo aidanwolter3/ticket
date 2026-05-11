@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   description       TEXT NOT NULL DEFAULT '',
   position          INTEGER NOT NULL,
   round             INTEGER NOT NULL DEFAULT 1,
+  no_commit         INTEGER NOT NULL DEFAULT 0,
   commit_hash       TEXT,
   verifiable_result TEXT NOT NULL DEFAULT '',
   completed_at      INTEGER,

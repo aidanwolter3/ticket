@@ -69,6 +69,14 @@ func (s *Store) runMigrations() error {
 			return fmt.Errorf("record migration 6: %w", err)
 		}
 	}
+	if current < 7 {
+		if err := s.migration7(); err != nil {
+			return fmt.Errorf("migration 7: %w", err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO schema_migrations (version, applied) VALUES (7, ?)`, time.Now().UnixMilli()); err != nil {
+			return fmt.Errorf("record migration 7: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -715,6 +723,26 @@ func (s *Store) migration6() error {
 		}
 	}
 	return nil
+}
+
+// migration7 adds the no_commit column (default 0) to the tasks table.
+func (s *Store) migration7() error {
+	tasksExists, err := s.hasTable("tasks")
+	if err != nil {
+		return err
+	}
+	if !tasksExists {
+		return nil
+	}
+	has, err := s.hasColumn("tasks", "no_commit")
+	if err != nil {
+		return err
+	}
+	if has {
+		return nil
+	}
+	_, err = s.db.Exec(`ALTER TABLE tasks ADD COLUMN no_commit INTEGER NOT NULL DEFAULT 0`)
+	return err
 }
 
 func nullStrTx(s string) interface{} {
