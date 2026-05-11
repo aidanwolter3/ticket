@@ -12,9 +12,8 @@ func RunReady(args []string, defaultDB string) {
 	s, fs := parseAndOpen(string(model.StatusReady), args, defaultDB, nil)
 	defer s.Close()
 
-	if fs.NArg() < 2 {
-		fmt.Fprintln(os.Stderr, "usage: ticket ready [--db path] <ticket-id> <author>")
-		fmt.Fprintln(os.Stderr, "  author: human:<name>")
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: ticket ready [--db path] <ticket-id>")
 		os.Exit(1)
 	}
 	ticketID := fs.Arg(0)

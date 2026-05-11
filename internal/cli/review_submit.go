@@ -12,13 +12,11 @@ func RunReviewSubmit(args []string, defaultDB string) {
 	s, fs := parseAndOpen("review-submit", args, defaultDB, nil)
 	defer s.Close()
 
-	if fs.NArg() < 2 {
-		fmt.Fprintln(os.Stderr, "usage: ticket review-submit [--db path] <ticket-id> <author>")
-		fmt.Fprintln(os.Stderr, "  author must be human:<name>")
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: ticket review-submit [--db path] <ticket-id>")
 		os.Exit(1)
 	}
 	ticketID := fs.Arg(0)
-	author := fs.Arg(1)
 
 	// Snapshot active threads before the transition so we can report them.
 	threads, err := s.GetThreadsForTicket(ticketID)
@@ -33,7 +31,7 @@ func RunReviewSubmit(args []string, defaultDB string) {
 		}
 	}
 
-	if err := workflow.ReviewSubmit(s, ticketID, author, os.Stdout, os.Stderr); err != nil {
+	if err := workflow.ReviewSubmit(s, ticketID, "human", os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "review-submit: %v\n", err)
 		os.Exit(1)
 	}

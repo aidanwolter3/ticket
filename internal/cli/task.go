@@ -21,7 +21,7 @@ func RunTask(args []string, defaultDB string) {
 		fmt.Fprintln(os.Stderr, "  update     <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]")
 		fmt.Fprintln(os.Stderr, "  move       <task-id> <position>")
 		fmt.Fprintln(os.Stderr, "  complete   <task-id> [--most-recent-commit] [--commit <hash>]")
-		fmt.Fprintln(os.Stderr, "  uncomplete <task-id> <author>")
+		fmt.Fprintln(os.Stderr, "  uncomplete <task-id>")
 		fmt.Fprintln(os.Stderr, "  delete     <task-id>")
 		os.Exit(1)
 	}

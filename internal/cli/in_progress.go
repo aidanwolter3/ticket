@@ -11,15 +11,13 @@ func RunInProgress(args []string, defaultDB string) {
 	s, fs := parseAndOpen(string(model.StatusInProgress), args, defaultDB, nil)
 	defer s.Close()
 
-	if fs.NArg() < 2 {
-		fmt.Fprintln(os.Stderr, "usage: ticket in-progress [--db path] <ticket-id> <author>")
-		fmt.Fprintln(os.Stderr, "  author: agent:<name>")
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: ticket in-progress [--db path] <ticket-id>")
 		os.Exit(1)
 	}
 	ticketID := fs.Arg(0)
-	author := fs.Arg(1)
 
-	if err := s.TransitionTicket(ticketID, model.StatusInProgress, author); err != nil {
+	if err := s.TransitionTicket(ticketID, model.StatusInProgress, "agent:claude"); err != nil {
 		fmt.Fprintf(os.Stderr, "in-progress: %v\n", err)
 		os.Exit(1)
 	}
