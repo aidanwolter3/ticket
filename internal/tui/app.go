@@ -837,7 +837,7 @@ func (a *App) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
 		case "y", "Y":
-			if err := a.store.DeleteTicket(a.pendingDeleteID); err != nil {
+			if err := workflow.Delete(a.store, a.pendingDeleteID); err != nil {
 				a.setErr(err)
 			} else {
 				a.statusMsg = fmt.Sprintf("Deleted %s", a.pendingDeleteID)
