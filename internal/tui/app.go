@@ -280,6 +280,8 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch km.String() {
 			case "ctrl+]":
 				// handled by the list handler below to detach — don't forward
+			case "shift+tab":
+				// handled by the list handler below to cycle agents — don't forward
 			default:
 				a.launcher.WriteToAgent(a.attachSessionID, keyMsgBytes(km)) //nolint:errcheck
 				return a, nil
