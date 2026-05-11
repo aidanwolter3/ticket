@@ -626,8 +626,15 @@ func (v *ReviewPanelView) View() string {
 					if msgW < 1 {
 						msgW = 1
 					}
-					for _, l := range strings.Split(wrapText(msg.Text, msgW), "\n") {
-						allLeftLines = append(allLeftLines, fmt.Sprintf("    %s: %s", author, l))
+					// Continuation indent matches "    <author>: " width.
+					contIndent := strings.Repeat(" ", 4+len(msg.Author)+2)
+					lines := strings.Split(wrapText(msg.Text, msgW), "\n")
+					for i, l := range lines {
+						if i == 0 {
+							allLeftLines = append(allLeftLines, fmt.Sprintf("    %s: %s", author, l))
+						} else {
+							allLeftLines = append(allLeftLines, contIndent+l)
+						}
 					}
 				}
 			}
