@@ -348,6 +348,45 @@ func TestReviewPanel_Nav(t *testing.T) {
 		v = sendKey(v, ">")
 		assert.Equal(t, 4, v.hOffset)
 	})
+
+	t.Run("n jumps to next hunk line", func(t *testing.T) {
+		s := newTestStore(t)
+		ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusInReview}
+		require.NoError(t, s.CreateTicket(ticket))
+		v, err := NewReviewPanelView(s, ticket.ID)
+		require.NoError(t, err)
+		// Use height=6 → bodyH=2; inject 4 lines so maxOffset=2 allows scrolling.
+		v.SetSize(120, 6)
+		v.lines = []renderedLine{
+			{rawText: "regular line"},
+			{rawText: "@@ -1,5 +1,7 @@", isHunk: true},
+			{rawText: "another line"},
+			{rawText: "@@ -10,3 +10,4 @@", isHunk: true},
+		}
+		v.offset = 0
+		v = sendKey(v, "n")
+		assert.Equal(t, 1, v.offset)
+		v = sendKey(v, "n")
+		assert.Equal(t, 2, v.offset, "clamped at maxOffset(len-bodyH=4-2=2)")
+	})
+
+	t.Run("N jumps to prev hunk line", func(t *testing.T) {
+		s := newTestStore(t)
+		ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusInReview}
+		require.NoError(t, s.CreateTicket(ticket))
+		v, err := NewReviewPanelView(s, ticket.ID)
+		require.NoError(t, err)
+		v.SetSize(120, 6)
+		v.lines = []renderedLine{
+			{rawText: "@@ -1,5 +1,7 @@", isHunk: true},
+			{rawText: "regular line"},
+			{rawText: "@@ -10,3 +10,4 @@", isHunk: true},
+			{rawText: "another line"},
+		}
+		v.offset = 2
+		v = sendKey(v, "N")
+		assert.Equal(t, 0, v.offset)
+	})
 }
 
 func TestReviewPanel_Accessors(t *testing.T) {
@@ -505,6 +544,31 @@ func TestReviewPanel_View(t *testing.T) {
 
 		out := stripANSI(v.View())
 		assert.Contains(t, out, "[→resolved]")
+	})
+
+	t.Run("thread with staged reopen shows arrow label", func(t *testing.T) {
+		s := newTestStore(t)
+		ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusInReview}
+		require.NoError(t, s.CreateTicket(ticket))
+		task := &model.Task{TicketID: ticket.ID, Title: "Task", Position: 1}
+		require.NoError(t, s.CreateTask(task))
+		th, err := s.CreateThread(task.ID, "", "")
+		require.NoError(t, err)
+		_, err = s.AddMessage(th.ID, "human:aidan", "msg")
+		require.NoError(t, err)
+		// Set thread to resolved, then stage a reopen action.
+		_, err = s.DB().Exec(`UPDATE comment_threads SET status='resolved' WHERE id=?`, th.ID)
+		require.NoError(t, err)
+		require.NoError(t, s.SetDraftAction(th.ID, ticket.ID, model.DraftActionReopen))
+
+		v, err := NewReviewPanelView(s, ticket.ID)
+		require.NoError(t, err)
+		v.SetSize(120, 40)
+
+		v = sendKey(v, "enter")
+
+		out := stripANSI(v.View())
+		assert.Contains(t, out, "[→open]")
 	})
 
 	t.Run("thread count suffix shows correct counts", func(t *testing.T) {
