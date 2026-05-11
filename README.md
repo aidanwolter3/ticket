@@ -32,6 +32,8 @@ The agent is dispatched by the TUI (`agent.auto_dispatch`) and pre-assigned to a
 
 ```sh
 # ... do the work (agent is pre-assigned via TUI dispatch) ...
+ticket task complete <task-id> --commit <hash>   # or --most-recent-commit
+# for no_commit tasks (verification-only, no code change):
 ticket task complete <task-id>
 ticket in-review T1
 ```
@@ -138,11 +140,12 @@ ticket block <ticket-id> <blocker-id>
 ticket unblock <ticket-id> <blocker-id>
 
 # Tasks
-ticket task add <ticket-id> --title <title> [--description <text>] [--verifiable-result <text>]
+ticket task add <ticket-id> --title <title> [--description <text>] [--verifiable-result <text>] [--no-commit]
 ticket task ls [--json] <ticket-id>
-ticket task update <task-id> [--title <title>] [--description <text>] [--verifiable-result <text>]
+ticket task update <task-id> [--title <title>] [--description <text>] [--verifiable-result <text>] [--no-commit]
 ticket task move <task-id> <position>
-ticket task complete <task-id>
+ticket task complete <task-id> --commit <hash>   # --most-recent-commit also accepted
+ticket task complete <task-id>                   # only for no_commit tasks
 ticket task uncomplete <task-id>
 
 # Review

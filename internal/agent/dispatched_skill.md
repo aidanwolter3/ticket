@@ -58,12 +58,22 @@ Implement each task in order. For each task:
 3. Commit **all changes for this task in a single commit**:
    - Commit on the feature branch (already set up in the worktree).
    - Commit message format: `<ticket-id> <task-id>: <task title>` — e.g. `T-012 TS-003: add argon2 hashing`
-4. Mark the task complete with the commit hash:
-   ```bash
-   ticket task complete <task-id> --most-recent-commit
-   ```
+   - Capture the commit hash immediately after committing:
+     ```bash
+     COMMIT_HASH=$(git rev-parse HEAD)
+     ```
+4. Mark the task complete:
+   - If the task has `no_commit: true` (verification-only, no code change), complete without a hash:
+     ```bash
+     ticket task complete <task-id>
+     ```
+   - Otherwise (the default), record the commit hash:
+     ```bash
+     ticket task complete <task-id> --commit $COMMIT_HASH
+     ```
+     You may also use `--most-recent-commit` as a convenience instead of `--commit $COMMIT_HASH`.
 
-Do not move to the next task until the current task's verifiable result passes, its commit is made, and it is marked complete.
+Do not move to the next task until the current task's verifiable result passes, its commit is made (or the task is `no_commit`), and it is marked complete.
 
 #### For amendments
 
