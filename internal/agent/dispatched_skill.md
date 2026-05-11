@@ -93,7 +93,7 @@ Do not move to the next task until the current task's verifiable result passes, 
 7. For each addressed thread: reply with the description of what changed and flip back to open:
    ```bash
    ticket thread reply <thread-id> agent:claude '<description of what was changed>'
-   ticket thread transition <thread-id> open agent:claude
+   ticket thread transition <thread-id> open
    ```
 
 ### 3. Add a note (if warranted)
@@ -109,7 +109,7 @@ Skip this step if there is nothing non-obvious to say.
 ### 4. Hand off for review
 
 ```bash
-ticket transition <id> in_review agent:claude
+ticket in-review <id>
 ```
 
 ### 5. Report to the user
@@ -127,7 +127,7 @@ Tell the user:
 Transitions `in_review → approved`. Requires no open threads.
 
 ```bash
-ticket approve <id> human:<name>
+ticket approve <id>
 ```
 
 ### ticket merge
@@ -135,7 +135,7 @@ ticket approve <id> human:<name>
 Fast-forward merges the feature branch into main, deletes the branch, removes the worktree, transitions to `merged`.
 
 ```bash
-ticket merge <id> human:<name>
+ticket merge <id>
 ```
 
 Preconditions: ticket is `approved`, all tasks complete, no open threads, `feature_branch` and `repo_path` are set. If the branch has diverged, the command errors — rebase manually then retry.

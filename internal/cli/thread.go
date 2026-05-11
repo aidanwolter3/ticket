@@ -49,9 +49,8 @@ func runThreadTransition(args []string, defaultDB string) {
 	s, fs := parseAndOpen("thread transition", args, defaultDB, nil)
 	defer s.Close()
 
-	if fs.NArg() < 3 {
-		fmt.Fprintln(os.Stderr, "usage: ticket thread transition [--db path] <thread-id> <new-status> <author>")
-		fmt.Fprintln(os.Stderr, "  agents may only transition: ready → active")
+	if fs.NArg() < 2 {
+		fmt.Fprintln(os.Stderr, "usage: ticket thread transition [--db path] <thread-id> <new-status> [author]")
 		os.Exit(1)
 	}
 	threadID := fs.Arg(0)

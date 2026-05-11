@@ -23,7 +23,7 @@ draft → ready → in_progress → in_review → approved → merged
 ticket draft --title "Add login feature" --repo /path/to/repo
 ticket task add T1 --title "Implement JWT auth" --verifiable-result "Tests pass"
 ticket task add T1 --title "Add /login endpoint"
-ticket ready T1 human:alice
+ticket ready T1
 ```
 
 ### 2. Agent: work
@@ -33,7 +33,7 @@ The agent is dispatched by the TUI (`agent.auto_dispatch`) and pre-assigned to a
 ```sh
 # ... do the work (agent is pre-assigned via TUI dispatch) ...
 ticket task complete <task-id>
-ticket transition T1 in_review agent:claude
+ticket in-review T1
 ```
 
 ### 3. Human: review
@@ -44,7 +44,7 @@ Open the TUI (`ticket`) and navigate to the ticket in review. Use the threads sc
 
 ```sh
 # ... address review feedback via the generated amendment tasks ...
-ticket transition T1 in_review agent:claude
+ticket in-review T1
 ```
 
 Repeat steps 3–4 until satisfied.
@@ -53,8 +53,8 @@ Repeat steps 3–4 until satisfied.
 
 ```sh
 # or use TUI keybindings: [a] approve, [m] merge
-ticket approve T1 human:alice
-ticket merge T1 human:alice    # fast-forward merges branch, cleans up worktree
+ticket approve T1
+ticket merge T1    # fast-forward merges branch, cleans up worktree
 ```
 
 ## Installation
