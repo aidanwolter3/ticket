@@ -73,6 +73,74 @@ func approvedTicket(t *testing.T, s *store.Store, repoPath, featureBranch, workt
 	return ticket
 }
 
+func TestDraft_CreatesTicket(t *testing.T) {
+	s := newTestStore(t)
+	ticket, err := Draft(s, "My Ticket", "Some description", "/path/to/repo")
+	require.NoError(t, err)
+	require.NotNil(t, ticket)
+	assert.NotEmpty(t, ticket.ID)
+	assert.Equal(t, "My Ticket", ticket.Title)
+	assert.Equal(t, "Some description", ticket.Description)
+	assert.Equal(t, "/path/to/repo", ticket.RepoPath)
+	assert.Equal(t, model.StatusDraft, ticket.Status)
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, ticket.ID, got.ID)
+}
+
+func TestDelete_HappyPath(t *testing.T) {
+	s := newTestStore(t)
+	ticket, err := Draft(s, "To Delete", "", "")
+	require.NoError(t, err)
+	require.NoError(t, Delete(s, ticket.ID))
+	_, err = s.GetTicket(ticket.ID)
+	assert.Error(t, err)
+}
+
+func TestDelete_BlockedForActiveStatus(t *testing.T) {
+	s := newTestStore(t)
+	ticket := &model.Ticket{Title: "Active", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "t", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
+
+	err := Delete(s, ticket.ID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "in_progress")
+}
+
+func TestUpdate_HappyPath(t *testing.T) {
+	s := newTestStore(t)
+	ticket, err := Draft(s, "Old Title", "Old Desc", "")
+	require.NoError(t, err)
+
+	newTitle := "New Title"
+	newDesc := "New Desc"
+	require.NoError(t, Update(s, ticket.ID, &newTitle, &newDesc))
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "New Title", got.Title)
+	assert.Equal(t, "New Desc", got.Description)
+}
+
+func TestUpdate_PartialUpdate(t *testing.T) {
+	s := newTestStore(t)
+	ticket, err := Draft(s, "Original Title", "Original Desc", "")
+	require.NoError(t, err)
+
+	newTitle := "Updated Title"
+	require.NoError(t, Update(s, ticket.ID, &newTitle, nil))
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated Title", got.Title)
+	assert.Equal(t, "Original Desc", got.Description)
+}
+
 // TestMerge_FastForward verifies that a feature branch that is already an
 // ancestor of main fast-forward merges without any rebase step.
 func TestMerge_FastForward(t *testing.T) {

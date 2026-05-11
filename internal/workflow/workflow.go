@@ -15,6 +15,55 @@ import (
 	"github.com/aidanwolter/ticket/internal/store"
 )
 
+// Draft creates a new ticket in draft status.
+func Draft(s *store.Store, title, description, repoPath string) (*model.Ticket, error) {
+	t := &model.Ticket{
+		Title:       title,
+		Type:        model.TypeTicket,
+		Status:      model.StatusDraft,
+		Description: description,
+		RepoPath:    repoPath,
+	}
+	if err := s.CreateTicket(t); err != nil {
+		return nil, fmt.Errorf("draft: %w", err)
+	}
+	return t, nil
+}
+
+// Delete deletes a ticket. Returns an error if the ticket is in_progress or later.
+func Delete(s *store.Store, ticketID string) error {
+	ticket, err := s.GetTicket(ticketID)
+	if err != nil {
+		return fmt.Errorf("delete: %w", err)
+	}
+	switch ticket.Status {
+	case model.StatusInProgress, model.StatusInReview, model.StatusApproved, model.StatusMerged:
+		return fmt.Errorf("delete: cannot delete ticket %s with status %s", ticketID, ticket.Status)
+	}
+	if err := s.DeleteTicket(ticketID); err != nil {
+		return fmt.Errorf("delete: %w", err)
+	}
+	return nil
+}
+
+// Update updates the title and/or description of a ticket. Pass nil to leave a field unchanged.
+func Update(s *store.Store, ticketID string, title, description *string) error {
+	ticket, err := s.GetTicket(ticketID)
+	if err != nil {
+		return fmt.Errorf("update: %w", err)
+	}
+	if title != nil {
+		ticket.Title = *title
+	}
+	if description != nil {
+		ticket.Description = *description
+	}
+	if err := s.UpdateTicket(ticket); err != nil {
+		return fmt.Errorf("update: %w", err)
+	}
+	return nil
+}
+
 // Promote transitions a draft ticket to ready. If agent.auto_dispatch is true
 // and agent.command is set, an agent is launched automatically using launcher.
 // If launcher is nil, a new one is created (suitable for CLI use where no TUI
