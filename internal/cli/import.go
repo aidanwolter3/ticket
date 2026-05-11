@@ -28,7 +28,6 @@ type importTicket struct {
 	BlockedBy []string       `json:"blocked_by"`
 	Tasks     []importTask   `json:"tasks"`
 	Notes     []importNote   `json:"notes"`
-	Threads   []importThread `json:"threads"` // deprecated: threads now belong to tasks
 }
 
 type importTask struct {
