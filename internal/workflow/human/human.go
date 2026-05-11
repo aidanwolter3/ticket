@@ -1,4 +1,4 @@
-package workflow
+package human
 
 import (
 	"bytes"
@@ -145,22 +145,6 @@ func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, 
 		}
 	}
 
-	return nil
-}
-
-// StartWork transitions a ticket from ready to in_progress.
-func StartWork(s *store.Store, ticketID string) error {
-	if err := s.TransitionTicket(ticketID, model.StatusInProgress); err != nil {
-		return fmt.Errorf("start-work: %w", err)
-	}
-	return nil
-}
-
-// SubmitForReview transitions a ticket from in_progress to in_review.
-func SubmitForReview(s *store.Store, ticketID string) error {
-	if err := s.TransitionTicket(ticketID, model.StatusInReview); err != nil {
-		return fmt.Errorf("submit-for-review: %w", err)
-	}
 	return nil
 }
 
