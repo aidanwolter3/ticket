@@ -715,7 +715,7 @@ func (v *ReviewPanelView) View() string {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
-	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [[] up · []] down · [<>] h-scroll · [n] hunk · [c] comment · [a] approve · [S] submit · [esc] back"
+	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [[]] v-scroll · [<>] h-scroll · [n] hunk · [c] comment · [a] approve · [S] submit · [esc] back"
 	hintLine := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hint)
 
 	return body + "\n" + hintLine
