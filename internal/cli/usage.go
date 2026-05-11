@@ -38,6 +38,8 @@ Usage:
                                               remove that dependency
   ticket ready [--db path] <ticket-id> <author>
                                               promote a draft ticket to ready
+  ticket in-review [--db path] <ticket-id> <author>
+                                              move a ticket from in_progress to in_review (agent-facing)
   ticket redraft [--db path] <ticket-id> <author>
                                               destroy worktree+branch and move ticket back to draft (human only)
 
