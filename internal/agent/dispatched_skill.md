@@ -4,6 +4,8 @@ You have been pre-assigned to ticket **{{TICKET_ID}}**{{WORKTREE_CONTEXT}}. Begi
 
 You are working inside a git worktree at `.worktrees/{{TICKET_ID}}/`. Always run commands from this worktree directory. Never `cd` to the parent repo or the main tree — the worktree is a complete, self-contained checkout of the feature branch.
 
+The harness has already entered the worktree before you started. Do not call `EnterWorktree` or `ExitWorktree` — the harness manages the entire worktree lifecycle. Simply run commands from your current working directory.
+
 Never use `git -C <path>` when your working directory is already that path — run `git` commands directly. The `-C` flag triggers an unnecessary permission prompt when the working directory is already correct.
 
 Never run `git push` or any command that writes to a remote. Pushing is reserved for the human.
@@ -94,12 +96,6 @@ Skip this step if there is nothing non-obvious to say.
 
 ```bash
 ticket transition <id> in_review agent:claude
-```
-
-Then call:
-
-```
-ExitWorktree action:keep
 ```
 
 ### 5. Report to the user
