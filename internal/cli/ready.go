@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/aidanwolter/ticket/internal/model"
-	"github.com/aidanwolter/ticket/internal/workflow"
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
 func RunReady(args []string, defaultDB string) {
@@ -18,7 +18,7 @@ func RunReady(args []string, defaultDB string) {
 	}
 	ticketID := fs.Arg(0)
 
-	if err := workflow.Promote(s, ticketID, nil, os.Stdout, os.Stderr); err != nil {
+	if err := human.Promote(s, ticketID, nil, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}

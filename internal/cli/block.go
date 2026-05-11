@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/aidanwolter/ticket/internal/workflow"
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
 func RunBlock(args []string, defaultDB string) {
@@ -18,7 +18,7 @@ func RunBlock(args []string, defaultDB string) {
 	ticketID := fs.Arg(0)
 	blockerID := fs.Arg(1)
 
-	if err := workflow.BlockTicket(s, ticketID, blockerID); err != nil {
+	if err := human.BlockTicket(s, ticketID, blockerID); err != nil {
 		fmt.Fprintf(os.Stderr, "block failed: %v\n", err)
 		os.Exit(1)
 	}
@@ -37,7 +37,7 @@ func RunUnblock(args []string, defaultDB string) {
 	ticketID := fs.Arg(0)
 	blockerID := fs.Arg(1)
 
-	if err := workflow.UnblockTicket(s, ticketID, blockerID); err != nil {
+	if err := human.UnblockTicket(s, ticketID, blockerID); err != nil {
 		fmt.Fprintf(os.Stderr, "unblock failed: %v\n", err)
 		os.Exit(1)
 	}

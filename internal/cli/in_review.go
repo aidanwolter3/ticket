@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/aidanwolter/ticket/internal/model"
-	"github.com/aidanwolter/ticket/internal/workflow"
+	"github.com/aidanwolter/ticket/internal/workflow/agent"
 )
 
 func RunInReview(args []string, defaultDB string) {
@@ -18,7 +18,7 @@ func RunInReview(args []string, defaultDB string) {
 	}
 	ticketID := fs.Arg(0)
 
-	if err := workflow.SubmitForReview(s, ticketID); err != nil {
+	if err := agent.SubmitForReview(s, ticketID); err != nil {
 		fmt.Fprintf(os.Stderr, "in-review: %v\n", err)
 		os.Exit(1)
 	}

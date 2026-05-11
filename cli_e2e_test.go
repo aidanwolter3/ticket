@@ -11,7 +11,7 @@ import (
 
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
-	"github.com/aidanwolter/ticket/internal/workflow"
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -182,7 +182,7 @@ func TestCLI_CRUD(t *testing.T) {
 	assert.Contains(t, stdout, "Updated Title")
 
 	// note add reflected in get --json
-	_, _, code = run(t, db, "note", "add", "--db", db, ticketID, "agent:test", "test note text")
+	_, _, code = run(t, db, "--agent", "note", "add", "--db", db, ticketID, "agent:test", "test note text")
 	require.Equal(t, 0, code)
 
 	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
@@ -418,7 +418,7 @@ func TestCLI_FullLifecycle(t *testing.T) {
 	require.NoError(t, s.TransitionTicket(ticketID, model.StatusApproved))
 
 	// Step 9: merge directly.
-	require.NoError(t, workflow.Merge(s, ticketID, io.Discard, io.Discard))
+	require.NoError(t, human.Merge(s, ticketID, io.Discard, io.Discard))
 
 	// Step 10: verify merged and worktree directory gone.
 	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)

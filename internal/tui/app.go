@@ -15,7 +15,7 @@ import (
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/aidanwolter/ticket/internal/tui/views"
-	"github.com/aidanwolter/ticket/internal/workflow"
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -336,7 +336,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if a.ticketDetail != nil && a.ticketDetail.Ticket() != nil && a.ticketDetail.Ticket().Status == "draft" {
 				id := a.currentTicketID()
-				if err := workflow.Promote(a.store, id, a.launcher, io.Discard, io.Discard); err != nil {
+				if err := human.Promote(a.store, id, a.launcher, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready", id)
@@ -384,7 +384,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if a.ticketDetail.Ticket().Status != "approved" {
 					a.statusMsg = fmt.Sprintf("%s is not approved", id)
 					a.statusErr = true
-				} else if err := workflow.Merge(a.store, id, io.Discard, io.Discard); err != nil {
+				} else if err := human.Merge(a.store, id, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → merged", id)
@@ -403,7 +403,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 						maxRound = tk.Round
 					}
 				}
-				if _, err := workflow.AddTask(a.store, t.ID,
+				if _, err := human.AddTask(a.store, t.ID,
 					"Sync this worktree so that it has the latest commits from 'main' and fix any merge conflicts",
 					"", "", false, maxRound+1,
 				); err != nil {
@@ -536,7 +536,7 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			if a.threadsView != nil {
 				id := a.threadsView.TicketID()
-				if err := workflow.SubmitReview(a.store, id, "human", nil, io.Discard, io.Discard); err != nil {
+				if err := human.SubmitReview(a.store, id, "human", nil, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready (review submitted)", id)
@@ -694,7 +694,7 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			if a.reviewPanelView != nil {
 				id := a.reviewPanelView.TicketID()
-				if err := workflow.SubmitReview(a.store, id, "human", a.launcher, io.Discard, io.Discard); err != nil {
+				if err := human.SubmitReview(a.store, id, "human", a.launcher, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready (review submitted)", id)
@@ -825,7 +825,7 @@ func (a *App) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
 		case "y", "Y":
-			if err := workflow.Delete(a.store, a.pendingDeleteID); err != nil {
+			if err := human.Delete(a.store, a.pendingDeleteID); err != nil {
 				a.setErr(err)
 			} else {
 				a.statusMsg = fmt.Sprintf("Deleted %s", a.pendingDeleteID)
@@ -852,7 +852,7 @@ func (a *App) updateConfirmRedraft(msg tea.Msg) (tea.Model, tea.Cmd) {
 			id := a.pendingRedraftID
 			a.pendingRedraftID = ""
 			a.screen = screenList
-			if err := workflow.Redraft(a.store, id, io.Discard, io.Discard); err != nil {
+			if err := human.Redraft(a.store, id, io.Discard, io.Discard); err != nil {
 				a.setErr(err)
 			} else {
 				a.statusMsg = fmt.Sprintf("%s → draft", id)

@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/aidanwolter/ticket/internal/model"
-	"github.com/aidanwolter/ticket/internal/workflow"
+	"github.com/aidanwolter/ticket/internal/workflow/agent"
 )
 
 func RunInProgress(args []string, defaultDB string) {
@@ -18,7 +18,7 @@ func RunInProgress(args []string, defaultDB string) {
 	}
 	ticketID := fs.Arg(0)
 
-	if err := workflow.StartWork(s, ticketID); err != nil {
+	if err := agent.StartWork(s, ticketID); err != nil {
 		fmt.Fprintf(os.Stderr, "in-progress: %v\n", err)
 		os.Exit(1)
 	}

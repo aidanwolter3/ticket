@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/aidanwolter/ticket/internal/workflow"
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
 func RunUpdate(args []string, defaultDB string) {
@@ -37,7 +37,7 @@ func RunUpdate(args []string, defaultDB string) {
 		descPtr = description
 	}
 
-	if err := workflow.Update(s, ticketID, titlePtr, descPtr); err != nil {
+	if err := human.Update(s, ticketID, titlePtr, descPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "update ticket: %v\n", err)
 		os.Exit(1)
 	}

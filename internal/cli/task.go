@@ -7,7 +7,8 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/aidanwolter/ticket/internal/workflow"
+	"github.com/aidanwolter/ticket/internal/workflow/agent"
+	"github.com/aidanwolter/ticket/internal/workflow/human"
 )
 
 func RunTask(args []string, defaultDB string) {
@@ -86,7 +87,7 @@ func runTaskAdd(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	task, err := workflow.AddTask(s, ticketID, *title, *description, *verifiableResult, *noCommit, 0)
+	task, err := human.AddTask(s, ticketID, *title, *description, *verifiableResult, *noCommit, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "create task: %v\n", err)
 		os.Exit(1)
@@ -216,7 +217,7 @@ func runTaskDelete(args []string, defaultDB string) {
 	}
 	taskID := fs.Arg(0)
 
-	if err := workflow.DeleteTask(s, taskID); err != nil {
+	if err := human.DeleteTask(s, taskID); err != nil {
 		fmt.Fprintf(os.Stderr, "delete task: %v\n", err)
 		os.Exit(1)
 	}
@@ -247,11 +248,11 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 
 	var err error
 	if undo {
-		err = workflow.UncompleteTask(s, taskID)
+		err = agent.UncompleteTask(s, taskID)
 	} else if *mostRecentCommit {
-		err = workflow.CompleteTaskMostRecentCommit(s, taskID)
+		err = agent.CompleteTaskMostRecentCommit(s, taskID)
 	} else if *commitHash != "" {
-		err = workflow.CompleteTask(s, taskID, *commitHash)
+		err = agent.CompleteTask(s, taskID, *commitHash)
 	} else {
 		task, getErr := s.GetTask(taskID)
 		if getErr != nil {
@@ -259,7 +260,7 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 			os.Exit(1)
 		}
 		if task.NoCommit {
-			err = workflow.CompleteTask(s, taskID, "")
+			err = agent.CompleteTask(s, taskID, "")
 		} else {
 			fmt.Fprintf(os.Stderr, "error: task %s requires a commit hash; use --commit <hash> or --most-recent-commit\n", taskID)
 			fmt.Fprintf(os.Stderr, "       (use --no-commit on task add/update to mark a task as commit-free)\n")
@@ -318,7 +319,7 @@ func runTaskUpdate(args []string, defaultDB string) {
 	if noCommitSet {
 		noCommitPtr = noCommit
 	}
-	if err := workflow.UpdateTask(s, taskID, titlePtr, descPtr, vrPtr, noCommitPtr); err != nil {
+	if err := human.UpdateTask(s, taskID, titlePtr, descPtr, vrPtr, noCommitPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "update task: %v\n", err)
 		os.Exit(1)
 	}
@@ -376,7 +377,7 @@ func runTaskMove(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	if err := workflow.MoveTask(s, taskID, newPos); err != nil {
+	if err := human.MoveTask(s, taskID, newPos); err != nil {
 		fmt.Fprintf(os.Stderr, "move task: %v\n", err)
 		os.Exit(1)
 	}

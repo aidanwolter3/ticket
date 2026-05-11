@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+
+	"github.com/aidanwolter/ticket/internal/workflow/agent"
 )
 
 func RunNote(args []string, defaultDB string) {
@@ -32,10 +34,10 @@ func runNoteAdd(args []string, defaultDB string) {
 	author := fs.Arg(1)
 	text := fs.Arg(2)
 
-	note, err := s.AddNote(ticketID, author, text)
+	noteID, err := agent.AddNote(s, ticketID, author, text)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "note add failed: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println(note.ID)
+	fmt.Println(noteID)
 }
