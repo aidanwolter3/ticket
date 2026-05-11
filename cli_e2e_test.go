@@ -429,3 +429,82 @@ func TestCLI_FullLifecycle(t *testing.T) {
 	_, statErr := os.Stat(worktreePath)
 	assert.True(t, os.IsNotExist(statErr), "worktree directory should not exist after merge")
 }
+
+func TestCLI_BlockingEnforcement(t *testing.T) {
+	if globalBuildFailed || globalTicketBin == "" || globalEchoAgent == "" {
+		t.Skip("ticket or echo_agent binary could not be built")
+	}
+
+	db, s := newTestDB(t)
+	repoPath := cliGitRepo(t)
+
+	// Step 1: create two tickets via CLI.
+	stdout, _, code := run(t, db, "draft", "--db", db, "--title", "Blocker ticket", "--repo", repoPath)
+	require.Equal(t, 0, code)
+	id1 := strings.TrimSpace(stdout)
+
+	stdout, _, code = run(t, db, "draft", "--db", db, "--title", "Dependent ticket", "--repo", repoPath)
+	require.Equal(t, 0, code)
+	id2 := strings.TrimSpace(stdout)
+
+	// Add tasks to both so they can transition to ready.
+	task1 := &model.Task{TicketID: id1, Title: "work", Position: 1}
+	require.NoError(t, s.CreateTask(task1))
+	task2 := &model.Task{TicketID: id2, Title: "work", Position: 1}
+	require.NoError(t, s.CreateTask(task2))
+
+	// Step 2: block id2 by id1 via CLI.
+	_, _, code = run(t, db, "block", "--db", db, id2, id1)
+	require.Equal(t, 0, code)
+
+	// Step 3: seed agent config via store.
+	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+	require.NoError(t, s.ConfigSet("agent.command", globalEchoAgent+" {}"))
+
+	// Step 4: ticket ready id2 → exits 0 (ready transition succeeds).
+	// Promote checks blockers, sees id1 is draft (not approved/merged), skips auto-dispatch.
+	_, _, code = run(t, db, "ready", "--db", db, id2)
+	require.Equal(t, 0, code)
+
+	// Step 5: verify status=ready and no agent session.
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", id2)
+	require.Equal(t, 0, code)
+	tj := decodeJSON(t, stdout)
+	assert.Equal(t, "ready", tj["status"])
+
+	sess, err := s.GetAgentSessionByTicket(id2)
+	require.NoError(t, err)
+	assert.Nil(t, sess, "no agent session should be created when blocker is unresolved")
+
+	// Reset id2 to draft so we can call "ticket ready" again.
+	require.NoError(t, s.TransitionTicket(id2, model.StatusDraft))
+
+	// Step 6: unblock id2 from id1.
+	_, _, code = run(t, db, "unblock", "--db", db, id2, id1)
+	require.Equal(t, 0, code)
+
+	// Step 7: advance id1 to merged via store so the blocker is satisfied.
+	require.NoError(t, s.CompleteTask(task1.ID))
+	for _, st := range []model.Status{
+		model.StatusReady, model.StatusInProgress, model.StatusInReview,
+		model.StatusApproved, model.StatusMerged,
+	} {
+		require.NoError(t, s.TransitionTicket(id1, st))
+	}
+
+	// Step 8: ticket ready id2 → exits 0; this time Promote sees no blockers and
+	// launches echo_agent.
+	_, _, code = run(t, db, "ready", "--db", db, id2)
+	require.Equal(t, 0, code)
+
+	// Step 9: verify agent session exists.
+	sess, err = s.GetAgentSessionByTicket(id2)
+	require.NoError(t, err)
+	assert.NotNil(t, sess, "agent session should be created when blockers are satisfied")
+
+	// Step 10: verify status=in_progress (Promote auto-transitions after agent launch).
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", id2)
+	require.Equal(t, 0, code)
+	tj = decodeJSON(t, stdout)
+	assert.Equal(t, "in_progress", tj["status"])
+}
