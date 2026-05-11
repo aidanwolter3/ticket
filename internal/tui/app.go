@@ -438,6 +438,25 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				a.statusMsg = fmt.Sprintf("%s → ready (resolve-conflicts task added)", t.ID)
 				a.statusErr = false
+				autoDispatch, _, _ := a.store.ConfigGet("agent.auto_dispatch")
+				cmdTemplate, _, _ := a.store.ConfigGet("agent.command")
+				if autoDispatch == "true" && cmdTemplate != "" {
+					existing, _ := a.store.GetAgentSessionByTicket(t.ID)
+					if existing == nil {
+						if prompt, pErr := agent.BuildPrompt(cmdTemplate); pErr == nil {
+							if _, launchErr := a.launcher.Launch(t.ID, t.WorktreePath, prompt); launchErr != nil {
+								a.statusMsg = fmt.Sprintf("auto-dispatch failed: %v", launchErr)
+								a.statusErr = true
+							} else {
+								if transErr := a.store.TransitionTicket(t.ID, model.StatusInProgress); transErr != nil {
+									a.statusMsg = fmt.Sprintf("auto-dispatch: transition in_progress: %v", transErr)
+									a.statusErr = true
+								}
+								a.store.AddNote(t.ID, "agent:claude", "Agent auto-dispatched") //nolint:errcheck
+							}
+						}
+					}
+				}
 				a.ticketsView.Refresh()
 				a.loadCurrentDetail()
 			}

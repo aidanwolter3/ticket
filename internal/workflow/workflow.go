@@ -146,6 +146,9 @@ func SubmitReview(s *store.Store, ticketID string, author string, launcher *agen
 						if _, launchErr := launcher.Launch(ticketID, ticket.WorktreePath, prompt); launchErr != nil {
 							fmt.Fprintf(stderr, "auto-dispatch: launch failed: %v\n", launchErr)
 						} else {
+							if transErr := s.TransitionTicket(ticketID, model.StatusInProgress); transErr != nil {
+								fmt.Fprintf(stderr, "auto-dispatch: transition in_progress: %v\n", transErr)
+							}
 							s.AddNote(ticketID, "agent:claude", "Agent auto-dispatched") //nolint:errcheck
 						}
 					}
