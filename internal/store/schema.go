@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   feature_branch TEXT NOT NULL DEFAULT '',
   worktree_path  TEXT,
   repo_path      TEXT,
+  backlog        INTEGER NOT NULL DEFAULT 0,
   created        INTEGER NOT NULL,
   updated        INTEGER NOT NULL
 );

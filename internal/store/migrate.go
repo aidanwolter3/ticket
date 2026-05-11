@@ -77,6 +77,14 @@ func (s *Store) runMigrations() error {
 			return fmt.Errorf("record migration 7: %w", err)
 		}
 	}
+	if current < 8 {
+		if err := s.migration8(); err != nil {
+			return fmt.Errorf("migration 8: %w", err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO schema_migrations (version, applied) VALUES (8, ?)`, time.Now().UnixMilli()); err != nil {
+			return fmt.Errorf("record migration 8: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -742,6 +750,26 @@ func (s *Store) migration7() error {
 		return nil
 	}
 	_, err = s.db.Exec(`ALTER TABLE tasks ADD COLUMN no_commit INTEGER NOT NULL DEFAULT 0`)
+	return err
+}
+
+// migration8 adds the backlog column (default 0) to the tickets table.
+func (s *Store) migration8() error {
+	ticketsExists, err := s.hasTable("tickets")
+	if err != nil {
+		return err
+	}
+	if !ticketsExists {
+		return nil
+	}
+	has, err := s.hasColumn("tickets", "backlog")
+	if err != nil {
+		return err
+	}
+	if has {
+		return nil
+	}
+	_, err = s.db.Exec(`ALTER TABLE tickets ADD COLUMN backlog INTEGER NOT NULL DEFAULT 0`)
 	return err
 }
 

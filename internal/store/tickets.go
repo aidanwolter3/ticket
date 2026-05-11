@@ -204,7 +204,7 @@ func (s *Store) DeleteTicket(id string) error {
 func (s *Store) GetTicket(id string) (*model.Ticket, error) {
 	row := s.db.QueryRow(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
+		       COALESCE(worktree_path,''), COALESCE(repo_path,''), backlog, created, updated
 		FROM tickets WHERE id=?`, id)
 	t, err := scanTicket(row)
 	if err == sql.ErrNoRows {
@@ -229,8 +229,8 @@ func (s *Store) ListTickets(filter ...model.Status) ([]*model.Ticket, error) {
 	var args []interface{}
 	if len(filter) == 0 {
 		query = `SELECT id, title, description, type, status, feature_branch,
-		               COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
-		         FROM tickets ORDER BY created`
+		               COALESCE(worktree_path,''), COALESCE(repo_path,''), backlog, created, updated
+		         FROM tickets WHERE backlog=0 ORDER BY created`
 	} else {
 		placeholders := make([]string, len(filter))
 		for i, f := range filter {
@@ -238,8 +238,8 @@ func (s *Store) ListTickets(filter ...model.Status) ([]*model.Ticket, error) {
 			args = append(args, string(f))
 		}
 		query = fmt.Sprintf(`SELECT id, title, description, type, status, feature_branch,
-		               COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
-		         FROM tickets WHERE status IN (%s) ORDER BY created`,
+		               COALESCE(worktree_path,''), COALESCE(repo_path,''), backlog, created, updated
+		         FROM tickets WHERE backlog=0 AND status IN (%s) ORDER BY created`,
 			strings.Join(placeholders, ","))
 	}
 	rows, err := s.db.Query(query, args...)
@@ -275,7 +275,7 @@ func (s *Store) ListTickets(filter ...model.Status) ([]*model.Ticket, error) {
 func (s *Store) BlockingTickets(blockerID string) ([]*model.Ticket, error) {
 	rows, err := s.db.Query(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(worktree_path,''), COALESCE(repo_path,''), created, updated
+		       COALESCE(worktree_path,''), COALESCE(repo_path,''), backlog, created, updated
 		FROM tickets
 		WHERE id IN (SELECT ticket_id FROM blocked_by WHERE blocker_id=?)
 		ORDER BY created`, blockerID)
@@ -339,19 +339,21 @@ func (s *Store) loadBlockedBy(t *model.Ticket) error {
 
 func scanTicket(r scanner) (*model.Ticket, error) {
 	var (
-		t         model.Ticket
-		typeStr   string
-		statusStr string
-		createdMs int64
-		updatedMs int64
+		t          model.Ticket
+		typeStr    string
+		statusStr  string
+		backlogInt int
+		createdMs  int64
+		updatedMs  int64
 	)
 	err := r.Scan(&t.ID, &t.Title, &t.Description, &typeStr, &statusStr,
-		&t.FeatureBranch, &t.WorktreePath, &t.RepoPath, &createdMs, &updatedMs)
+		&t.FeatureBranch, &t.WorktreePath, &t.RepoPath, &backlogInt, &createdMs, &updatedMs)
 	if err != nil {
 		return nil, err
 	}
 	t.Type = model.TicketType(typeStr)
 	t.Status = model.Status(statusStr)
+	t.Backlog = backlogInt != 0
 	t.Created = fromMs(createdMs)
 	t.Updated = fromMs(updatedMs)
 	return &t, nil

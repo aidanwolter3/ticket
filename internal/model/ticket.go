@@ -25,6 +25,7 @@ type Ticket struct {
 	Description   string
 	Type          TicketType
 	Status        Status
+	Backlog       bool
 	FeatureBranch string
 	WorktreePath  string
 	RepoPath      string
