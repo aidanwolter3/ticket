@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/aidanwolter/ticket/internal/store"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // run executes globalTicketBin with args, capturing stdout and stderr separately.
@@ -44,6 +47,14 @@ func newTestDB(t *testing.T) (string, *store.Store) {
 	return dbPath, s
 }
 
+// decodeJSON unmarshals raw JSON into a map for field inspection.
+func decodeJSON(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	var out map[string]any
+	require.NoError(t, json.Unmarshal([]byte(raw), &out), "decode JSON")
+	return out
+}
+
 // cliGitRepo creates a temp directory with an initialized git repo containing
 // one commit on 'main'. Returns the repo path.
 func cliGitRepo(t *testing.T) string {
@@ -67,4 +78,177 @@ func cliGitRepo(t *testing.T) string {
 	git("add", ".")
 	git("commit", "-m", "initial")
 	return dir
+}
+
+func TestCLI_CRUD(t *testing.T) {
+	if globalBuildFailed || globalTicketBin == "" {
+		t.Skip("ticket binary could not be built")
+	}
+
+	db, _ := newTestDB(t)
+	repoPath := t.TempDir()
+
+	// draft
+	stdout, _, code := run(t, db, "draft", "--db", db, "--title", "First Ticket", "--repo", repoPath)
+	require.Equal(t, 0, code, "draft should exit 0")
+	ticketID := strings.TrimSpace(stdout)
+	require.NotEmpty(t, ticketID)
+
+	// ls
+	stdout, _, code = run(t, db, "ls", "--db", db)
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, ticketID)
+
+	// ls --status filter
+	stdout, _, code = run(t, db, "ls", "--db", db, "--status", "draft")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, ticketID)
+
+	stdout, _, code = run(t, db, "ls", "--db", db, "--status", "ready")
+	require.Equal(t, 0, code)
+	assert.NotContains(t, stdout, ticketID)
+
+	// get plain text
+	stdout, _, code = run(t, db, "get", "--db", db, ticketID)
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, ticketID)
+	assert.Contains(t, stdout, "First Ticket")
+
+	// get --json round-trip
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj := decodeJSON(t, stdout)
+	assert.Equal(t, ticketID, tj["id"])
+	assert.Equal(t, "First Ticket", tj["title"])
+	assert.Equal(t, "draft", tj["status"])
+
+	// task add
+	stdout, _, code = run(t, db, "task", "add", ticketID, "--db", db, "--title", "Do the work")
+	require.Equal(t, 0, code)
+	taskID := strings.TrimSpace(stdout)
+	require.NotEmpty(t, taskID)
+
+	// task ls
+	stdout, _, code = run(t, db, "task", "ls", "--db", db, ticketID)
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, taskID)
+
+	// task ls --json
+	stdout, _, code = run(t, db, "task", "ls", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	var tasks []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &tasks))
+	require.Len(t, tasks, 1)
+	assert.Equal(t, taskID, tasks[0]["id"])
+	assert.Equal(t, "Do the work", tasks[0]["title"])
+
+	// task update
+	stdout, _, code = run(t, db, "task", "update", taskID, "--db", db, "--title", "Updated task")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, taskID)
+
+	stdout, _, code = run(t, db, "task", "ls", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	require.NoError(t, json.Unmarshal([]byte(stdout), &tasks))
+	assert.Equal(t, "Updated task", tasks[0]["title"])
+
+	// task move (position 1 → 1, no-op, should succeed)
+	_, _, code = run(t, db, "task", "move", taskID, "--db", db, "1")
+	require.Equal(t, 0, code)
+
+	// task add extra + task delete
+	stdout, _, code = run(t, db, "task", "add", ticketID, "--db", db, "--title", "Extra task")
+	require.Equal(t, 0, code)
+	extraTaskID := strings.TrimSpace(stdout)
+
+	_, _, code = run(t, db, "task", "delete", "--db", db, extraTaskID)
+	require.Equal(t, 0, code)
+
+	stdout, _, code = run(t, db, "task", "ls", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	require.NoError(t, json.Unmarshal([]byte(stdout), &tasks))
+	require.Len(t, tasks, 1, "extra task should be deleted")
+
+	// update ticket title
+	stdout, _, code = run(t, db, "update", ticketID, "--db", db, "--title", "Updated Title")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, ticketID)
+
+	stdout, _, code = run(t, db, "get", "--db", db, ticketID)
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "Updated Title")
+
+	// note add reflected in get --json
+	_, _, code = run(t, db, "note", "add", "--db", db, ticketID, "agent:test", "test note text")
+	require.Equal(t, 0, code)
+
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj = decodeJSON(t, stdout)
+	notes, _ := tj["notes"].([]any)
+	require.NotEmpty(t, notes)
+	firstNote := notes[0].(map[string]any)
+	assert.Equal(t, "test note text", firstNote["text"])
+
+	// block / unblock reflected in blocked_by
+	stdout, _, code = run(t, db, "draft", "--db", db, "--title", "Blocker", "--repo", repoPath)
+	require.Equal(t, 0, code)
+	blockerID := strings.TrimSpace(stdout)
+
+	_, _, code = run(t, db, "block", "--db", db, ticketID, blockerID)
+	require.Equal(t, 0, code)
+
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj = decodeJSON(t, stdout)
+	blockedBy, _ := tj["blocked_by"].([]any)
+	require.Contains(t, blockedBy, blockerID)
+
+	_, _, code = run(t, db, "unblock", "--db", db, ticketID, blockerID)
+	require.Equal(t, 0, code)
+
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj = decodeJSON(t, stdout)
+	blockedBy, _ = tj["blocked_by"].([]any)
+	assert.Empty(t, blockedBy)
+
+	// config set / get roundtrip
+	_, _, code = run(t, db, "config", "set", "--db", db, "worktrees", "false")
+	require.Equal(t, 0, code)
+
+	stdout, _, code = run(t, db, "config", "get", "--db", db, "worktrees")
+	require.Equal(t, 0, code)
+	assert.Equal(t, "false\n", stdout)
+
+	// import from JSON file → tickets appear in ls
+	importJSON := `{"tickets": [{"title": "Imported Ticket", "repo_path": "` + repoPath + `"}]}`
+	importFile := filepath.Join(t.TempDir(), "import.json")
+	require.NoError(t, os.WriteFile(importFile, []byte(importJSON), 0644))
+
+	stdout, _, code = run(t, db, "import", "--db", db, importFile)
+	require.Equal(t, 0, code)
+
+	stdout, _, code = run(t, db, "ls", "--db", db)
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "Imported Ticket")
+
+	// delete (draft only) — ticketID is still draft
+	_, _, code = run(t, db, "delete", "--db", db, ticketID)
+	require.Equal(t, 0, code)
+
+	stdout, _, code = run(t, db, "ls", "--db", db)
+	require.Equal(t, 0, code)
+	assert.NotContains(t, stdout, ticketID)
+
+	// delete enforcement: non-draft ticket should fail
+	stdout, _, code = run(t, db, "draft", "--db", db, "--title", "Non-deletable", "--repo", repoPath)
+	require.Equal(t, 0, code)
+	ndID := strings.TrimSpace(stdout)
+	_, _, code = run(t, db, "task", "add", ndID, "--db", db, "--title", "task")
+	require.Equal(t, 0, code)
+	_, _, code = run(t, db, "ready", "--db", db, ndID)
+	require.Equal(t, 0, code)
+	_, _, code = run(t, db, "delete", "--db", db, ndID)
+	assert.NotEqual(t, 0, code, "delete of a ready ticket should fail")
 }
