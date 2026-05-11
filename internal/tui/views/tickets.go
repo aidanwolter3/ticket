@@ -299,8 +299,16 @@ func (v *TicketsView) View() string {
 		if v.showBacklog {
 			backlogHint = "[B] hide backlog"
 		}
+		backlogToggleHint := ""
+		if sel := v.SelectedTicket(); sel != nil && sel.Status == model.StatusDraft {
+			if sel.Backlog {
+				backlogToggleHint = " · [b] unbacklog"
+			} else {
+				backlogToggleHint = " · [b] backlog"
+			}
+		}
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-			"[↑↓/jk] · [D] delete · " + mergedHint + " · " + backlogHint))
+			"[↑↓/jk] · [D] delete · " + mergedHint + " · " + backlogHint + backlogToggleHint))
 	}
 
 	return sb.String()

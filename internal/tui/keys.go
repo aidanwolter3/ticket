@@ -19,25 +19,27 @@ var Keys = GlobalKeys{
 }
 
 type ListKeys struct {
-	Up     key.Binding
-	Down   key.Binding
-	Delete key.Binding
-	Back   key.Binding
-	Status key.Binding
-	Thread key.Binding
-	Review key.Binding
-	Stack  key.Binding
+	Up      key.Binding
+	Down    key.Binding
+	Delete  key.Binding
+	Back    key.Binding
+	Status  key.Binding
+	Thread  key.Binding
+	Review  key.Binding
+	Stack   key.Binding
+	Backlog key.Binding
 }
 
 var ListBindings = ListKeys{
-	Up:     key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-	Down:   key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-	Delete: key.NewBinding(key.WithKeys("D"), key.WithHelp("D", "delete")),
-	Back:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-	Status: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "change status")),
-	Thread: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "threads")),
-	Review: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "review")),
-	Stack:  key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "stack view")),
+	Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+	Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+	Delete:  key.NewBinding(key.WithKeys("D"), key.WithHelp("D", "delete")),
+	Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+	Status:  key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "change status")),
+	Thread:  key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "threads")),
+	Review:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "review")),
+	Stack:   key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "stack view")),
+	Backlog: key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "backlog toggle")),
 }
 
 type ThreadKeys struct {

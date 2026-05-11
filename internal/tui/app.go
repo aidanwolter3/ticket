@@ -442,6 +442,23 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Tab-specific list actions
 		switch km.String() {
+		case "b":
+			if t := a.ticketsView.SelectedTicket(); t != nil && t.Status == model.StatusDraft {
+				newVal := !t.Backlog
+				if err := a.wf.SetBacklog(t.ID, newVal); err != nil {
+					a.setErr(err)
+				} else {
+					if newVal {
+						a.statusMsg = fmt.Sprintf("%s → backlog", t.ID)
+					} else {
+						a.statusMsg = fmt.Sprintf("%s → active", t.ID)
+					}
+					a.statusErr = false
+					a.ticketsView.Refresh()
+					a.loadCurrentDetail()
+				}
+			}
+			return a, nil
 		case "D":
 			if t := a.ticketsView.SelectedTicket(); t != nil {
 				a.pendingDeleteID = t.ID
