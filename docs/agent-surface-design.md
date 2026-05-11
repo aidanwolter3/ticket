@@ -39,19 +39,23 @@ scoping which commands are visible.
 
 ### Agent-only commands (hidden from human help)
 
-| Command | Transition |
+| Command | Transition / Effect |
 |---|---|
 | `in-progress` | ready → in_progress |
 | `in-review` | in_progress → in_review |
 | `task complete` | marks task done, records commit hash |
 | `task uncomplete` | reverses completion |
 | `task set-commit` | updates commit hash after autosquash rebase |
+| `note add` | adds a note to a ticket |
 
 ### Shared commands (remain in both surfaces)
 
-`ls`, `get`, `note add`, `thread reply`, `thread transition`, `task ls`, `task get`
+`ls`, `get`, `thread reply`, `thread transition`, `task ls`, `task get`
 are kept accessible without `--agent` because humans use them interactively and agents
 use them for reads or shared writes (e.g. posting amendment replies).
+
+`note add` was previously shared but is now gated behind `--agent` to enforce least-privilege
+boundaries; agents must use `ticket --agent note add`.
 
 ### Migration plan
 
@@ -63,3 +67,33 @@ use them for reads or shared writes (e.g. posting amendment replies).
   (TS-342) before the feature lands, so there is no window where old invocations break.
 - No deprecation warning or compatibility shim is needed — all call sites are in
   version-controlled skill files that are updated atomically with the implementation.
+
+## Workflow package architecture
+
+After the refactor, the orchestration layer is split into two subpackages:
+
+```
+internal/workflow/
+  human/   — all operations available to CLI and TUI: Draft, Ready, Redraft, Merge,
+              task/thread management, config, and read-only store proxies.
+              Also exposes agent-transition methods (StartWork, SubmitForReview,
+              CompleteTask, AddNote) so the CLI layer has a single workflow entry point.
+  agent/   — standalone agent workflow functions that operate directly on the store;
+              used internally by the human workflow or independently in tests.
+```
+
+### Least-privilege enforcement
+
+- `internal/cli/` and `internal/tui/` import only `internal/workflow/human` — never
+  `internal/store` directly. A `depguard` linter rule enforces this boundary.
+- The `human.Workflow` struct owns the `*store.Store` and exposes only typed methods;
+  no raw store handle leaks out to CLI or TUI callers.
+- Agent-only commands (in-progress, in-review, task complete, etc.) are routed through
+  `runAgent()` in `main.go` and dispatched to `cli.RunInProgress`, `cli.RunInReview`,
+  `cli.RunAgentTask`, and `cli.RunNote` — all of which accept `*human.Workflow`.
+
+### Approve and merge (human-only, TUI-only)
+
+`ticket approve` and `ticket merge` are not exposed as CLI subcommands. Humans approve
+and merge tickets via the TUI (`[a]` and `[m]` keybindings). The workflow logic lives in
+`internal/workflow/human.Merge()`; there is no CLI shim.
