@@ -1005,7 +1005,7 @@ func (a *App) updateNewThreadModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if _, err := a.store.AddDraftMessage(dt.ID, ticketID, false, a.newThreadModal.Author(), a.newThreadModal.Text()); err != nil {
 					a.setErr(err)
 				} else {
-					a.statusMsg = "Thread staged (submit with [S] in review panel)"
+					a.statusMsg = "Thread staged (submit with [ctrl+s] in review panel)"
 					a.statusErr = false
 					if a.threadsView != nil {
 						a.threadsView.Reload()
