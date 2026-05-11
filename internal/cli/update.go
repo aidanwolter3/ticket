@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
 func RunUpdate(args []string, defaultDB string) {
@@ -27,20 +29,15 @@ func RunUpdate(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	ticket, err := s.GetTicket(ticketID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
-	}
-
+	var titlePtr, descPtr *string
 	if titleSet {
-		ticket.Title = *title
+		titlePtr = title
 	}
 	if descSet {
-		ticket.Description = *description
+		descPtr = description
 	}
 
-	if err := s.UpdateTicket(ticket); err != nil {
+	if err := workflow.Update(s, ticketID, titlePtr, descPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "update ticket: %v\n", err)
 		os.Exit(1)
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/aidanwolter/ticket/internal/model"
+	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
 func RunDraft(args []string, defaultDB string) {
@@ -42,14 +43,8 @@ func RunDraft(args []string, defaultDB string) {
 		desc = strings.Join(lines, "\n")
 	}
 
-	t := &model.Ticket{
-		Title:       *title,
-		Type:        model.TypeTicket,
-		Status:      model.StatusDraft,
-		Description: desc,
-		RepoPath:    *repo,
-	}
-	if err := s.CreateTicket(t); err != nil {
+	t, err := workflow.Draft(s, *title, desc, *repo)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "create ticket: %v\n", err)
 		os.Exit(1)
 	}

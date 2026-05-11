@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+
+	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
 func RunDelete(args []string, defaultDB string) {
@@ -15,7 +17,7 @@ func RunDelete(args []string, defaultDB string) {
 	}
 	id := fs.Arg(0)
 
-	if err := s.DeleteTicket(id); err != nil {
+	if err := workflow.Delete(s, id); err != nil {
 		fmt.Fprintf(os.Stderr, "delete failed: %v\n", err)
 		os.Exit(1)
 	}
