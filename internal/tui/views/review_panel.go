@@ -532,6 +532,16 @@ func (v *ReviewPanelView) jumpToNextHunk() {
 	}
 }
 
+func (v *ReviewPanelView) jumpToPrevHunk() {
+	for i := v.offset - 1; i >= 0; i-- {
+		if v.lines[i].isHunk {
+			v.offset = i
+			v.clampOffset()
+			return
+		}
+	}
+}
+
 // toggleThreadExpansion expands or collapses threads for the task at the current cursor.
 func (v *ReviewPanelView) toggleThreadExpansion() {
 	if v.leftCursor >= len(v.leftItems) {
@@ -591,6 +601,8 @@ func (v *ReviewPanelView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			v.clampOffset()
 		case "n":
 			v.jumpToNextHunk()
+		case "N":
+			v.jumpToPrevHunk()
 		case "<":
 			v.hOffset -= 4
 			v.clampHOffset()
@@ -833,7 +845,7 @@ func (v *ReviewPanelView) View() string {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
-	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [e] edit draft · [[]] v-scroll · [<>] h-scroll · [n] hunk · [c] comment · [a] approve · [ctrl+s] submit · [esc] back"
+	hint := "[↑↓/jk] navigate · [enter] expand · [r] reply · [x] resolve · [e] edit draft · [[]] v-scroll · [<>] h-scroll · [n/N] hunk · [c] comment · [a] approve · [ctrl+s] submit · [esc] back"
 	hintLine := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(hint)
 
 	return body + "\n" + hintLine
