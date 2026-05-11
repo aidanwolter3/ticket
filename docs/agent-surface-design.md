@@ -29,7 +29,7 @@ scoping which commands are visible.
 
 `ticket --help` (default, human mode):
 - Shows TUI, draft, import, ls, get, update, ready, redraft, note, thread, task (human
-  subcommands only), block, unblock, config, delete, purge, review-submit, agent clear.
+  subcommands only), block, unblock, config, delete, purge, agent clear.
 - Does NOT show: in-progress, in-review, task complete, task uncomplete, task set-commit.
 
 `ticket --agent --help`:

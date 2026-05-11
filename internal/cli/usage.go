@@ -39,8 +39,6 @@ Usage:
                                               promote a draft ticket to ready
   ticket redraft [--db path] <ticket-id> <author>
                                               destroy worktree+branch and move ticket back to draft (human only)
-  ticket review-submit [--db path] <id> <author>
-                                              flip all active threads→needs_attention and ticket→ready (human only)
   ticket config set [--db path] <key> <value> set a config value
   ticket config get [--db path] <key>         get a config value (worktrees defaults to true)
   ticket config ls  [--db path]               list all config settings with defaults

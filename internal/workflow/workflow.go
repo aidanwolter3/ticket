@@ -204,38 +204,6 @@ func createAmendmentTasks(s *store.Store, ticketID string, naThreadIDs []string)
 	return nil
 }
 
-// ReviewSubmit atomically flips all active threads to ready and transitions the
-// ticket from in_review to ready. Returns an error if there are no active
-// threads. stdout and stderr are accepted for interface symmetry but are unused;
-// pass io.Discard.
-func ReviewSubmit(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
-	threads, err := s.GetThreadsForTicket(ticketID)
-	if err != nil {
-		return fmt.Errorf("review-submit: load threads: %w", err)
-	}
-
-	var openIDs []string
-	for _, th := range threads {
-		if th.Status == model.ThreadOpen {
-			openIDs = append(openIDs, th.ID)
-		}
-	}
-	if len(openIDs) == 0 {
-		return fmt.Errorf("review-submit requires at least one open thread")
-	}
-
-	for _, id := range openIDs {
-		if err := s.TransitionThread(id, model.ThreadNeedsAttention, "human"); err != nil {
-			return fmt.Errorf("review-submit: transition thread %s: %w", id, err)
-		}
-	}
-
-	if err := s.TransitionTicket(ticketID, model.StatusReady); err != nil {
-		return fmt.Errorf("review-submit: transition ticket: %w", err)
-	}
-	return nil
-}
-
 // Redraft destroys the worktree and feature branch, clears the DB fields, and
 // transitions the ticket back to draft. stdout and stderr control where git
 // output goes; pass io.Discard to suppress.

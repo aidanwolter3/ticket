@@ -57,8 +57,6 @@ func main() {
 			cli.RunUnblock(os.Args[2:], defaultDB)
 		case "config":
 			cli.RunConfig(os.Args[2:], defaultDB)
-		case "review-submit":
-			cli.RunReviewSubmit(os.Args[2:], defaultDB)
 		case "update":
 			cli.RunUpdate(os.Args[2:], defaultDB)
 		case "agent":
