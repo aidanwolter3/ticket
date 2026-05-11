@@ -65,13 +65,16 @@ Implement each task in order. For each task:
 4. Mark the task complete:
    - If the task has `no_commit: true` (verification-only, no code change), complete without a hash:
      ```bash
-     ticket task complete <task-id>
+     ticket --agent task complete <task-id>
      ```
    - Otherwise (the default), record the commit hash:
      ```bash
-     ticket task complete <task-id> --commit $COMMIT_HASH
+     ticket --agent task complete --commit $COMMIT_HASH <task-id>
      ```
-     You may also use `--most-recent-commit` as a convenience instead of `--commit $COMMIT_HASH`.
+     You may also use `--most-recent-commit` as a convenience instead of `--commit $COMMIT_HASH`:
+     ```bash
+     ticket --agent task complete --most-recent-commit <task-id>
+     ```
 
 Do not move to the next task until the current task's verifiable result passes, its commit is made (or the task is `no_commit`), and it is marked complete.
 
@@ -91,7 +94,7 @@ Do not move to the next task until the current task's verifiable result passes, 
    ```
    Match the line whose subject starts with `<ticket-id> <task-id>:`. Then update the stored hash:
    ```bash
-   ticket task set-commit <task-id> <new-hash>
+   ticket --agent task set-commit <task-id> <new-hash>
    ```
 6. Force-push:
    ```bash
@@ -116,7 +119,7 @@ Skip this step if there is nothing non-obvious to say.
 ### 4. Hand off for review
 
 ```bash
-ticket in-review <id>
+ticket --agent in-review <id>
 ```
 
 ### 5. Report to the user

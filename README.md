@@ -32,10 +32,10 @@ The agent is dispatched by the TUI (`agent.auto_dispatch`) and pre-assigned to a
 
 ```sh
 # ... do the work (agent is pre-assigned via TUI dispatch) ...
-ticket task complete <task-id> --commit <hash>   # or --most-recent-commit
+ticket --agent task complete --commit <hash> <task-id>   # or --most-recent-commit
 # for no_commit tasks (verification-only, no code change):
-ticket task complete <task-id>
-ticket in-review T1
+ticket --agent task complete <task-id>
+ticket --agent in-review T1
 ```
 
 ### 3. Human: review
@@ -60,7 +60,7 @@ git commit --fixup=<task_commit_hash>
 GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash main
 
 # Update stored commit hashes after rebase:
-ticket task set-commit <task-id> <new-hash>
+ticket --agent task set-commit <task-id> <new-hash>
 
 # Force-push the cleaned history:
 git push --force-with-lease origin <feature-branch>
@@ -144,16 +144,22 @@ ticket task add <ticket-id> --title <title> [--description <text>] [--verifiable
 ticket task ls [--json] <ticket-id>
 ticket task update <task-id> [--title <title>] [--description <text>] [--verifiable-result <text>] [--no-commit]
 ticket task move <task-id> <position>
-ticket task complete <task-id> --commit <hash>   # --most-recent-commit also accepted
-ticket task complete <task-id>                   # only for no_commit tasks
-ticket task uncomplete <task-id>
+ticket task delete <task-id>
 
 # Review
 ticket review-submit <ticket-id> <author>
 ticket thread reply <thread-id> <author> <text>
 ticket thread transition <thread-id> <status> <author>
 
-# Agent
+# Agent surface (use ticket --agent --help for full list)
+ticket --agent in-progress <ticket-id>
+ticket --agent in-review <ticket-id>
+ticket --agent task complete [--most-recent-commit | --commit <hash>] <task-id>
+ticket --agent task complete <task-id>           # only for no_commit tasks
+ticket --agent task uncomplete <task-id>
+ticket --agent task set-commit <task-id> <hash>
+
+# Agent admin
 ticket agent clear <ticket-id>
 
 # Config
