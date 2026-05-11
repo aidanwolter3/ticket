@@ -14,6 +14,7 @@ import (
 // ticketsStore is the minimal store surface needed by TicketsView.
 type ticketsStore interface {
 	ListTickets(filter ...model.Status) ([]*model.Ticket, error)
+	ListBacklogTickets() ([]*model.Ticket, error)
 	GetAgentSessionByTicket(ticketID string) (*model.AgentSession, error)
 }
 
@@ -22,6 +23,7 @@ type TicketsView struct {
 	tickets       []*model.Ticket
 	agentSessions map[string]*model.AgentSession // ticketID → active session
 	hideMerged    bool
+	showBacklog   bool
 	agentFocused  bool
 	cursor        int
 	width         int
@@ -36,7 +38,13 @@ func NewTicketsView(s ticketsStore) *TicketsView {
 }
 
 func (v *TicketsView) load() {
-	tickets, err := v.store.ListTickets()
+	var tickets []*model.Ticket
+	var err error
+	if v.showBacklog {
+		tickets, err = v.store.ListBacklogTickets()
+	} else {
+		tickets, err = v.store.ListTickets()
+	}
 	if err != nil {
 		v.err = err
 		return
@@ -127,6 +135,12 @@ func (v *TicketsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, toggleMergedBinding):
 			v.hideMerged = !v.hideMerged
+			if v.cursor >= len(v.visible()) {
+				v.cursor = max(0, len(v.visible())-1)
+			}
+		case key.Matches(msg, toggleBacklogBinding):
+			v.showBacklog = !v.showBacklog
+			v.load()
 			if v.cursor >= len(v.visible()) {
 				v.cursor = max(0, len(v.visible())-1)
 			}
@@ -281,8 +295,12 @@ func (v *TicketsView) View() string {
 		if !v.hideMerged {
 			mergedHint = "[h] hide merged"
 		}
+		backlogHint := "[B] show backlog"
+		if v.showBacklog {
+			backlogHint = "[B] hide backlog"
+		}
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-			"[↑↓/jk] · [D] delete · " + mergedHint))
+			"[↑↓/jk] · [D] delete · " + mergedHint + " · " + backlogHint))
 	}
 
 	return sb.String()
@@ -292,6 +310,7 @@ var (
 	upBinding            = key.NewBinding(key.WithKeys("up", "k"))
 	downBinding          = key.NewBinding(key.WithKeys("down", "j"))
 	toggleMergedBinding  = key.NewBinding(key.WithKeys("h"))
+	toggleBacklogBinding = key.NewBinding(key.WithKeys("B"))
 )
 
 func max(a, b int) int {
