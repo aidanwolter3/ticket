@@ -170,12 +170,12 @@ func (v *TicketsView) View() string {
 	}
 
 	// Reserve a fixed right column for the progress bar when any ticket has tasks.
-	// Bar format: "████████ N/M" — blocks are fixed width=8, fraction padded to maxFracWidth.
+	// Bar format: "├████████ N/M" — left terminus + blocks fixed width=8 + space + fraction.
 	barColWidth := 0
 	maxFracWidth := 0
 	if maxTaskCount > 0 {
 		maxFracWidth = len(fmt.Sprintf("%d/%d", maxTaskCount, maxTaskCount))
-		barColWidth = 8 + 1 + maxFracWidth
+		barColWidth = 1 + 8 + 1 + maxFracWidth
 	}
 
 	// Layout: cursor(1) SP agentPrefix(2) icon(1) SP id(maxIDLen) SP title(titleWidth) [SP bar(barColWidth)]
