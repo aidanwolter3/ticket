@@ -84,6 +84,7 @@ type App struct {
 	newThreadModal     *views.NewThreadModal
 	newThreadReturn    appScreen // screen to return to after newThreadModal
 	editDraftModal     *views.EditDraftModal
+	editDraftReturn    appScreen // screen to return to after editDraftModal
 
 	// agent attach state
 	attachFollow    <-chan []string
@@ -547,6 +548,7 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.threadsView != nil {
 				if dm := a.threadsView.SelectedDraftMessage(); dm != nil {
 					a.editDraftModal = views.NewEditDraftModal(dm.ID, dm.Text)
+					a.editDraftReturn = screenThreads
 					a.screen = screenEditDraftMessage
 				}
 			}
@@ -685,7 +687,7 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return a, nil
-		case "S":
+		case "ctrl+s":
 			if a.reviewPanelView != nil {
 				id := a.reviewPanelView.TicketID()
 				if err := workflow.SubmitReview(a.store, id, "human", a.launcher, io.Discard, io.Discard); err != nil {
@@ -696,6 +698,28 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.reloadCurrentDetail()
 					a.ticketsView.Refresh()
 					a.screen = screenList
+				}
+			}
+			return a, nil
+		case "e":
+			if a.reviewPanelView != nil {
+				if dm := a.reviewPanelView.SelectedDraftMessage(); dm != nil {
+					a.editDraftModal = views.NewEditDraftModal(dm.ID, dm.Text)
+					a.editDraftReturn = screenReviewPanel
+					a.screen = screenEditDraftMessage
+				}
+			}
+			return a, nil
+		case "D":
+			if a.reviewPanelView != nil {
+				if dm := a.reviewPanelView.SelectedDraftMessage(); dm != nil {
+					if err := a.store.DeleteDraftMessage(dm.ID); err != nil {
+						a.setErr(err)
+					} else {
+						a.statusMsg = "Draft message deleted"
+						a.statusErr = false
+						a.reviewPanelView.Reload()
+					}
 				}
 			}
 			return a, nil
@@ -872,10 +896,14 @@ func (a *App) updateNoteModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 // --- Edit draft message modal ---
 
 func (a *App) updateEditDraftMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
+	returnTo := a.editDraftReturn
+	if returnTo == 0 {
+		returnTo = screenThreads
+	}
 	if km, ok := msg.(tea.KeyMsg); ok {
 		switch km.String() {
 		case "esc":
-			a.screen = screenThreads
+			a.screen = returnTo
 			return a, nil
 		case "ctrl+s":
 			if a.editDraftModal != nil && a.editDraftModal.Text() != "" {
@@ -884,10 +912,15 @@ func (a *App) updateEditDraftMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					a.statusMsg = "Draft message updated"
 					a.statusErr = false
-					a.threadsView.Reload()
+					if a.threadsView != nil {
+						a.threadsView.Reload()
+					}
+					if a.reviewPanelView != nil && returnTo == screenReviewPanel {
+						a.reviewPanelView.Reload()
+					}
 				}
 			}
-			a.screen = screenThreads
+			a.screen = returnTo
 			return a, nil
 		}
 	}
@@ -910,7 +943,7 @@ func (a *App) updateReplyModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			a.screen = returnTo
 			return a, nil
-		case "ctrl+s", "S":
+		case "ctrl+s":
 			if a.replyModal.Text() != "" {
 				ticketID := ""
 				if a.threadsView != nil {
@@ -952,7 +985,7 @@ func (a *App) updateNewThreadModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			a.screen = returnTo
 			return a, nil
-		case "ctrl+s", "S":
+		case "ctrl+s":
 			if a.newThreadModal.Text() != "" {
 				ticketID := ""
 				if a.threadsView != nil {
