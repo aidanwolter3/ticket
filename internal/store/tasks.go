@@ -141,6 +141,13 @@ func (s *Store) CompleteTask(id string) error {
 	return err
 }
 
+// CompleteTaskWithCommit sets completed_at to now and records the commit hash.
+func (s *Store) CompleteTaskWithCommit(id, commitHash string) error {
+	now := time.Now().UnixMilli()
+	_, err := s.db.Exec(`UPDATE tasks SET completed_at=?, commit_hash=?, updated=? WHERE id=?`, now, commitHash, now, id)
+	return err
+}
+
 // UncompleteTask clears completed_at. Called by the TUI threads view ("c" keybinding on a task row).
 func (s *Store) UncompleteTask(id string) error {
 	now := time.Now().UnixMilli()
