@@ -27,7 +27,7 @@ func RunInReview(args []string, defaultDB string) {
 }
 
 func transitionInReview(s *store.Store, ticketID string) error {
-	if err := s.TransitionTicket(ticketID, model.StatusInReview, "agent:claude"); err != nil {
+	if err := s.TransitionTicket(ticketID, model.StatusInReview); err != nil {
 		return err
 	}
 	return nil

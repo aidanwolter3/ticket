@@ -17,7 +17,7 @@ func RunRedraft(args []string, defaultDB string) {
 	}
 	ticketID := fs.Arg(0)
 
-	if err := workflow.Redraft(s, ticketID, "human", os.Stdout, os.Stderr); err != nil {
+	if err := workflow.Redraft(s, ticketID, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "redraft: %v\n", err)
 		os.Exit(1)
 	}

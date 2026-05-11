@@ -68,11 +68,7 @@ func approvedTicket(t *testing.T, s *store.Store, repoPath, featureBranch, workt
 	for _, to := range []model.Status{
 		model.StatusReady, model.StatusInProgress, model.StatusInReview, model.StatusApproved,
 	} {
-		author := "agent:claude"
-		if to == model.StatusReady || to == model.StatusApproved {
-			author = "human:test"
-		}
-		require.NoError(t, s.TransitionTicket(ticket.ID, to, author))
+		require.NoError(t, s.TransitionTicket(ticket.ID, to))
 	}
 	return ticket
 }
@@ -228,9 +224,9 @@ func TestSubmitReview_FlushesAndTransitions(t *testing.T) {
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
 	require.NoError(t, s.CompleteTask(task.ID))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
 
 	// Existing real thread (open).
 	th, err := s.CreateThread(task.ID)
@@ -245,7 +241,7 @@ func TestSubmitReview_FlushesAndTransitions(t *testing.T) {
 	// Stage: resolve the open thread.
 	require.NoError(t, s.SetDraftAction(th.ID, ticket.ID, model.DraftActionResolve))
 
-	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
+	require.NoError(t, SubmitReview(s, ticket.ID, io.Discard, io.Discard))
 
 	// Ticket should be ready.
 	got, err := s.GetTicket(ticket.ID)
@@ -283,9 +279,9 @@ func TestSubmitReview_CreatesAmendmentTasks(t *testing.T) {
 	task := &model.Task{TicketID: ticket.ID, Title: "Original task", Position: 1, Round: 1}
 	require.NoError(t, s.CreateTask(task))
 	require.NoError(t, s.CompleteTask(task.ID))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
 
 	// Create 3 draft threads (all will become needs_attention).
 	for i := 0; i < 3; i++ {
@@ -295,7 +291,7 @@ func TestSubmitReview_CreatesAmendmentTasks(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
+	require.NoError(t, SubmitReview(s, ticket.ID, io.Discard, io.Discard))
 
 	// Ticket should be ready.
 	got, err := s.GetTicket(ticket.ID)
@@ -327,12 +323,12 @@ func TestSubmitReview_EmptyDraftOK(t *testing.T) {
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
 	require.NoError(t, s.CompleteTask(task.ID))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
 
 	// No draft state — no needs_attention threads, so ticket stays in_review.
-	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
+	require.NoError(t, SubmitReview(s, ticket.ID, io.Discard, io.Discard))
 
 	got, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
@@ -347,9 +343,9 @@ func newInReviewTicket(t *testing.T, s *store.Store) (*model.Ticket, *model.Task
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
 	require.NoError(t, s.CompleteTask(task.ID))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
 	return ticket, task
 }
 
@@ -365,7 +361,7 @@ func TestSubmitReview_OnlyResolutionsStaysInReview(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.SetDraftAction(th.ID, ticket.ID, model.DraftActionResolve))
 
-	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
+	require.NoError(t, SubmitReview(s, ticket.ID, io.Discard, io.Discard))
 
 	got, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
@@ -390,7 +386,7 @@ func TestSubmitReview_NewThreadTransitionsToReady(t *testing.T) {
 	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "please rename this")
 	require.NoError(t, err)
 
-	require.NoError(t, SubmitReview(s, ticket.ID, "human", io.Discard, io.Discard))
+	require.NoError(t, SubmitReview(s, ticket.ID, io.Discard, io.Discard))
 
 	got, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
@@ -418,16 +414,16 @@ func TestReady_PreservesWorktreeFromInReview(t *testing.T) {
 	worktreeDir := t.TempDir()
 	featureBranch := "feat/" + strings.ToLower(ticket.ID)
 	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreeDir, repoPath, featureBranch))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:test"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
 
 	// Advance to in_review.
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:test"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
 
 	_, err := os.Stat(worktreeDir)
 	require.NoError(t, err, "worktree should exist before requeue")
 
 	// Requeue — worktree and branch should survive.
-	require.NoError(t, Ready(s, ticket.ID, "human:reviewer", io.Discard, io.Discard))
+	require.NoError(t, Ready(s, ticket.ID, io.Discard, io.Discard))
 
 	requeued, err := s.GetTicket(ticket.ID)
 	require.NoError(t, err)
@@ -464,8 +460,8 @@ func TestRedraft_KillsAgentSession(t *testing.T) {
 	setupTask := &model.Task{TicketID: ticket.ID, Title: "setup task", Position: 1}
 	require.NoError(t, s.CreateTask(setupTask))
 	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreePath, repoPath, "feat/t-999"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
 
 	// Start a long-running process to simulate an agent.
 	sleepCmd := exec.Command("sleep", "300")
@@ -477,7 +473,7 @@ func TestRedraft_KillsAgentSession(t *testing.T) {
 	require.NoError(t, err)
 
 	// Redraft should kill the process and mark the session terminated.
-	err = Redraft(s, ticket.ID, "human:test", io.Discard, io.Discard)
+	err = Redraft(s, ticket.ID, io.Discard, io.Discard)
 	require.NoError(t, err)
 
 	// Give the signal a moment to land.
@@ -539,8 +535,8 @@ func TestRedraft_ResetsTaskStatuses(t *testing.T) {
 	require.NoError(t, s.CreateTask(task1))
 	require.NoError(t, s.CreateTask(task2))
 
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
 
 	// Complete both tasks.
 	require.NoError(t, s.CompleteTask(task1.ID))
@@ -554,7 +550,7 @@ func TestRedraft_ResetsTaskStatuses(t *testing.T) {
 	}
 
 	// Redraft the ticket.
-	err = Redraft(s, ticket.ID, "human:test", io.Discard, io.Discard)
+	err = Redraft(s, ticket.ID, io.Discard, io.Discard)
 	require.NoError(t, err)
 
 	// All tasks must be pending again.
@@ -653,11 +649,7 @@ func TestPromote_AutoDispatchWithApprovedBlocker(t *testing.T) {
 	require.NoError(t, s.CreateTask(blockerTask))
 	require.NoError(t, s.CompleteTask(blockerTask.ID))
 	for _, to := range []model.Status{model.StatusReady, model.StatusInProgress, model.StatusInReview, model.StatusApproved} {
-		author := "agent:claude"
-		if to == model.StatusReady || to == model.StatusApproved {
-			author = "human:test"
-		}
-		require.NoError(t, s.TransitionTicket(blocker.ID, to, author))
+		require.NoError(t, s.TransitionTicket(blocker.ID, to))
 	}
 
 	ticket := &model.Ticket{Title: "Dependent", Type: model.TypeTicket, Status: model.StatusDraft, RepoPath: repoPath}

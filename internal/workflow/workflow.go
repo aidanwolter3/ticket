@@ -20,7 +20,7 @@ import (
 // If launcher is nil, a new one is created (suitable for CLI use where no TUI
 // attach is expected).
 func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, stderr io.Writer) error {
-	ticket, err := s.PromoteTicket(ticketID, "human")
+	ticket, err := s.PromoteTicket(ticketID)
 	if err != nil {
 		return fmt.Errorf("promote: %w", err)
 	}
@@ -85,7 +85,7 @@ func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, 
 				if _, launchErr := launcher.Launch(ticketID, ticket.WorktreePath, prompt); launchErr != nil {
 					fmt.Fprintf(stderr, "auto-dispatch: launch failed: %v\n", launchErr)
 				} else {
-					if transErr := s.TransitionTicket(ticketID, model.StatusInProgress, "agent:claude"); transErr != nil {
+					if transErr := s.TransitionTicket(ticketID, model.StatusInProgress); transErr != nil {
 						fmt.Fprintf(stderr, "auto-dispatch: transition in_progress: %v\n", transErr)
 					}
 					if _, noteErr := s.AddNote(ticketID, "agent:claude", "Agent auto-dispatched"); noteErr != nil {
@@ -103,8 +103,8 @@ func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, 
 // preserved across the review cycle; only Redraft and Merge tear them down.
 // stdout and stderr are accepted for interface symmetry but are unused; pass
 // io.Discard.
-func Ready(s *store.Store, ticketID string, author string, stdout, stderr io.Writer) error {
-	if err := s.TransitionTicket(ticketID, model.StatusReady, author); err != nil {
+func Ready(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
+	if err := s.TransitionTicket(ticketID, model.StatusReady); err != nil {
 		return fmt.Errorf("ready: transition: %w", err)
 	}
 	return nil
@@ -116,7 +116,7 @@ func Ready(s *store.Store, ticketID string, author string, stdout, stderr io.Wri
 // needs_attention thread exists. If all actions were resolutions, the ticket
 // stays in_review. stdout and stderr are accepted for interface symmetry but
 // are unused; pass io.Discard.
-func SubmitReview(s *store.Store, ticketID string, author string, stdout, stderr io.Writer) error {
+func SubmitReview(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 	naThreadIDs, err := s.FlushDraftState(ticketID)
 	if err != nil {
 		return fmt.Errorf("submit-review: flush draft: %w", err)
@@ -130,7 +130,7 @@ func SubmitReview(s *store.Store, ticketID string, author string, stdout, stderr
 		return fmt.Errorf("submit-review: create amendment tasks: %w", err)
 	}
 
-	if err := s.TransitionTicket(ticketID, model.StatusReady, author); err != nil {
+	if err := s.TransitionTicket(ticketID, model.StatusReady); err != nil {
 		return fmt.Errorf("submit-review: transition ticket: %w", err)
 	}
 	return nil
@@ -184,7 +184,7 @@ func createAmendmentTasks(s *store.Store, ticketID string, naThreadIDs []string)
 // ticket from in_review to ready. Returns an error if there are no active
 // threads. stdout and stderr are accepted for interface symmetry but are unused;
 // pass io.Discard.
-func ReviewSubmit(s *store.Store, ticketID string, author string, stdout, stderr io.Writer) error {
+func ReviewSubmit(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 	threads, err := s.GetThreadsForTicket(ticketID)
 	if err != nil {
 		return fmt.Errorf("review-submit: load threads: %w", err)
@@ -201,12 +201,12 @@ func ReviewSubmit(s *store.Store, ticketID string, author string, stdout, stderr
 	}
 
 	for _, id := range openIDs {
-		if err := s.TransitionThread(id, model.ThreadNeedsAttention, author); err != nil {
+		if err := s.TransitionThread(id, model.ThreadNeedsAttention, "human"); err != nil {
 			return fmt.Errorf("review-submit: transition thread %s: %w", id, err)
 		}
 	}
 
-	if err := s.TransitionTicket(ticketID, model.StatusReady, author); err != nil {
+	if err := s.TransitionTicket(ticketID, model.StatusReady); err != nil {
 		return fmt.Errorf("review-submit: transition ticket: %w", err)
 	}
 	return nil
@@ -215,7 +215,7 @@ func ReviewSubmit(s *store.Store, ticketID string, author string, stdout, stderr
 // Redraft destroys the worktree and feature branch, clears the DB fields, and
 // transitions the ticket back to draft. stdout and stderr control where git
 // output goes; pass io.Discard to suppress.
-func Redraft(s *store.Store, ticketID string, author string, stdout, stderr io.Writer) error {
+func Redraft(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 	ticket, err := s.GetTicket(ticketID)
 	if err != nil {
 		return fmt.Errorf("redraft: %w", err)
@@ -255,7 +255,7 @@ func Redraft(s *store.Store, ticketID string, author string, stdout, stderr io.W
 		return fmt.Errorf("redraft: reset tasks: %w", err)
 	}
 
-	if err := s.TransitionTicket(ticketID, model.StatusDraft, author); err != nil {
+	if err := s.TransitionTicket(ticketID, model.StatusDraft); err != nil {
 		return fmt.Errorf("redraft: transition: %w", err)
 	}
 	return nil
@@ -377,7 +377,7 @@ func Merge(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("merge: update ticket: %w", err)
 	}
 
-	if err := s.TransitionTicket(ticketID, model.StatusMerged, "human"); err != nil {
+	if err := s.TransitionTicket(ticketID, model.StatusMerged); err != nil {
 		return fmt.Errorf("merge: transition: %w", err)
 	}
 

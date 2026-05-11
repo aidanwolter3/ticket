@@ -17,7 +17,7 @@ func RunInProgress(args []string, defaultDB string) {
 	}
 	ticketID := fs.Arg(0)
 
-	if err := s.TransitionTicket(ticketID, model.StatusInProgress, "agent:claude"); err != nil {
+	if err := s.TransitionTicket(ticketID, model.StatusInProgress); err != nil {
 		fmt.Fprintf(os.Stderr, "in-progress: %v\n", err)
 		os.Exit(1)
 	}

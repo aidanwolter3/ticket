@@ -364,7 +364,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if hasOpen {
 					a.statusMsg = "cannot approve: ticket has open threads"
 					a.statusErr = true
-				} else if err := a.store.TransitionTicket(id, "approved", "human"); err != nil {
+				} else if err := a.store.TransitionTicket(id, model.StatusApproved); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → approved", id)
@@ -411,7 +411,7 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.setErr(err)
 					return a, nil
 				}
-				if err := a.store.TransitionTicket(t.ID, model.StatusReady, "human"); err != nil {
+				if err := a.store.TransitionTicket(t.ID, model.StatusReady); err != nil {
 					a.setErr(err)
 					return a, nil
 				}
@@ -512,7 +512,7 @@ func (a *App) updateThreads(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			if a.threadsView != nil {
 				id := a.threadsView.TicketID()
-				if err := workflow.SubmitReview(a.store, id, "human", io.Discard, io.Discard); err != nil {
+				if err := workflow.SubmitReview(a.store, id, io.Discard, io.Discard); err != nil {
 					a.setErr(err)
 				} else {
 					a.statusMsg = fmt.Sprintf("%s → ready (review submitted)", id)
@@ -638,7 +638,7 @@ func (a *App) updateConfirmDispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.setErr(fmt.Errorf("agent launch: %w", err))
 				return a, nil
 			}
-			if transErr := a.store.TransitionTicket(id, model.StatusInProgress, "agent:claude"); transErr != nil {
+			if transErr := a.store.TransitionTicket(id, model.StatusInProgress); transErr != nil {
 				a.setErr(fmt.Errorf("transition in_progress: %w", transErr))
 				return a, nil
 			}
@@ -686,7 +686,7 @@ func (a *App) updateConfirmRedraft(msg tea.Msg) (tea.Model, tea.Cmd) {
 			id := a.pendingRedraftID
 			a.pendingRedraftID = ""
 			a.screen = screenList
-			if err := workflow.Redraft(a.store, id, "human", io.Discard, io.Discard); err != nil {
+			if err := workflow.Redraft(a.store, id, io.Discard, io.Discard); err != nil {
 				a.setErr(err)
 			} else {
 				a.statusMsg = fmt.Sprintf("%s → draft", id)

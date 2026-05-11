@@ -31,7 +31,7 @@ func RunReviewSubmit(args []string, defaultDB string) {
 		}
 	}
 
-	if err := workflow.ReviewSubmit(s, ticketID, "human", os.Stdout, os.Stderr); err != nil {
+	if err := workflow.ReviewSubmit(s, ticketID, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "review-submit: %v\n", err)
 		os.Exit(1)
 	}

@@ -56,11 +56,11 @@ func TestMigrate(t *testing.T) {
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
 	require.NoError(t, s.CompleteTask(task.ID))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:aidan"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusApproved, "human:aidan"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusMerged, "human:aidan"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusApproved))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusMerged))
 
 	// completed status is no longer valid in the DB.
 	ticket2 := &model.Ticket{Title: "T2", Type: model.TypeTicket, Status: model.StatusDraft}
@@ -188,7 +188,7 @@ func TestDeleteNonDraftTicketRejected(t *testing.T) {
 	require.NoError(t, s.CreateTicket(ticket))
 	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 	require.NoError(t, s.CreateTask(task))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
+	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
 
 	err := s.DeleteTicket(ticket.ID)
 	require.Error(t, err)
@@ -201,17 +201,7 @@ func TestInvalidTicketTransition(t *testing.T) {
 	require.NoError(t, s.CreateTicket(ticket))
 
 	// draft → merged is not a valid transition.
-	err := s.TransitionTicket(ticket.ID, model.StatusMerged, "human")
-	assert.Error(t, err)
-
-	// Agent cannot approve (human only).
-	task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
-	require.NoError(t, s.CreateTask(task))
-	require.NoError(t, s.CompleteTask(task.ID))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:aidan"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:claude"))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:claude"))
-	err = s.TransitionTicket(ticket.ID, model.StatusApproved, "agent:claude")
+	err := s.TransitionTicket(ticket.ID, model.StatusMerged)
 	assert.Error(t, err)
 }
 
@@ -221,13 +211,13 @@ func TestTransitionPreconditions(t *testing.T) {
 		ticket := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
 		require.NoError(t, s.CreateTicket(ticket))
 
-		err := s.TransitionTicket(ticket.ID, model.StatusReady, "human:test")
+		err := s.TransitionTicket(ticket.ID, model.StatusReady)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no tasks")
 
 		task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 		require.NoError(t, s.CreateTask(task))
-		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
 	})
 
 	t.Run("in_progress→in_review requires all tasks complete", func(t *testing.T) {
@@ -236,15 +226,15 @@ func TestTransitionPreconditions(t *testing.T) {
 		require.NoError(t, s.CreateTicket(ticket))
 		task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 		require.NoError(t, s.CreateTask(task))
-		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
-		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:test"))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
 
-		err := s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:test")
+		err := s.TransitionTicket(ticket.ID, model.StatusInReview)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "incomplete task")
 
 		require.NoError(t, s.CompleteTask(task.ID))
-		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:test"))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
 	})
 
 	t.Run("in_review→approved requires all tasks complete", func(t *testing.T) {
@@ -254,20 +244,20 @@ func TestTransitionPreconditions(t *testing.T) {
 		task := &model.Task{TicketID: ticket.ID, Title: "Task 1", Position: 1}
 		require.NoError(t, s.CreateTask(task))
 		require.NoError(t, s.CompleteTask(task.ID))
-		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady, "human:test"))
-		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:test"))
-		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview, "agent:test"))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusReady))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
 
 		// Add an incomplete task to simulate an amendment being in progress.
 		amendment := &model.Task{TicketID: ticket.ID, Title: "Amendment", Position: 2, Round: 2}
 		require.NoError(t, s.CreateTask(amendment))
 
-		err := s.TransitionTicket(ticket.ID, model.StatusApproved, "human:test")
+		err := s.TransitionTicket(ticket.ID, model.StatusApproved)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "incomplete task")
 
 		require.NoError(t, s.CompleteTask(amendment.ID))
-		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusApproved, "human:test"))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusApproved))
 	})
 
 	t.Run("ready→in_progress blocked by non-approved/merged tickets", func(t *testing.T) {
@@ -277,14 +267,14 @@ func TestTransitionPreconditions(t *testing.T) {
 		ticket := &model.Ticket{Title: "Blocked", Type: model.TypeTicket, Status: model.StatusReady, BlockedBy: []string{blocker.ID}}
 		require.NoError(t, s.CreateTicket(ticket))
 
-		err := s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:test")
+		err := s.TransitionTicket(ticket.ID, model.StatusInProgress)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "blocked by")
 
 		// approved blocker satisfies the check
 		_, err = s.db.Exec(`UPDATE tickets SET status='approved' WHERE id=?`, blocker.ID)
 		require.NoError(t, err)
-		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress, "agent:test"))
+		require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
 	})
 }
 

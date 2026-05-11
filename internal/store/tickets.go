@@ -65,7 +65,7 @@ func (s *Store) UpdateTicket(t *model.Ticket) error {
 	return s.setBlockedBy(t.ID, t.BlockedBy)
 }
 
-func (s *Store) TransitionTicket(id string, to model.Status, author string) error {
+func (s *Store) TransitionTicket(id string, to model.Status) error {
 	var fromStr string
 	err := s.db.QueryRow(`SELECT status FROM tickets WHERE id=?`, id).Scan(&fromStr)
 	if err == sql.ErrNoRows {
@@ -75,7 +75,7 @@ func (s *Store) TransitionTicket(id string, to model.Status, author string) erro
 		return err
 	}
 	from := model.Status(fromStr)
-	if err := model.ValidateTicketTransition(from, to, author); err != nil {
+	if err := model.ValidateTicketTransition(from, to); err != nil {
 		return err
 	}
 	if err := s.checkTransitionPreconditions(id, from, to); err != nil {
@@ -126,8 +126,8 @@ func (s *Store) checkTransitionPreconditions(id string, from, to model.Status) e
 
 // PromoteTicket transitions a draft ticket to ready and returns the ticket so
 // the caller can set up the worktree.
-func (s *Store) PromoteTicket(ticketID, author string) (*model.Ticket, error) {
-	if err := s.TransitionTicket(ticketID, model.StatusReady, author); err != nil {
+func (s *Store) PromoteTicket(ticketID string) (*model.Ticket, error) {
+	if err := s.TransitionTicket(ticketID, model.StatusReady); err != nil {
 		return nil, err
 	}
 	return s.GetTicket(ticketID)
