@@ -14,8 +14,6 @@ Usage:
   ticket get [--db path] [--json] <id>        get a single ticket (--json for machine-readable output)
   ticket update [--db path] <id> [--title <title>] [--description <desc>]
                                               update a ticket's title or description
-  ticket note add [--db path] <ticket-id> <author> <text>
-                                              add a note to a ticket
   ticket thread reply [--db path] <thread-id> <author> <text>
                                               add a reply to a thread
   ticket thread transition [--db path] <thread-id> <new-status> [author]
@@ -65,9 +63,11 @@ Usage:
                                               reverse a task completion
   ticket --agent task set-commit [--db path] <task-id> <hash>
                                               update the commit hash stored on a task (use after autosquash rebase)
+  ticket --agent note add [--db path] <ticket-id> <author> <text>
+                                              add a note to a ticket
 
 Shared commands (also available without --agent):
-  ticket get, ticket ls, ticket note add, ticket thread reply,
+  ticket get, ticket ls, ticket thread reply,
   ticket thread transition, ticket task ls, ticket task get
 
 `)

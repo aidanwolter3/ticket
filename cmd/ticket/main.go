@@ -45,8 +45,6 @@ func main() {
 			cli.RunDelete(os.Args[2:], defaultDB)
 		case "purge":
 			cli.RunPurge(os.Args[2:], defaultDB)
-		case "note":
-			cli.RunNote(os.Args[2:], defaultDB)
 		case "thread":
 			cli.RunThread(os.Args[2:], defaultDB)
 		case "task":
@@ -110,6 +108,8 @@ func runAgent(args []string, defaultDB string) {
 		cli.RunInReview(args[1:], defaultDB)
 	case "task":
 		cli.RunAgentTask(args[1:], defaultDB)
+	case "note":
+		cli.RunNote(args[1:], defaultDB)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown agent command: %s\nRun 'ticket --agent --help' for usage.\n", args[0])
 		os.Exit(1)
