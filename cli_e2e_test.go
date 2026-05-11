@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -251,4 +252,91 @@ func TestCLI_CRUD(t *testing.T) {
 	require.Equal(t, 0, code)
 	_, _, code = run(t, db, "delete", "--db", db, ndID)
 	assert.NotEqual(t, 0, code, "delete of a ready ticket should fail")
+}
+
+func TestCLI_AgentCommands(t *testing.T) {
+	if globalBuildFailed || globalTicketBin == "" {
+		t.Skip("ticket binary could not be built")
+	}
+
+	db, s := newTestDB(t)
+	repoPath := cliGitRepo(t)
+
+	// Seed via store: ticket in ready state with two tasks.
+	ticket := &model.Ticket{
+		Title:    "Agent Test",
+		Type:     model.TypeTicket,
+		Status:   model.StatusDraft,
+		RepoPath: repoPath,
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+	ticketID := ticket.ID
+
+	task1 := &model.Task{TicketID: ticketID, Title: "Task one", Position: 1}
+	require.NoError(t, s.CreateTask(task1))
+	task1ID := task1.ID
+
+	task2 := &model.Task{TicketID: ticketID, Title: "Task two", Position: 2}
+	require.NoError(t, s.CreateTask(task2))
+	task2ID := task2.ID
+
+	require.NoError(t, s.TransitionTicket(ticketID, model.StatusReady))
+
+	// --agent in-progress
+	stdout, _, code := run(t, db, "--agent", "in-progress", "--db", db, ticketID)
+	require.Equal(t, 0, code, "stdout=%q", stdout)
+
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj := decodeJSON(t, stdout)
+	assert.Equal(t, "in_progress", tj["status"])
+
+	// --agent task complete --most-recent-commit task1
+	stdout, _, code = run(t, db, "--agent", "task", "complete", "--db", db, "--most-recent-commit", task1ID)
+	require.Equal(t, 0, code, "stdout=%q", stdout)
+
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj = decodeJSON(t, stdout)
+	require.NotNil(t, tj["tasks"])
+	tasks := tj["tasks"].([]any)
+	findTask := func(id string) map[string]any {
+		for _, task := range tasks {
+			td := task.(map[string]any)
+			if td["id"].(string) == id {
+				return td
+			}
+		}
+		return nil
+	}
+	task1Data := findTask(task1ID)
+	require.NotNil(t, task1Data)
+	assert.NotNil(t, task1Data["completed_at"], "task1 should be completed")
+	assert.NotEmpty(t, task1Data["commit_hash"], "task1 should have commit hash")
+
+	// --agent task complete --commit <hash> task2
+	headOut, err := exec.Command("git", "-C", repoPath, "rev-parse", "HEAD").Output()
+	require.NoError(t, err)
+	commitHash := strings.TrimSpace(string(headOut))
+
+	stdout, _, code = run(t, db, "--agent", "task", "complete", "--db", db, "--commit", commitHash, task2ID)
+	require.Equal(t, 0, code, "stdout=%q", stdout)
+
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj = decodeJSON(t, stdout)
+	tasks = tj["tasks"].([]any)
+	task2Data := findTask(task2ID)
+	require.NotNil(t, task2Data)
+	assert.NotNil(t, task2Data["completed_at"], "task2 should be completed")
+	assert.Equal(t, commitHash, task2Data["commit_hash"])
+
+	// --agent in-review (all tasks complete)
+	stdout, _, code = run(t, db, "--agent", "in-review", "--db", db, ticketID)
+	require.Equal(t, 0, code, "stdout=%q", stdout)
+
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj = decodeJSON(t, stdout)
+	assert.Equal(t, "in_review", tj["status"])
 }
