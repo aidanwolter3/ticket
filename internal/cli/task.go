@@ -252,35 +252,42 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 	var err error
 	if undo {
 		err = s.UncompleteTask(taskID)
-	} else if commitHash != nil && *commitHash != "" {
-		err = s.CompleteTaskWithCommit(taskID, *commitHash)
-	} else if mostRecentCommit != nil && *mostRecentCommit {
+	} else {
 		task, getErr := s.GetTask(taskID)
 		if getErr != nil {
 			fmt.Fprintf(os.Stderr, "get task: %v\n", getErr)
 			os.Exit(1)
 		}
-		ticket, getErr := s.GetTicket(task.TicketID)
-		if getErr != nil {
-			fmt.Fprintf(os.Stderr, "get ticket: %v\n", getErr)
+
+		if task.NoCommit {
+			err = s.CompleteTask(taskID)
+		} else if *commitHash != "" {
+			err = s.CompleteTaskWithCommit(taskID, *commitHash)
+		} else if *mostRecentCommit {
+			ticket, getErr := s.GetTicket(task.TicketID)
+			if getErr != nil {
+				fmt.Fprintf(os.Stderr, "get ticket: %v\n", getErr)
+				os.Exit(1)
+			}
+			gitPath := ticket.WorktreePath
+			if gitPath == "" {
+				gitPath = ticket.RepoPath
+			}
+			if gitPath == "" {
+				fmt.Fprintln(os.Stderr, "error: ticket has no worktree_path or repo_path set")
+				os.Exit(1)
+			}
+			out, runErr := exec.Command("git", "-C", gitPath, "rev-parse", "HEAD").Output()
+			if runErr != nil {
+				fmt.Fprintf(os.Stderr, "git rev-parse HEAD: %v\n", runErr)
+				os.Exit(1)
+			}
+			err = s.CompleteTaskWithCommit(taskID, strings.TrimSpace(string(out)))
+		} else {
+			fmt.Fprintf(os.Stderr, "error: task %s requires a commit hash; use --commit <hash> or --most-recent-commit\n", taskID)
+			fmt.Fprintf(os.Stderr, "       (use --no-commit on task add/update to mark a task as commit-free)\n")
 			os.Exit(1)
 		}
-		gitPath := ticket.WorktreePath
-		if gitPath == "" {
-			gitPath = ticket.RepoPath
-		}
-		if gitPath == "" {
-			fmt.Fprintln(os.Stderr, "error: ticket has no worktree_path or repo_path set")
-			os.Exit(1)
-		}
-		out, runErr := exec.Command("git", "-C", gitPath, "rev-parse", "HEAD").Output()
-		if runErr != nil {
-			fmt.Fprintf(os.Stderr, "git rev-parse HEAD: %v\n", runErr)
-			os.Exit(1)
-		}
-		err = s.CompleteTaskWithCommit(taskID, strings.TrimSpace(string(out)))
-	} else {
-		err = s.CompleteTask(taskID)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "task %s failed: %v\n", subCmd, err)
