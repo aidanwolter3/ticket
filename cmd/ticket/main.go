@@ -19,6 +19,12 @@ func main() {
 	defaultDB := filepath.Join(home, ".local", "share", "ticket", "tickets.db")
 	defaultLog := filepath.Join(home, ".local", "share", "ticket", "ticket.log")
 
+	// --agent mode: route to agent-only commands.
+	if len(os.Args) >= 2 && os.Args[1] == "--agent" {
+		runAgent(os.Args[2:], defaultDB)
+		return
+	}
+
 	// If the first argument looks like a flag (starts with -), skip subcommand
 	// dispatch and fall through to TUI with flag parsing.
 	if len(os.Args) >= 2 && !strings.HasPrefix(os.Args[1], "-") {
@@ -51,10 +57,6 @@ func main() {
 			cli.RunUnblock(os.Args[2:], defaultDB)
 		case "config":
 			cli.RunConfig(os.Args[2:], defaultDB)
-		case "in-progress":
-			cli.RunInProgress(os.Args[2:], defaultDB)
-		case "in-review":
-			cli.RunInReview(os.Args[2:], defaultDB)
 		case "review-submit":
 			cli.RunReviewSubmit(os.Args[2:], defaultDB)
 		case "update":
@@ -93,6 +95,25 @@ func main() {
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// runAgent handles all agent-mode commands (ticket --agent <cmd> ...).
+func runAgent(args []string, defaultDB string) {
+	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
+		cli.PrintAgentUsage()
+		return
+	}
+	switch args[0] {
+	case "in-progress":
+		cli.RunInProgress(args[1:], defaultDB)
+	case "in-review":
+		cli.RunInReview(args[1:], defaultDB)
+	case "task":
+		cli.RunAgentTask(args[1:], defaultDB)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown agent command: %s\nRun 'ticket --agent --help' for usage.\n", args[0])
 		os.Exit(1)
 	}
 }

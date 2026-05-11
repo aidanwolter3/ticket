@@ -15,15 +15,13 @@ import (
 func RunTask(args []string, defaultDB string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: ticket task <subcommand>")
-		fmt.Fprintln(os.Stderr, "  add        <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>] [--no-commit]")
-		fmt.Fprintln(os.Stderr, "  get        <task-id>")
-		fmt.Fprintln(os.Stderr, "  ls         <ticket-id>")
-		fmt.Fprintln(os.Stderr, "  update     <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]")
-		fmt.Fprintln(os.Stderr, "  move       <task-id> <position>")
-		fmt.Fprintln(os.Stderr, "  set-commit <task-id> <hash>")
-		fmt.Fprintln(os.Stderr, "  complete   <task-id> [--most-recent-commit] [--commit <hash>]")
-		fmt.Fprintln(os.Stderr, "  uncomplete <task-id>")
-		fmt.Fprintln(os.Stderr, "  delete     <task-id>")
+		fmt.Fprintln(os.Stderr, "  add    <ticket-id> --title <title> [--description <desc>] [--verifiable-result <vr>] [--no-commit]")
+		fmt.Fprintln(os.Stderr, "  get    [--json] <task-id>")
+		fmt.Fprintln(os.Stderr, "  ls     [--json] <ticket-id>")
+		fmt.Fprintln(os.Stderr, "  update <task-id> [--title <title>] [--description <desc>] [--verifiable-result <vr>]")
+		fmt.Fprintln(os.Stderr, "  move   <task-id> <position>")
+		fmt.Fprintln(os.Stderr, "  delete <task-id>")
+		fmt.Fprintln(os.Stderr, "(agent-only: complete, uncomplete, set-commit — use ticket --agent task <subcommand>)")
 		os.Exit(1)
 	}
 	switch args[0] {
@@ -37,16 +35,33 @@ func RunTask(args []string, defaultDB string) {
 		runTaskUpdate(args[1:], defaultDB)
 	case "move":
 		runTaskMove(args[1:], defaultDB)
-	case "set-commit":
-		runTaskSetCommit(args[1:], defaultDB)
-	case "complete":
-		runTaskComplete(args[1:], defaultDB, false)
-	case "uncomplete":
-		runTaskComplete(args[1:], defaultDB, true)
 	case "delete":
 		runTaskDelete(args[1:], defaultDB)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown task subcommand: %s\n", args[0])
+		fmt.Fprintf(os.Stderr, "note: complete, uncomplete, set-commit require 'ticket --agent task %s'\n", args[0])
+		os.Exit(1)
+	}
+}
+
+// RunAgentTask handles agent-only task subcommands (complete, uncomplete, set-commit).
+func RunAgentTask(args []string, defaultDB string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: ticket --agent task <subcommand>")
+		fmt.Fprintln(os.Stderr, "  complete   [--most-recent-commit | --commit <hash>] <task-id>")
+		fmt.Fprintln(os.Stderr, "  uncomplete <task-id>")
+		fmt.Fprintln(os.Stderr, "  set-commit <task-id> <hash>")
+		os.Exit(1)
+	}
+	switch args[0] {
+	case "complete":
+		runTaskComplete(args[1:], defaultDB, false)
+	case "uncomplete":
+		runTaskComplete(args[1:], defaultDB, true)
+	case "set-commit":
+		runTaskSetCommit(args[1:], defaultDB)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown agent task subcommand: %s\n", args[0])
 		os.Exit(1)
 	}
 }
