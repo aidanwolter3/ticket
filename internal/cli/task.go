@@ -5,11 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
-	"strings"
 	"text/tabwriter"
 
-	"github.com/aidanwolter/ticket/internal/model"
+	"github.com/aidanwolter/ticket/internal/workflow"
 )
 
 func RunTask(args []string, defaultDB string) {
@@ -88,25 +86,8 @@ func runTaskAdd(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	position := 1
-	last, err := s.LastTaskForTicket(ticketID)
+	task, err := workflow.AddTask(s, ticketID, *title, *description, *verifiableResult, *noCommit)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "get last task: %v\n", err)
-		os.Exit(1)
-	}
-	if last != nil {
-		position = last.Position + 1
-	}
-
-	task := &model.Task{
-		TicketID:         ticketID,
-		Title:            *title,
-		Description:      *description,
-		VerifiableResult: *verifiableResult,
-		NoCommit:         *noCommit,
-		Position:         position,
-	}
-	if err := s.CreateTask(task); err != nil {
 		fmt.Fprintf(os.Stderr, "create task: %v\n", err)
 		os.Exit(1)
 	}
@@ -235,7 +216,7 @@ func runTaskDelete(args []string, defaultDB string) {
 	}
 	taskID := fs.Arg(0)
 
-	if err := s.DeleteTask(taskID); err != nil {
+	if err := workflow.DeleteTask(s, taskID); err != nil {
 		fmt.Fprintf(os.Stderr, "delete task: %v\n", err)
 		os.Exit(1)
 	}
@@ -266,38 +247,19 @@ func runTaskComplete(args []string, defaultDB string, undo bool) {
 
 	var err error
 	if undo {
-		err = s.UncompleteTask(taskID)
+		err = workflow.UncompleteTask(s, taskID)
+	} else if *mostRecentCommit {
+		err = workflow.CompleteTaskMostRecentCommit(s, taskID)
+	} else if *commitHash != "" {
+		err = workflow.CompleteTask(s, taskID, *commitHash)
 	} else {
 		task, getErr := s.GetTask(taskID)
 		if getErr != nil {
 			fmt.Fprintf(os.Stderr, "get task: %v\n", getErr)
 			os.Exit(1)
 		}
-
 		if task.NoCommit {
-			err = s.CompleteTask(taskID)
-		} else if *commitHash != "" {
-			err = s.CompleteTaskWithCommit(taskID, *commitHash)
-		} else if *mostRecentCommit {
-			ticket, getErr := s.GetTicket(task.TicketID)
-			if getErr != nil {
-				fmt.Fprintf(os.Stderr, "get ticket: %v\n", getErr)
-				os.Exit(1)
-			}
-			gitPath := ticket.WorktreePath
-			if gitPath == "" {
-				gitPath = ticket.RepoPath
-			}
-			if gitPath == "" {
-				fmt.Fprintln(os.Stderr, "error: ticket has no worktree_path or repo_path set")
-				os.Exit(1)
-			}
-			out, runErr := exec.Command("git", "-C", gitPath, "rev-parse", "HEAD").Output()
-			if runErr != nil {
-				fmt.Fprintf(os.Stderr, "git rev-parse HEAD: %v\n", runErr)
-				os.Exit(1)
-			}
-			err = s.CompleteTaskWithCommit(taskID, strings.TrimSpace(string(out)))
+			err = workflow.CompleteTask(s, taskID, "")
 		} else {
 			fmt.Fprintf(os.Stderr, "error: task %s requires a commit hash; use --commit <hash> or --most-recent-commit\n", taskID)
 			fmt.Fprintf(os.Stderr, "       (use --no-commit on task add/update to mark a task as commit-free)\n")
@@ -342,26 +304,21 @@ func runTaskUpdate(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	task, err := s.GetTask(taskID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
-	}
-
+	var titlePtr, descPtr, vrPtr *string
+	var noCommitPtr *bool
 	if titleSet {
-		task.Title = *title
+		titlePtr = title
 	}
 	if descSet {
-		task.Description = *description
+		descPtr = description
 	}
 	if vrSet {
-		task.VerifiableResult = *verifiableResult
+		vrPtr = verifiableResult
 	}
 	if noCommitSet {
-		task.NoCommit = *noCommit
+		noCommitPtr = noCommit
 	}
-
-	if err := s.UpdateTask(task); err != nil {
+	if err := workflow.UpdateTask(s, taskID, titlePtr, descPtr, vrPtr, noCommitPtr); err != nil {
 		fmt.Fprintf(os.Stderr, "update task: %v\n", err)
 		os.Exit(1)
 	}
@@ -419,7 +376,7 @@ func runTaskMove(args []string, defaultDB string) {
 		os.Exit(1)
 	}
 
-	if err := s.MoveTask(taskID, newPos); err != nil {
+	if err := workflow.MoveTask(s, taskID, newPos); err != nil {
 		fmt.Fprintf(os.Stderr, "move task: %v\n", err)
 		os.Exit(1)
 	}
