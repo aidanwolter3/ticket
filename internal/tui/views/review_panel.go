@@ -30,6 +30,7 @@ const (
 	leftKindTask        leftItemKind = iota
 	leftKindThread                   // real submitted thread
 	leftKindDraftThread              // staged (not yet submitted) draft thread
+	leftKindMessage                  // individual message inside an expanded thread
 )
 
 // leftItem is one navigable entry in the left pane flat list.
@@ -39,6 +40,7 @@ type leftItem struct {
 	thread       *model.Thread
 	draftThread  *model.DraftThread
 	stagedAction string // "resolve"/"reopen"/"" for thread items
+	msgIdx       int    // for leftKindMessage: index into thread.Messages
 }
 
 // ReviewPanelView is the full-screen code-review split-pane overlay.
@@ -134,10 +136,11 @@ func (v *ReviewPanelView) SelectedTaskID() string {
 }
 
 // SelectedThread returns the real thread at the current left cursor, or nil.
+// Also returns the thread when a message inside it is selected.
 func (v *ReviewPanelView) SelectedThread() *model.Thread {
 	if v.leftCursor < len(v.leftItems) {
 		item := v.leftItems[v.leftCursor]
-		if item.kind == leftKindThread {
+		if item.kind == leftKindThread || item.kind == leftKindMessage {
 			return item.thread
 		}
 	}
@@ -187,6 +190,16 @@ func (v *ReviewPanelView) buildLeftItems() {
 				thread:       th,
 				stagedAction: staged,
 			})
+			if v.expandedThread == th.ID {
+				for mi := range th.Messages {
+					v.leftItems = append(v.leftItems, leftItem{
+						kind:    leftKindMessage,
+						taskIdx: i,
+						thread:  th,
+						msgIdx:  mi,
+					})
+				}
+			}
 		}
 		for _, dt := range dtbt[task.ID] {
 			v.leftItems = append(v.leftItems, leftItem{
@@ -456,7 +469,8 @@ func (v *ReviewPanelView) updateLeftListOffset() {
 		v.leftListOffset = v.leftCursor
 	}
 	if v.leftCursor >= v.leftListOffset+bh {
-		v.leftListOffset = v.leftCursor - bh + 1
+		// Pin selected item to top so expanded thread messages scroll into view.
+		v.leftListOffset = v.leftCursor
 	}
 	if v.leftListOffset < 0 {
 		v.leftListOffset = 0
@@ -505,14 +519,26 @@ func (v *ReviewPanelView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if item.kind == leftKindTask {
 					v.toggleThreadExpansion()
 				} else if item.kind == leftKindThread {
-					// Toggle inline message display for this thread.
 					thID := item.thread.ID
-					if v.expandedThread == thID {
+					wasExpanded := v.expandedThread == thID
+					if wasExpanded {
 						v.expandedThread = ""
 					} else {
 						v.expandedThread = thID
 					}
+					v.buildLeftItems()
+					// When collapsing, return cursor to the thread item.
+					if wasExpanded {
+						for i, li := range v.leftItems {
+							if li.kind == leftKindThread && li.thread != nil && li.thread.ID == thID {
+								v.leftCursor = i
+								break
+							}
+						}
+					}
+					v.updateLeftListOffset()
 				}
+				// leftKindMessage: enter does nothing
 			}
 		case "[":
 			v.offset--
@@ -549,20 +575,47 @@ func (v *ReviewPanelView) View() string {
 		switch item.kind {
 		case leftKindTask:
 			task := v.tasks[item.taskIdx]
-			threadCount := len(tbt[task.ID]) + len(dtbt[task.ID])
+			realThreads := tbt[task.ID]
+			draftCnt := len(dtbt[task.ID])
+			totalThreads := len(realThreads) + draftCnt
 
-			// Build suffix showing thread count and expand hint.
-			suffix := ""
-			if threadCount > 0 {
+			// Count real threads by open vs resolved.
+			var openCnt, resolvedCnt int
+			for _, th := range realThreads {
+				if th.Status == model.ThreadResolved {
+					resolvedCnt++
+				} else {
+					openCnt++
+				}
+			}
+
+			// Build suffix showing expand marker and open/resolved counts.
+			var suffix string
+			var suffixVisLen int
+			if totalThreads > 0 {
 				marker := "▶"
 				if v.expandedTasks[task.ID] {
 					marker = "▼"
 				}
-				suffix = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-					fmt.Sprintf(" %s%d", marker, threadCount))
+				plainSuffix := " " + marker
+				styledSuffix := " " + marker
+				if openCnt > 0 {
+					plainSuffix += fmt.Sprintf(" %d●", openCnt)
+					styledSuffix += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(fmt.Sprintf("%d●", openCnt))
+				}
+				if resolvedCnt > 0 {
+					plainSuffix += fmt.Sprintf(" %d✓", resolvedCnt)
+					styledSuffix += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(fmt.Sprintf("%d✓", resolvedCnt))
+				}
+				if draftCnt > 0 {
+					plainSuffix += fmt.Sprintf(" %d◌", draftCnt)
+					styledSuffix += " " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("%d◌", draftCnt))
+				}
+				suffix = styledSuffix
+				suffixVisLen = len([]rune(plainSuffix))
 			}
 
-			titleMaxW := leftW - 5 - len([]rune(suffix))
+			titleMaxW := leftW - 5 - suffixVisLen
 			if titleMaxW < 1 {
 				titleMaxW = 1
 			}
@@ -617,27 +670,24 @@ func (v *ReviewPanelView) View() string {
 			}
 			allLeftLines = append(allLeftLines, line)
 
-			// When this thread is expanded, show messages inline below.
-			if v.expandedThread == th.ID {
-				for _, msg := range th.Messages {
-					author := lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(msg.Author)
-					// Wrap text to fit within leftW: subtract indent(4) + rawAuthor + ": "(2)
-					msgW := leftW - 4 - len(msg.Author) - 2
-					if msgW < 1 {
-						msgW = 1
-					}
-					// Continuation indent matches "    <author>: " width.
-					contIndent := strings.Repeat(" ", 4+len(msg.Author)+2)
-					lines := strings.Split(wrapText(msg.Text, msgW), "\n")
-					for i, l := range lines {
-						if i == 0 {
-							allLeftLines = append(allLeftLines, fmt.Sprintf("    %s: %s", author, l))
-						} else {
-							allLeftLines = append(allLeftLines, contIndent+l)
-						}
-					}
-				}
+		case leftKindMessage:
+			th := item.thread
+			msg := th.Messages[item.msgIdx]
+			author := lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Render(msg.Author)
+			maxW := leftW - 6 - len(msg.Author)
+			if maxW < 1 {
+				maxW = 1
 			}
+			firstLine := strings.SplitN(msg.Text, "\n", 2)[0]
+			runes := []rune(firstLine)
+			if len(runes) > maxW {
+				firstLine = string(runes[:maxW]) + "…"
+			}
+			line := fmt.Sprintf("      %s: %s", author, firstLine)
+			if idx == v.leftCursor {
+				line = lipgloss.NewStyle().Reverse(true).Render(line)
+			}
+			allLeftLines = append(allLeftLines, line)
 
 		case leftKindDraftThread:
 			dt := item.draftThread
