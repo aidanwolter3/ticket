@@ -83,6 +83,10 @@ func main() {
 			cli.RunAgent(cleanArgs, wf)
 		case "note":
 			cli.RunNote(cleanArgs, wf)
+		case "backlog":
+			cli.RunBacklog(cleanArgs, wf)
+		case "unbacklog":
+			cli.RunUnbacklog(cleanArgs, wf)
 		default:
 			fmt.Fprintf(os.Stderr, "unknown command: %s\nRun 'ticket help' for usage.\n", subCmd)
 			os.Exit(1)

@@ -193,6 +193,14 @@ func (w *Workflow) ListTickets(filter ...model.Status) ([]*model.Ticket, error) 
 	return w.s.ListTickets(filter...)
 }
 
+func (w *Workflow) ListBacklogTickets() ([]*model.Ticket, error) {
+	return w.s.ListBacklogTickets()
+}
+
+func (w *Workflow) SetBacklog(ticketID string, backlog bool) error {
+	return w.s.SetBacklog(ticketID, backlog)
+}
+
 func (w *Workflow) TransitionTicket(id string, to model.Status) error {
 	return w.s.TransitionTicket(id, to)
 }

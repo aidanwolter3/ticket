@@ -17,11 +17,14 @@ func RunList(args []string, wf *human.Workflow) {
 	fs := flag.NewFlagSet("ls", flag.ExitOnError)
 	statusFilter := fs.String("status", "", "filter by status (draft|ready|in_progress|in_review|completed)")
 	jsonOut := fs.Bool("json", false, "output full ticket data as JSON")
+	showBacklog := fs.Bool("backlog", false, "show backlogged tickets instead of normal tickets")
 	fs.Parse(args)
 
 	var tickets []*model.Ticket
 	var err error
-	if *statusFilter != "" {
+	if *showBacklog {
+		tickets, err = wf.ListBacklogTickets()
+	} else if *statusFilter != "" {
 		tickets, err = wf.ListTickets(model.Status(*statusFilter))
 	} else {
 		tickets, err = wf.ListTickets()

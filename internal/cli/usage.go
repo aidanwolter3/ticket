@@ -10,7 +10,8 @@ Usage:
   ticket draft [--db path] --title STR --repo STR [--description STR|-] [--json]
                                               create a draft ticket from flags; outputs assigned ID (or --json for full ticket)
   ticket import [--db path] [file]            batch-create tickets from JSON (stdin if no file)
-  ticket ls [--db path] [--status s] [--json] list tickets
+  ticket ls [--db path] [--status s] [--backlog] [--json]
+                                              list tickets (--backlog shows backlogged tickets)
   ticket get [--db path] [--json] <id>        get a single ticket (--json for machine-readable output)
   ticket update [--db path] <id> [--title <title>] [--description <desc>]
                                               update a ticket's title or description
@@ -40,6 +41,8 @@ Usage:
   ticket config set [--db path] <key> <value> set a config value
   ticket config get [--db path] <key>         get a config value (worktrees defaults to true)
   ticket config ls  [--db path]               list all config settings with defaults
+  ticket backlog [--db path] <id>             mark a ticket as backlogged (hides it from default list)
+  ticket unbacklog [--db path] <id>           remove the backlog flag from a ticket
   ticket delete [--db path] <id>              delete a ticket
   ticket purge [--db path] --yes              delete the database file
   ticket agent clear [--db path] <ticket-id>  remove all agent sessions for a ticket
