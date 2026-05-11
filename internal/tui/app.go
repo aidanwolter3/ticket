@@ -38,7 +38,6 @@ const (
 	screenList appScreen = iota // split-pane: list left, detail right
 	screenThreads
 	screenReviewPanel
-	screenNoteModal
 	screenReplyModal
 	screenNewThreadModal
 	screenConfirmDelete
@@ -78,7 +77,6 @@ type App struct {
 	threadsView        *views.ThreadsView
 	threadsReturnScreen appScreen // screen to return to when esc-ing from threadsView
 	reviewPanelView    *views.ReviewPanelView
-	noteModal          *views.NoteModal
 	replyModal         *views.ReplyModal
 	replyModalReturn   appScreen // screen to return to after replyModal
 	newThreadModal     *views.NewThreadModal
@@ -240,8 +238,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateConfirmRedraft(msg)
 	case screenConfirmDispatch:
 		return a.updateConfirmDispatch(msg)
-	case screenNoteModal:
-		return a.updateNoteModal(msg)
 	case screenReplyModal:
 		return a.updateReplyModal(msg)
 	case screenNewThreadModal:
@@ -300,12 +296,6 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Detail-panel hotkeys — act on the currently highlighted ticket
 		switch km.String() {
-		case "n":
-			if a.currentTicketID() != "" {
-				a.noteModal = views.NewNoteModal()
-				a.screen = screenNoteModal
-			}
-			return a, nil
 		case "[":
 			if a.ticketDetail != nil {
 				a.ticketDetail.ScrollUp(3)
@@ -890,35 +880,6 @@ func (a *App) updateConfirmRedraft(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// --- Note modal ---
-
-func (a *App) updateNoteModal(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if km, ok := msg.(tea.KeyMsg); ok {
-		switch km.String() {
-		case "esc":
-			a.screen = screenList
-			return a, nil
-		case "ctrl+s", "enter":
-			if a.noteModal.Focused() != 0 || km.String() == "ctrl+s" {
-				id := a.currentTicketID()
-				if id != "" && a.noteModal.Text() != "" {
-					if _, err := a.store.AddNote(id, a.noteModal.Author(), a.noteModal.Text()); err != nil {
-						a.setErr(err)
-					} else {
-						a.statusMsg = "Note added"
-						a.statusErr = false
-						a.reloadCurrentDetail()
-					}
-				}
-				a.screen = screenList
-				return a, nil
-			}
-		}
-	}
-	_, cmd := a.noteModal.Update(msg)
-	return a, cmd
-}
-
 // --- Edit draft message modal ---
 
 func (a *App) updateEditDraftMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1106,10 +1067,6 @@ func (a *App) View() string {
 	case screenReviewPanel:
 		if a.reviewPanelView != nil {
 			sb.WriteString(a.reviewPanelView.View())
-		}
-	case screenNoteModal:
-		if a.noteModal != nil {
-			sb.WriteString(a.noteModal.View())
 		}
 	case screenReplyModal:
 		if a.replyModal != nil {

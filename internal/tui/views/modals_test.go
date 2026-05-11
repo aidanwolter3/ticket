@@ -1,7 +1,6 @@
 package views
 
 import (
-	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -73,40 +72,6 @@ func TestModal_NewThread(t *testing.T) {
 		assert.Equal(t, "task-99", m.TaskID())
 		assert.Equal(t, "main.go", m.FilePath())
 		assert.Equal(t, "@@ -5,3 +5,4 @@", m.HunkHeader())
-	})
-}
-
-func TestModal_Note(t *testing.T) {
-	t.Run("typed text appears in Text()", func(t *testing.T) {
-		m := NewNoteModal()
-		// Tab to focus the text input.
-		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("tab")})
-		nm := m2.(*NoteModal)
-		nm2 := typeText(nm, "my note")
-		nm3 := nm2.(*NoteModal)
-		assert.Contains(t, nm3.Text(), "my note")
-	})
-
-	t.Run("default author is pre-populated", func(t *testing.T) {
-		m := NewNoteModal()
-		assert.Equal(t, "human:aidan", m.Author())
-	})
-
-	t.Run("tab switches focused field", func(t *testing.T) {
-		m := NewNoteModal()
-		assert.Equal(t, 0, m.Focused())
-		m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("tab")})
-		nm := m2.(*NoteModal)
-		assert.Equal(t, 1, nm.Focused())
-	})
-
-	t.Run("View contains labels and hints", func(t *testing.T) {
-		m := NewNoteModal()
-		out := stripANSI(m.View())
-		assert.Contains(t, out, "Add Note")
-		assert.Contains(t, strings.ToLower(out), "author")
-		assert.Contains(t, out, "ctrl+s")
-		assert.Contains(t, out, "esc")
 	})
 }
 
