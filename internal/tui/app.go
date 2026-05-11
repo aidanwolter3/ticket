@@ -416,10 +416,17 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if last != nil {
 					position = last.Position + 1
 				}
+				maxRound := 1
+				for _, tk := range t.Tasks {
+					if tk.Round > maxRound {
+						maxRound = tk.Round
+					}
+				}
 				task := &model.Task{
 					TicketID: t.ID,
 					Title:    "Sync this worktree so that it has the latest commits from 'main' and fix any merge conflicts",
 					Position: position,
+					Round:    maxRound + 1,
 				}
 				if err := a.store.CreateTask(task); err != nil {
 					a.setErr(err)
