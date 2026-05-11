@@ -79,6 +79,6 @@ func (m *ReplyModal) View() string {
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Author") + "\n  " + m.authorIn.View() + "\n\n")
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Message") + "\n" + m.textIn.View() + "\n\n")
 	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-		"[tab] switch · [ctrl+s] send · [esc] cancel"))
+		"[tab] switch · [S] send · [esc] cancel"))
 	return sb.String()
 }

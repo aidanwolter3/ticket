@@ -629,15 +629,23 @@ func (a *App) updateReviewPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 					switch th.Status {
 					case model.ThreadOpen, model.ThreadNeedsAttention:
 						if ds, _ := a.store.GetDraftState(ticketID); ds != nil && ds.ActionFor(th.ID) == model.DraftActionResolve {
-							a.setErr(a.store.ClearDraftAction(th.ID))
+							if err := a.store.ClearDraftAction(th.ID); err != nil {
+								a.setErr(err)
+							}
 						} else {
-							a.setErr(a.store.SetDraftAction(th.ID, ticketID, model.DraftActionResolve))
+							if err := a.store.SetDraftAction(th.ID, ticketID, model.DraftActionResolve); err != nil {
+								a.setErr(err)
+							}
 						}
 					case model.ThreadResolved:
 						if ds, _ := a.store.GetDraftState(ticketID); ds != nil && ds.ActionFor(th.ID) == model.DraftActionReopen {
-							a.setErr(a.store.ClearDraftAction(th.ID))
+							if err := a.store.ClearDraftAction(th.ID); err != nil {
+								a.setErr(err)
+							}
 						} else {
-							a.setErr(a.store.SetDraftAction(th.ID, ticketID, model.DraftActionReopen))
+							if err := a.store.SetDraftAction(th.ID, ticketID, model.DraftActionReopen); err != nil {
+								a.setErr(err)
+							}
 						}
 					}
 					a.reviewPanelView.Reload()
@@ -902,7 +910,7 @@ func (a *App) updateReplyModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			a.screen = returnTo
 			return a, nil
-		case "ctrl+s":
+		case "ctrl+s", "S":
 			if a.replyModal.Text() != "" {
 				ticketID := ""
 				if a.threadsView != nil {
