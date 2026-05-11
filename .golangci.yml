@@ -1,0 +1,23 @@
+linters:
+  enable:
+    - depguard
+
+linters-settings:
+  depguard:
+    rules:
+      no-store-in-cli:
+        files:
+          - "**/internal/cli/*.go"
+          - "!**/*_test.go"
+        deny:
+          - pkg: "github.com/aidanwolter/ticket/internal/store"
+            desc: "internal/cli must not import internal/store; use internal/workflow/human instead"
+      no-store-in-tui:
+        files:
+          - "**/internal/tui/*.go"
+          - "**/internal/tui/views/*.go"
+          - "**/internal/tui/components/*.go"
+          - "!**/*_test.go"
+        deny:
+          - pkg: "github.com/aidanwolter/ticket/internal/store"
+            desc: "internal/tui must not import internal/store; use internal/workflow/human instead"
