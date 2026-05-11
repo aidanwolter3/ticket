@@ -11,7 +11,6 @@ const (
 	StatusInReview   Status = "in_review"
 	StatusApproved   Status = "approved"
 	StatusMerged     Status = "merged"
-	StatusCompleted  Status = "merged" // deprecated alias for merged
 )
 
 type TicketType string

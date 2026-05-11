@@ -99,17 +99,6 @@ func Promote(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, 
 	return nil
 }
 
-// Ready transitions a ticket to ready. The worktree and feature branch are
-// preserved across the review cycle; only Redraft and Merge tear them down.
-// stdout and stderr are accepted for interface symmetry but are unused; pass
-// io.Discard.
-func Ready(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
-	if err := s.TransitionTicket(ticketID, model.StatusReady); err != nil {
-		return fmt.Errorf("ready: transition: %w", err)
-	}
-	return nil
-}
-
 // SubmitReview flushes all staged draft actions to the store atomically,
 // auto-generates amendment tasks for each needs_attention thread, and
 // transitions the ticket from in_review to ready only when at least one

@@ -398,42 +398,6 @@ func TestSubmitReview_NewThreadTransitionsToReady(t *testing.T) {
 	assert.Equal(t, model.ThreadNeedsAttention, threads[0].Status)
 }
 
-func TestReady_PreservesWorktreeFromInReview(t *testing.T) {
-	s := newTestStore(t)
-	repoPath := gitRepo(t)
-
-	ticket := &model.Ticket{
-		Title:    "Test ticket",
-		Type:     model.TypeTicket,
-		Status:   model.StatusReady,
-		RepoPath: repoPath,
-	}
-	require.NoError(t, s.CreateTicket(ticket))
-
-	// Simulate worktree having been created when the ticket was dispatched.
-	worktreeDir := t.TempDir()
-	featureBranch := "feat/" + strings.ToLower(ticket.ID)
-	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreeDir, repoPath, featureBranch))
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInProgress))
-
-	// Advance to in_review.
-	require.NoError(t, s.TransitionTicket(ticket.ID, model.StatusInReview))
-
-	_, err := os.Stat(worktreeDir)
-	require.NoError(t, err, "worktree should exist before requeue")
-
-	// Requeue — worktree and branch should survive.
-	require.NoError(t, Ready(s, ticket.ID, io.Discard, io.Discard))
-
-	requeued, err := s.GetTicket(ticket.ID)
-	require.NoError(t, err)
-	assert.Equal(t, model.StatusReady, requeued.Status)
-	assert.NotEmpty(t, requeued.WorktreePath, "worktree_path should survive requeue")
-	assert.NotEmpty(t, requeued.FeatureBranch, "feature_branch should survive requeue")
-	_, statErr := os.Stat(worktreeDir)
-	assert.NoError(t, statErr, "worktree directory should still exist after requeue")
-}
-
 // TestRedraft_KillsAgentSession verifies that Redraft sends SIGTERM to an active
 // agent process and marks the session as terminated.
 func TestRedraft_KillsAgentSession(t *testing.T) {
