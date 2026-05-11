@@ -787,6 +787,115 @@ func TestFullReviewCycle_HunkComments(t *testing.T) {
 	assert.Equal(t, model.StatusApproved, got.Status)
 }
 
+// TestSubmitReview_AutoDispatch verifies that when a launcher is provided and
+// agent.auto_dispatch=true with agent.command set, SubmitReview launches an
+// agent and transitions the ticket to in_progress after the ready transition.
+func TestSubmitReview_AutoDispatch(t *testing.T) {
+	repoPath := gitRepo(t)
+	s := newTestStore(t)
+	ticket, task := newInReviewTicket(t, s)
+
+	// Give the ticket a worktree path; the launcher writes .agent/output.log here.
+	worktreePath := t.TempDir()
+	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreePath, repoPath, "feat/"+strings.ToLower(ticket.ID)))
+
+	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+	require.NoError(t, s.ConfigSet("agent.command", "echo {}"))
+
+	// Stage one draft thread so FlushDraftState returns naThreadIDs and the ticket
+	// transitions to ready before auto-dispatch fires.
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "", "")
+	require.NoError(t, err)
+	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "please fix this")
+	require.NoError(t, err)
+
+	launcher := agent.NewLauncher(s)
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", launcher, io.Discard, io.Discard))
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusInProgress, got.Status)
+
+	sess, err := s.GetAgentSessionByTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.NotNil(t, sess)
+
+	notes, err := s.GetNotesForTicket(ticket.ID)
+	require.NoError(t, err)
+	var found bool
+	for _, n := range notes {
+		if strings.Contains(n.Text, "auto-dispatched") {
+			found = true
+		}
+	}
+	assert.True(t, found, "auto-dispatch note should be present")
+}
+
+// TestSubmitReview_SkipsDispatchWhenSessionExists verifies that when an active
+// agent session already exists for the ticket, SubmitReview skips auto-dispatch
+// and does not create a second session or transition to in_progress.
+func TestSubmitReview_SkipsDispatchWhenSessionExists(t *testing.T) {
+	repoPath := gitRepo(t)
+	s := newTestStore(t)
+	ticket, task := newInReviewTicket(t, s)
+
+	worktreePath := t.TempDir()
+	require.NoError(t, s.SetWorktreePath(ticket.ID, worktreePath, repoPath, "feat/"+strings.ToLower(ticket.ID)))
+
+	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+	require.NoError(t, s.ConfigSet("agent.command", "echo {}"))
+
+	// Seed an existing running session before calling SubmitReview.
+	seeded, err := s.CreateAgentSession(ticket.ID, 99999, "/tmp/fake.log")
+	require.NoError(t, err)
+
+	// Stage one draft thread so the ticket transitions to ready.
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "", "")
+	require.NoError(t, err)
+	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "please fix this")
+	require.NoError(t, err)
+
+	launcher := agent.NewLauncher(s)
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", launcher, io.Discard, io.Discard))
+
+	// Ticket transitions to ready (draft flush happened) but not in_progress (no dispatch).
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusReady, got.Status)
+
+	// No new session: the latest session is still the seeded one.
+	latest, err := s.GetLatestAgentSessionByTicket(ticket.ID)
+	require.NoError(t, err)
+	require.NotNil(t, latest)
+	assert.Equal(t, seeded.ID, latest.ID)
+}
+
+// TestSubmitReview_SkipsDispatchWhenConfigOff verifies that a non-nil launcher
+// alone does not trigger auto-dispatch — the agent.auto_dispatch config must
+// also be set. The ticket transitions to ready but no agent session is created.
+func TestSubmitReview_SkipsDispatchWhenConfigOff(t *testing.T) {
+	s := newTestStore(t)
+	ticket, task := newInReviewTicket(t, s)
+
+	// Stage one draft thread so the ticket transitions to ready.
+	dt, err := s.CreateDraftThread(ticket.ID, task.ID, "", "")
+	require.NoError(t, err)
+	_, err = s.AddDraftMessage(dt.ID, ticket.ID, false, "human", "please fix this")
+	require.NoError(t, err)
+
+	// Launcher is provided but config is NOT set — dispatch must be skipped.
+	launcher := agent.NewLauncher(s)
+	require.NoError(t, SubmitReview(s, ticket.ID, "human", launcher, io.Discard, io.Discard))
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusReady, got.Status)
+
+	sess, err := s.GetAgentSessionByTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Nil(t, sess)
+}
+
 // TestApprove_BlockedByOpenThread verifies that a ticket with an open or
 // needs_attention thread cannot be approved at the store level (callers are
 // responsible for the pre-check; this test documents the required guard).
