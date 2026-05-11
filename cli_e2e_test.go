@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
+	"github.com/aidanwolter/ticket/internal/workflow"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -339,4 +341,91 @@ func TestCLI_AgentCommands(t *testing.T) {
 	require.Equal(t, 0, code)
 	tj = decodeJSON(t, stdout)
 	assert.Equal(t, "in_review", tj["status"])
+}
+
+func TestCLI_FullLifecycle(t *testing.T) {
+	if globalBuildFailed || globalTicketBin == "" || globalEchoAgent == "" {
+		t.Skip("ticket or echo_agent binary could not be built")
+	}
+
+	db, s := newTestDB(t)
+	repoPath := cliGitRepo(t)
+
+	// Step 1: draft ticket.
+	stdout, _, code := run(t, db, "draft", "--db", db, "--title", "Lifecycle Ticket", "--repo", repoPath)
+	require.Equal(t, 0, code)
+	ticketID := strings.TrimSpace(stdout)
+
+	// Step 2: add task.
+	stdout, _, code = run(t, db, "task", "add", ticketID, "--db", db, "--title", "Implement feature")
+	require.Equal(t, 0, code)
+	taskID := strings.TrimSpace(stdout)
+
+	// Step 3: seed agent config via store.
+	require.NoError(t, s.ConfigSet("agent.command", globalEchoAgent+" {}"))
+	require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+
+	// Step 4: ticket ready → auto-dispatch creates worktree, launches echo_agent,
+	// auto-transitions to in_progress.
+	_, _, code = run(t, db, "ready", "--db", db, ticketID)
+	require.Equal(t, 0, code)
+
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj := decodeJSON(t, stdout)
+	assert.Equal(t, "in_progress", tj["status"])
+	worktreePath, _ := tj["worktree_path"].(string)
+	require.NotEmpty(t, worktreePath, "worktree_path should be set after auto-dispatch")
+
+	// Step 5: make a git commit in the worktree.
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v in %s: %s", args, dir, out)
+	}
+	git(worktreePath, "config", "user.email", "test@example.com")
+	git(worktreePath, "config", "user.name", "Test")
+	require.NoError(t, os.WriteFile(filepath.Join(worktreePath, "feature.txt"), []byte("feature\n"), 0644))
+	git(worktreePath, "add", ".")
+	git(worktreePath, "commit", "-m", "add feature")
+
+	// Step 6: complete task using --most-recent-commit (resolves HEAD from worktree_path).
+	stdout, _, code = run(t, db, "--agent", "task", "complete", "--db", db, "--most-recent-commit", taskID)
+	require.Equal(t, 0, code, "stdout=%q", stdout)
+
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj = decodeJSON(t, stdout)
+	require.NotNil(t, tj["tasks"])
+	tasks := tj["tasks"].([]any)
+	require.Len(t, tasks, 1)
+	task1 := tasks[0].(map[string]any)
+	assert.NotNil(t, task1["completed_at"], "task should be completed")
+	assert.NotEmpty(t, task1["commit_hash"], "task should have commit hash")
+
+	// Step 7: in-review.
+	_, _, code = run(t, db, "--agent", "in-review", "--db", db, ticketID)
+	require.Equal(t, 0, code)
+
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj = decodeJSON(t, stdout)
+	assert.Equal(t, "in_review", tj["status"])
+
+	// Step 8: seed approved via store.
+	require.NoError(t, s.TransitionTicket(ticketID, model.StatusApproved))
+
+	// Step 9: merge directly.
+	require.NoError(t, workflow.Merge(s, ticketID, io.Discard, io.Discard))
+
+	// Step 10: verify merged and worktree directory gone.
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj = decodeJSON(t, stdout)
+	assert.Equal(t, "merged", tj["status"])
+
+	_, statErr := os.Stat(worktreePath)
+	assert.True(t, os.IsNotExist(statErr), "worktree directory should not exist after merge")
 }
