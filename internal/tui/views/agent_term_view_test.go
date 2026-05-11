@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+
 func TestAgentTermView_RunningState(t *testing.T) {
 	v := NewAgentTermView("T-042")
 	v.SetSize(20, 5)
@@ -99,22 +100,3 @@ func TestAgentTermView_ShortContent(t *testing.T) {
 	}
 }
 
-// stripANSI removes ANSI escape sequences so we can count visible runes.
-func stripANSI(s string) string {
-	var out strings.Builder
-	i := 0
-	runes := []rune(s)
-	for i < len(runes) {
-		if runes[i] == '\033' && i+1 < len(runes) && runes[i+1] == '[' {
-			i += 2
-			for i < len(runes) && runes[i] != 'm' {
-				i++
-			}
-			i++ // skip 'm'
-			continue
-		}
-		out.WriteRune(runes[i])
-		i++
-	}
-	return out.String()
-}
