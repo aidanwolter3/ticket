@@ -12,6 +12,8 @@ Usage:
   ticket import [--db path] [file]            batch-create tickets from JSON (stdin if no file)
   ticket ls [--db path] [--status s] [--json] list tickets
   ticket get [--db path] <id>                 get a single ticket as JSON (includes tasks and threads)
+  ticket update [--db path] <id> [--title <title>] [--description <desc>]
+                                              update a ticket's title or description
   ticket transition [--db path] <id> <status> <author>
                                               transition a ticket's status
   ticket note add [--db path] <ticket-id> <author> <text>

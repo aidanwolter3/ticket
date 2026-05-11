@@ -59,6 +59,8 @@ func main() {
 			cli.RunApprove(os.Args[2:], defaultDB)
 		case "merge":
 			cli.RunMerge(os.Args[2:], defaultDB)
+		case "update":
+			cli.RunUpdate(os.Args[2:], defaultDB)
 		case "agent":
 			cli.RunAgent(os.Args[2:], defaultDB)
 		case "help", "--help", "-h":
