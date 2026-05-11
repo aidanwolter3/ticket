@@ -954,3 +954,55 @@ func TestApprove_BlockedByOpenThread(t *testing.T) {
 	}
 	assert.True(t, hasOpen, "thread is open so approval must be blocked")
 }
+
+func TestReplyToThread(t *testing.T) {
+	s := newTestStore(t)
+	ticket, task := newInReviewTicket(t, s)
+	_ = ticket
+
+	th, err := s.CreateThread(task.ID, "", "")
+	require.NoError(t, err)
+
+	msg, err := ReplyToThread(s, th.ID, "agent:claude", "looks good")
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	assert.Equal(t, "agent:claude", msg.Author)
+	assert.Equal(t, "looks good", msg.Text)
+}
+
+func TestTransitionThread(t *testing.T) {
+	s := newTestStore(t)
+	_, task := newInReviewTicket(t, s)
+
+	th, err := s.CreateThread(task.ID, "", "")
+	require.NoError(t, err)
+	assert.Equal(t, model.ThreadOpen, th.Status)
+
+	require.NoError(t, TransitionThread(s, th.ID, model.ThreadResolved, "human"))
+
+	got, err := s.GetThread(th.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.ThreadResolved, got.Status)
+}
+
+func TestBlockTicket_And_UnblockTicket(t *testing.T) {
+	s := newTestStore(t)
+
+	blocker, err := Draft(s, "Blocker", "", "")
+	require.NoError(t, err)
+
+	dependent, err := Draft(s, "Dependent", "", "")
+	require.NoError(t, err)
+
+	require.NoError(t, BlockTicket(s, dependent.ID, blocker.ID))
+
+	got, err := s.GetTicket(dependent.ID)
+	require.NoError(t, err)
+	assert.Contains(t, got.BlockedBy, blocker.ID)
+
+	require.NoError(t, UnblockTicket(s, dependent.ID, blocker.ID))
+
+	got, err = s.GetTicket(dependent.ID)
+	require.NoError(t, err)
+	assert.NotContains(t, got.BlockedBy, blocker.ID)
+}
