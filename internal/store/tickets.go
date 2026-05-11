@@ -359,6 +359,61 @@ func scanTicket(r scanner) (*model.Ticket, error) {
 	return &t, nil
 }
 
+// SetBacklog sets or clears the backlog flag on a ticket.
+func (s *Store) SetBacklog(ticketID string, backlog bool) error {
+	val := 0
+	if backlog {
+		val = 1
+	}
+	now := time.Now().UnixMilli()
+	result, err := s.db.Exec(`UPDATE tickets SET backlog=?, updated=? WHERE id=?`, val, now, ticketID)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("ticket %s not found", ticketID)
+	}
+	return nil
+}
+
+// ListBacklogTickets returns tickets with the backlog flag set.
+func (s *Store) ListBacklogTickets() ([]*model.Ticket, error) {
+	rows, err := s.db.Query(`
+		SELECT id, title, description, type, status, feature_branch,
+		       COALESCE(worktree_path,''), COALESCE(repo_path,''), backlog, created, updated
+		FROM tickets WHERE backlog=1 ORDER BY created`)
+	if err != nil {
+		return nil, err
+	}
+	var tickets []*model.Ticket
+	for rows.Next() {
+		t, err := scanTicket(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		tickets = append(tickets, t)
+	}
+	rowsErr := rows.Err()
+	rows.Close()
+	if rowsErr != nil {
+		return nil, rowsErr
+	}
+	for _, t := range tickets {
+		if err := s.loadBlockedBy(t); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.loadTasksForTickets(tickets); err != nil {
+		return nil, err
+	}
+	return tickets, nil
+}
+
 func (s *Store) AddBlocker(ticketID, blockerID string) error {
 	if ticketID == blockerID {
 		return fmt.Errorf("ticket cannot block itself")
