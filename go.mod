@@ -3,7 +3,6 @@ module github.com/aidanwolter/ticket
 go 1.26.2
 
 require (
-	github.com/aidanwolter3/bubbleterm v0.0.0-20260518035818-adad52fe2536
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
@@ -13,6 +12,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/muesli/termenv v0.16.0
 	github.com/stretchr/testify v1.11.1
+	github.com/taigrr/bubbleterm v0.0.0-20260518035029-60b9daf426a8
 	modernc.org/sqlite v1.50.0
 )
 
@@ -50,3 +50,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+replace github.com/taigrr/bubbleterm => github.com/aidanwolter3/bubbleterm v0.0.0-20260518035029-60b9daf426a8

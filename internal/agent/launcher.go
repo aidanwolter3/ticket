@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aidanwolter3/bubbleterm/emulator"
+	"github.com/taigrr/bubbleterm/emulator"
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 )
