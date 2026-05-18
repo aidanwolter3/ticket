@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/aidanwolter/ticket/internal/agent"
-	"github.com/aidanwolter/ticket/internal/bubbleterm/emulator"
+	"github.com/aidanwolter3/bubbleterm/emulator"
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/tui/views"
 	"github.com/aidanwolter/ticket/internal/workflow/human"

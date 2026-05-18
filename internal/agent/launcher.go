@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aidanwolter/ticket/internal/bubbleterm/emulator"
+	"github.com/aidanwolter3/bubbleterm/emulator"
 	"github.com/aidanwolter/ticket/internal/model"
 	"github.com/aidanwolter/ticket/internal/store"
 )
@@ -187,7 +187,9 @@ func (l *Launcher) Launch(ticketID, worktreePath string, args []string) (*model.
 // runAgent drives state transitions, broadcasts rendered frames, and cleans up
 // when the process exits.
 func (l *Launcher) runAgent(sessionID string, em *emulator.Emulator, logFile *os.File, gotOutput <-chan struct{}, exitCh <-chan error, ws WaitSignaler) {
+	broadcastStop := make(chan struct{})
 	defer func() {
+		close(broadcastStop)
 		ws.Close()
 		logFile.Close()
 		em.Close()
@@ -262,9 +264,14 @@ func (l *Launcher) runAgent(sessionID string, em *emulator.Emulator, logFile *os
 
 	// Broadcast loop: on each damage signal, get the rendered screen and broadcast.
 	go func() {
-		for range em.DamageChan() {
-			frame := em.GetScreen()
-			l.broadcast(sessionID, frame.Rows)
+		for {
+			select {
+			case <-broadcastStop:
+				return
+			case <-em.DamageChan():
+				frame := em.GetScreen()
+				l.broadcast(sessionID, frame.Rows)
+			}
 		}
 	}()
 
