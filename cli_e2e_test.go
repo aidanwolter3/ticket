@@ -509,6 +509,92 @@ func TestCLI_BlockingEnforcement(t *testing.T) {
 	assert.Equal(t, "in_progress", tj["status"])
 }
 
+func TestCLI_CustomWorkspace(t *testing.T) {
+	if globalBuildFailed || globalTicketBin == "" || globalEchoAgent == "" {
+		t.Skip("ticket or echo_agent binary could not be built")
+	}
+
+	t.Run("dispatch success transitions to in_progress", func(t *testing.T) {
+		db, s := newTestDB(t)
+
+		ticket := &model.Ticket{Title: "Custom WS Dispatch", Type: model.TypeTicket, Status: model.StatusDraft}
+		require.NoError(t, s.CreateTicket(ticket))
+		task := &model.Task{TicketID: ticket.ID, Title: "work", Position: 1}
+		require.NoError(t, s.CreateTask(task))
+
+		require.NoError(t, s.ConfigSet("workspace.type", "command"))
+		require.NoError(t, s.ConfigSet("workspace.create_command", "mktemp -d"))
+		require.NoError(t, s.ConfigSet("workspace.delete_command", "true"))
+		require.NoError(t, s.ConfigSet("agent.command", globalEchoAgent+" {}"))
+		require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+
+		stdout, stderr, code := run(t, db, "ready", "--db", db, ticket.ID)
+		require.Equal(t, 0, code, "ready should exit 0; stdout=%q stderr=%q", stdout, stderr)
+
+		out, _, code := run(t, db, "get", "--db", db, "--json", ticket.ID)
+		require.Equal(t, 0, code)
+		tj := decodeJSON(t, out)
+		assert.Equal(t, "in_progress", tj["status"])
+	})
+
+	t.Run("create-failure reverts ticket to ready", func(t *testing.T) {
+		db, s := newTestDB(t)
+
+		ticket := &model.Ticket{Title: "Custom WS Fail", Type: model.TypeTicket, Status: model.StatusDraft}
+		require.NoError(t, s.CreateTicket(ticket))
+		task := &model.Task{TicketID: ticket.ID, Title: "work", Position: 1}
+		require.NoError(t, s.CreateTask(task))
+
+		require.NoError(t, s.ConfigSet("workspace.type", "command"))
+		require.NoError(t, s.ConfigSet("workspace.create_command", "false"))
+		require.NoError(t, s.ConfigSet("workspace.delete_command", "true"))
+		require.NoError(t, s.ConfigSet("agent.command", globalEchoAgent+" {}"))
+		require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+
+		stdout, stderr, code := run(t, db, "ready", "--db", db, ticket.ID)
+		// ready itself exits 0 (failure is logged but non-fatal)
+		require.Equal(t, 0, code, "ready should exit 0 even when create fails; stdout=%q stderr=%q", stdout, stderr)
+
+		out, _, code := run(t, db, "get", "--db", db, "--json", ticket.ID)
+		require.Equal(t, 0, code)
+		tj := decodeJSON(t, out)
+		assert.Equal(t, "ready", tj["status"], "ticket should revert to ready after create failure")
+	})
+
+	t.Run("redraft success from in_progress deletes workspace and returns to draft", func(t *testing.T) {
+		db, s := newTestDB(t)
+
+		ticket := &model.Ticket{Title: "Custom WS Redraft", Type: model.TypeTicket, Status: model.StatusDraft}
+		require.NoError(t, s.CreateTicket(ticket))
+		task := &model.Task{TicketID: ticket.ID, Title: "work", Position: 1}
+		require.NoError(t, s.CreateTask(task))
+
+		require.NoError(t, s.ConfigSet("workspace.type", "command"))
+		require.NoError(t, s.ConfigSet("workspace.create_command", "mktemp -d"))
+		require.NoError(t, s.ConfigSet("workspace.delete_command", "true"))
+		require.NoError(t, s.ConfigSet("agent.command", globalEchoAgent+" {}"))
+		require.NoError(t, s.ConfigSet("agent.auto_dispatch", "true"))
+
+		// Dispatch first.
+		stdout, stderr, code := run(t, db, "ready", "--db", db, ticket.ID)
+		require.Equal(t, 0, code, "ready should exit 0; stdout=%q stderr=%q", stdout, stderr)
+
+		out, _, code := run(t, db, "get", "--db", db, "--json", ticket.ID)
+		require.Equal(t, 0, code)
+		tj := decodeJSON(t, out)
+		require.Equal(t, "in_progress", tj["status"])
+
+		// Now redraft.
+		stdout, stderr, code = run(t, db, "redraft", "--db", db, ticket.ID)
+		require.Equal(t, 0, code, "redraft should exit 0; stdout=%q stderr=%q", stdout, stderr)
+
+		out, _, code = run(t, db, "get", "--db", db, "--json", ticket.ID)
+		require.Equal(t, 0, code)
+		tj = decodeJSON(t, out)
+		assert.Equal(t, "draft", tj["status"], "ticket should be draft after redraft")
+	})
+}
+
 func TestCLI_Redraft(t *testing.T) {
 	if globalBuildFailed || globalTicketBin == "" {
 		t.Skip("ticket binary could not be built")
