@@ -93,6 +93,14 @@ func (s *Store) runMigrations() error {
 			return fmt.Errorf("record migration 9: %w", err)
 		}
 	}
+	if current < 10 {
+		if err := s.migration10(); err != nil {
+			return fmt.Errorf("migration 10: %w", err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO schema_migrations (version, applied) VALUES (10, ?)`, time.Now().UnixMilli()); err != nil {
+			return fmt.Errorf("record migration 10: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -845,6 +853,26 @@ func (s *Store) migration9() error {
 	}
 
 	return tx.Commit()
+}
+
+// migration10 adds the nullable config TEXT column to the tickets table.
+func (s *Store) migration10() error {
+	ticketsExists, err := s.hasTable("tickets")
+	if err != nil {
+		return err
+	}
+	if !ticketsExists {
+		return nil
+	}
+	has, err := s.hasColumn("tickets", "config")
+	if err != nil {
+		return err
+	}
+	if has {
+		return nil
+	}
+	_, err = s.db.Exec(`ALTER TABLE tickets ADD COLUMN config TEXT`)
+	return err
 }
 
 func nullStrTx(s string) interface{} {

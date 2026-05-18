@@ -10,7 +10,7 @@ import (
 func (s *Store) AvailableWork() ([]*model.Ticket, error) {
 	rows, err := s.db.Query(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(worktree_path,''), COALESCE(repo_path,''), backlog, created, updated
+		       COALESCE(worktree_path,''), COALESCE(repo_path,''), backlog, COALESCE(config,''), created, updated
 		FROM tickets t
 		WHERE t.status = 'ready'
 		  AND t.backlog = 0
@@ -47,7 +47,7 @@ type ReviewQueue struct {
 func (s *Store) ReviewQueue() (*ReviewQueue, error) {
 	rows, err := s.db.Query(`
 		SELECT id, title, description, type, status, feature_branch,
-		       COALESCE(worktree_path,''), COALESCE(repo_path,''), backlog, created, updated
+		       COALESCE(worktree_path,''), COALESCE(repo_path,''), backlog, COALESCE(config,''), created, updated
 		FROM tickets
 		WHERE status = 'in_review'
 		ORDER BY created`)

@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   worktree_path  TEXT,
   repo_path      TEXT,
   backlog        INTEGER NOT NULL DEFAULT 0,
+  config         TEXT,
   created        INTEGER NOT NULL,
   updated        INTEGER NOT NULL
 );

@@ -31,6 +31,7 @@ type Ticket struct {
 	FeatureBranch string
 	WorktreePath  string
 	RepoPath      string
+	Config        string
 	BlockedBy     []string
 	Tasks         []Task
 	Threads       []Thread // aggregated from all tasks
