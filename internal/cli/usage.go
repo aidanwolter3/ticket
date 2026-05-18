@@ -37,7 +37,7 @@ Usage:
   ticket ready [--db path] <ticket-id>         transition a draft ticket to ready
   ticket redraft [--db path] <ticket-id>       destroy worktree+branch and move ticket back to draft (human only)
   ticket config set [--db path] <key> <value> set a config value
-  ticket config get [--db path] <key>         get a config value (worktrees defaults to true)
+  ticket config get [--db path] <key>         get a config value
   ticket config ls  [--db path]               list all config settings with defaults
   ticket backlog [--db path] <id>             mark a ticket as backlogged (hides it from default list)
   ticket unbacklog [--db path] <id>           remove the backlog flag from a ticket

@@ -504,12 +504,12 @@ func TestConfigList(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, m)
 
-	require.NoError(t, s.ConfigSet("worktrees", "false"))
+	require.NoError(t, s.ConfigSet("workspace.type", "command"))
 	require.NoError(t, s.ConfigSet("other", "val"))
 
 	m, err = s.ConfigList()
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{"worktrees": "false", "other": "val"}, m)
+	assert.Equal(t, map[string]string{"workspace.type": "command", "other": "val"}, m)
 }
 
 func TestTaskRoundField(t *testing.T) {

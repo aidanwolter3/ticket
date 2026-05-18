@@ -57,7 +57,9 @@ var knownConfigKeys = []struct {
 }{
 	{"agent.auto_dispatch", ""},
 	{"agent.command", ""},
-	{"worktrees", "true"},
+	{"workspace.type", "worktree"},
+	{"workspace.create_command", ""},
+	{"workspace.delete_command", ""},
 }
 
 func runConfigList(args []string, wf *human.Workflow) {
@@ -92,7 +94,7 @@ func runConfigGet(args []string, wf *human.Workflow) {
 
 	// Apply defaults for known keys.
 	defaults := map[string]string{
-		"worktrees": "true",
+		"workspace.type": "worktree",
 	}
 
 	value, ok, err := wf.ConfigGet(key)

@@ -217,12 +217,12 @@ func TestCLI_CRUD(t *testing.T) {
 	assert.Empty(t, blockedBy)
 
 	// config set / get roundtrip
-	_, _, code = run(t, db, "config", "set", "--db", db, "worktrees", "false")
+	_, _, code = run(t, db, "config", "set", "--db", db, "workspace.type", "command")
 	require.Equal(t, 0, code)
 
-	stdout, _, code = run(t, db, "config", "get", "--db", db, "worktrees")
+	stdout, _, code = run(t, db, "config", "get", "--db", db, "workspace.type")
 	require.Equal(t, 0, code)
-	assert.Equal(t, "false\n", stdout)
+	assert.Equal(t, "command\n", stdout)
 
 	// import from JSON file → tickets appear in ls
 	importJSON := `{"tickets": [{"title": "Imported Ticket", "repo_path": "` + repoPath + `"}]}`
