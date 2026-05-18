@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -90,40 +89,13 @@ func Ready(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, st
 		}
 		existing, _ := s.GetAgentSessionByTicket(ticketID)
 		if existing == nil {
-			if ticket.WorktreePath == "" && ticket.RepoPath != "" {
-				featureBranch := ticket.FeatureBranch
-				if featureBranch == "" {
-					featureBranch = "feat/" + strings.ToLower(ticketID)
-				}
-				worktreeAbs := filepath.Join(ticket.RepoPath, ".worktrees", ticketID)
-				checkBranch := exec.Command("git", "-C", ticket.RepoPath, "rev-parse", "--verify", featureBranch)
-				checkBranch.Stdout = io.Discard
-				checkBranch.Stderr = io.Discard
-				branchExists := checkBranch.Run() == nil
-				var wtCmd *exec.Cmd
-				if branchExists {
-					wtCmd = exec.Command("git", "-C", ticket.RepoPath, "worktree", "add", worktreeAbs, featureBranch)
-				} else {
-					wtCmd = exec.Command("git", "-C", ticket.RepoPath, "worktree", "add", "-b", featureBranch, worktreeAbs)
-				}
-				var wtStderr bytes.Buffer
-				wtCmd.Stdout = stdout
-				wtCmd.Stderr = io.MultiWriter(stderr, &wtStderr)
-				if err := wtCmd.Run(); err != nil {
-					msg := strings.TrimSpace(wtStderr.String())
-					if msg == "" {
-						msg = err.Error()
-					}
-					fmt.Fprintf(stderr, "auto-dispatch: worktree creation failed: %s\n", msg)
-					return nil
-				}
-				if err := s.SetWorktreePath(ticketID, worktreeAbs, ticket.RepoPath, featureBranch); err != nil {
-					fmt.Fprintf(stderr, "auto-dispatch: save worktree_path: %v\n", err)
-					exec.Command("git", "-C", ticket.RepoPath, "worktree", "remove", "--force", worktreeAbs).Run() //nolint:errcheck
-					return nil
-				}
-				ticket.WorktreePath = worktreeAbs
+			ws := WorktreeWorkspace{s: s}
+			wsPath, createErr := ws.Create(ticketID, stdout, stderr)
+			if createErr != nil {
+				fmt.Fprintf(stderr, "auto-dispatch: workspace: %v\n", createErr)
+				return nil
 			}
+			ticket.WorktreePath = wsPath
 			prompt, err := agent.BuildPrompt(cmdTemplate)
 			if err != nil {
 				fmt.Fprintf(stderr, "auto-dispatch: build prompt: %v\n", err)
@@ -262,26 +234,18 @@ func Redraft(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 		s.UpdateAgentSessionState(sess.ID, model.AgentTerminated) //nolint:errcheck
 	}
 
-	if ticket.WorktreePath != "" {
+	ws := WorktreeWorkspace{s: s}
+	if err := ws.Delete(ticketID, stdout, stderr); err != nil {
+		return fmt.Errorf("redraft: %w", err)
+	}
+
+	if ticket.FeatureBranch != "" {
 		repoPath := ticket.RepoPath
-		wtCmd := exec.Command("git", "-C", repoPath, "worktree", "remove", "--force", ticket.WorktreePath)
-		wtCmd.Stdout = stdout
-		wtCmd.Stderr = stderr
-		if err := wtCmd.Run(); err != nil {
-			fmt.Fprintf(stderr, "redraft: warning: could not remove worktree: %v\n", err)
-		}
-
-		if ticket.FeatureBranch != "" {
-			delCmd := exec.Command("git", "-C", repoPath, "branch", "-D", ticket.FeatureBranch)
-			delCmd.Stdout = stdout
-			delCmd.Stderr = stderr
-			if err := delCmd.Run(); err != nil {
-				fmt.Fprintf(stderr, "redraft: warning: could not delete branch %s: %v\n", ticket.FeatureBranch, err)
-			}
-		}
-
-		if err := s.ClearWorktree(ticketID); err != nil {
-			return fmt.Errorf("redraft: clear worktree_path: %w", err)
+		delCmd := exec.Command("git", "-C", repoPath, "branch", "-D", ticket.FeatureBranch)
+		delCmd.Stdout = stdout
+		delCmd.Stderr = stderr
+		if err := delCmd.Run(); err != nil {
+			fmt.Fprintf(stderr, "redraft: warning: could not delete branch %s: %v\n", ticket.FeatureBranch, err)
 		}
 	}
 
@@ -389,13 +353,9 @@ func Merge(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 		}
 	}
 
-	if ticket.WorktreePath != "" {
-		wtCmd := exec.Command("git", "-C", repoPath, "worktree", "remove", "--force", ticket.WorktreePath)
-		wtCmd.Stdout = stdout
-		wtCmd.Stderr = stderr
-		if err := wtCmd.Run(); err != nil {
-			fmt.Fprintf(stderr, "merge: warning: could not remove worktree: %v\n", err)
-		}
+	ws := WorktreeWorkspace{s: s}
+	if err := ws.Delete(ticketID, stdout, stderr); err != nil {
+		fmt.Fprintf(stderr, "merge: warning: could not clean up workspace: %v\n", err)
 	}
 
 	delCmd := exec.Command("git", "-C", repoPath, "branch", "-d", featureBranch)
