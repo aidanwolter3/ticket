@@ -83,4 +83,31 @@ func TestTicketDetailView(t *testing.T) {
 		out := strings.ToLower(stripANSI(v.View()))
 		assert.Contains(t, out, "important note text")
 	})
+
+	t.Run("custom workspace type shown when not worktree", func(t *testing.T) {
+		s := newTestStore(t)
+		require.NoError(t, s.ConfigSet("workspace.type", "command"))
+		tkt := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+		require.NoError(t, s.CreateTicket(tkt))
+
+		v, err := NewTicketDetailView(s, tkt.ID)
+		require.NoError(t, err)
+		v.SetSize(120, 40)
+
+		out := stripANSI(v.View())
+		assert.Contains(t, out, "Workspace: command")
+	})
+
+	t.Run("worktree workspace type not shown", func(t *testing.T) {
+		s := newTestStore(t)
+		tkt := &model.Ticket{Title: "T", Type: model.TypeTicket, Status: model.StatusDraft}
+		require.NoError(t, s.CreateTicket(tkt))
+
+		v, err := NewTicketDetailView(s, tkt.ID)
+		require.NoError(t, err)
+		v.SetSize(120, 40)
+
+		out := stripANSI(v.View())
+		assert.NotContains(t, out, "Workspace:")
+	})
 }

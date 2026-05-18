@@ -21,18 +21,20 @@ type ticketDetailStore interface {
 	GetThreadsForTask(taskID string) ([]*model.Thread, error)
 	GetNotesForTicket(ticketID string) ([]*model.Note, error)
 	GetAgentSessionByTicket(ticketID string) (*model.AgentSession, error)
+	ConfigGetDefault(key, defaultVal string) (string, error)
 }
 
 type TicketDetailView struct {
-	store        ticketDetailStore
-	ticket       *model.Ticket
-	notes        []*model.Note
-	blockers     []*model.Ticket
-	agentSession *model.AgentSession
-	vp           viewport.Model
-	width        int
-	height       int
-	err          error
+	store         ticketDetailStore
+	ticket        *model.Ticket
+	notes         []*model.Note
+	blockers      []*model.Ticket
+	agentSession  *model.AgentSession
+	workspaceType string
+	vp            viewport.Model
+	width         int
+	height        int
+	err           error
 }
 
 func NewTicketDetailView(s ticketDetailStore, ticketID string) (*TicketDetailView, error) {
@@ -78,6 +80,12 @@ func (v *TicketDetailView) loadTicket(id string) error {
 
 	// Load active agent session (nil if none).
 	v.agentSession, _ = v.store.GetAgentSessionByTicket(id)
+
+	wsType, err := v.store.ConfigGetDefault("workspace.type", "worktree")
+	if err != nil {
+		wsType = "worktree"
+	}
+	v.workspaceType = wsType
 	return nil
 }
 
@@ -179,6 +187,9 @@ func (v *TicketDetailView) renderContent() string {
 	}
 	if t.RepoPath != "" {
 		sb.WriteString(fmt.Sprintf("  Repo: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(t.RepoPath)))
+	}
+	if v.workspaceType != "" && v.workspaceType != "worktree" {
+		sb.WriteString(fmt.Sprintf("  Workspace: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(v.workspaceType)))
 	}
 	sb.WriteString("\n")
 
