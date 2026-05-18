@@ -423,6 +423,79 @@ func TestRemoveBlocker(t *testing.T) {
 	assert.NotContains(t, got.BlockedBy, a.ID)
 }
 
+func TestNamedConfig(t *testing.T) {
+	s := newTestStore(t)
+	nc := s.Named()
+
+	t.Run("SetNamed and GetNamed", func(t *testing.T) {
+		require.NoError(t, nc.SetNamed("myconf", "workspace.type", "command"))
+		v, ok, err := nc.GetNamed("myconf", "workspace.type")
+		require.NoError(t, err)
+		assert.True(t, ok)
+		assert.Equal(t, "command", v)
+
+		// Missing key returns not-found.
+		_, ok, err = nc.GetNamed("myconf", "workspace.create_command")
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("ListNamed returns only keys for that config", func(t *testing.T) {
+		require.NoError(t, nc.SetNamed("myconf", "workspace.create_command", "./up.sh"))
+		require.NoError(t, nc.SetNamed("other", "workspace.type", "worktree"))
+
+		m, err := nc.ListNamed("myconf")
+		require.NoError(t, err)
+		assert.Equal(t, "command", m["workspace.type"])
+		assert.Equal(t, "./up.sh", m["workspace.create_command"])
+		assert.Len(t, m, 2)
+
+		m2, err := nc.ListNamed("other")
+		require.NoError(t, err)
+		assert.Len(t, m2, 1)
+		assert.Equal(t, "worktree", m2["workspace.type"])
+	})
+
+	t.Run("ListAllNamedConfigs returns distinct sorted names", func(t *testing.T) {
+		names, err := nc.ListAllNamedConfigs()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"myconf", "other"}, names)
+	})
+
+	t.Run("GetEffective named override wins over global", func(t *testing.T) {
+		require.NoError(t, s.ConfigSet("workspace.type", "worktree"))
+		v, err := nc.GetEffective("myconf", "workspace.type", "worktree")
+		require.NoError(t, err)
+		assert.Equal(t, "command", v, "named override should win")
+	})
+
+	t.Run("GetEffective falls back to global when no override", func(t *testing.T) {
+		require.NoError(t, s.ConfigSet("workspace.type", "globalval"))
+		v, err := nc.GetEffective("myconf", "workspace.type", "default")
+		require.NoError(t, err)
+		// myconf.workspace.type IS set to "command", so named override wins
+		assert.Equal(t, "command", v)
+
+		// Use "other" which only has workspace.type=worktree; test an unset key
+		v, err = nc.GetEffective("other", "workspace.create_command", "defval")
+		require.NoError(t, err)
+		assert.Equal(t, "defval", v, "should fall back to default when neither named nor global is set")
+	})
+
+	t.Run("GetEffective falls back to default when neither named nor global set", func(t *testing.T) {
+		v, err := nc.GetEffective("nonexistent", "totally.unknown.key", "thedefault")
+		require.NoError(t, err)
+		assert.Equal(t, "thedefault", v)
+	})
+
+	t.Run("GetEffective with empty name uses global", func(t *testing.T) {
+		require.NoError(t, s.ConfigSet("agent.command", "mycmd {}"))
+		v, err := nc.GetEffective("", "agent.command", "")
+		require.NoError(t, err)
+		assert.Equal(t, "mycmd {}", v)
+	})
+}
+
 func TestConfigList(t *testing.T) {
 	s := newTestStore(t)
 
