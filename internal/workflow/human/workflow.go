@@ -3,6 +3,7 @@ package human
 import (
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -138,7 +139,8 @@ func (w *Workflow) CompleteTaskMostRecentCommit(taskID string) error {
 	}
 	out, err := exec.Command("git", "-C", gitPath, "rev-parse", "HEAD").Output()
 	if err != nil {
-		return fmt.Errorf("complete task: git rev-parse HEAD: %w", err)
+		fmt.Fprintf(os.Stderr, "complete task: git rev-parse HEAD: %v (no commit hash recorded)\n", err)
+		return w.CompleteTask(taskID, "")
 	}
 	return w.CompleteTask(taskID, strings.TrimSpace(string(out)))
 }

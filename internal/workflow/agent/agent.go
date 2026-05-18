@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -73,7 +74,8 @@ func CompleteTaskMostRecentCommit(s *store.Store, taskID string) error {
 	}
 	out, err := exec.Command("git", "-C", gitPath, "rev-parse", "HEAD").Output()
 	if err != nil {
-		return fmt.Errorf("complete task: git rev-parse HEAD: %w", err)
+		fmt.Fprintf(os.Stderr, "complete task: git rev-parse HEAD: %v (no commit hash recorded)\n", err)
+		return CompleteTask(s, taskID, "")
 	}
 	return CompleteTask(s, taskID, strings.TrimSpace(string(out)))
 }

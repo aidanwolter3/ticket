@@ -985,6 +985,29 @@ func TestTransitionThread(t *testing.T) {
 	assert.Equal(t, model.ThreadResolved, got.Status)
 }
 
+func TestWorkflow_CompleteTaskMostRecentCommit_NonGitDir_FallsBackToNoCommit(t *testing.T) {
+	s := newTestStore(t)
+	w := &Workflow{s: s}
+
+	ticket := &model.Ticket{
+		Title:        "T",
+		Type:         model.TypeTicket,
+		Status:       model.StatusDraft,
+		WorktreePath: os.TempDir(), // not a git repo
+	}
+	require.NoError(t, s.CreateTicket(ticket))
+	task := &model.Task{TicketID: ticket.ID, Title: "task 1", Position: 1}
+	require.NoError(t, s.CreateTask(task))
+
+	err := w.CompleteTaskMostRecentCommit(task.ID)
+	require.NoError(t, err, "should complete task without error even when git fails")
+
+	got, err := s.GetTask(task.ID)
+	require.NoError(t, err)
+	assert.NotNil(t, got.CompletedAt, "task should be marked complete")
+	assert.Empty(t, got.CommitHash, "commit hash should be empty when git is not available")
+}
+
 func TestBlockTicket_And_UnblockTicket(t *testing.T) {
 	s := newTestStore(t)
 
