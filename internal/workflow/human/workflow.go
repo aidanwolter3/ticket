@@ -32,8 +32,8 @@ func (w *Workflow) Launcher() *agent.Launcher {
 
 // --- human workflow operations ---
 
-func (w *Workflow) Draft(title, description, repoPath string) (*model.Ticket, error) {
-	return Draft(w.s, title, description, repoPath)
+func (w *Workflow) Draft(title, description, repoPath, configName string) (*model.Ticket, error) {
+	return Draft(w.s, title, description, repoPath, configName)
 }
 
 func (w *Workflow) Delete(ticketID string) error {

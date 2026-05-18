@@ -15,13 +15,14 @@ import (
 )
 
 // Draft creates a new ticket in draft status.
-func Draft(s *store.Store, title, description, repoPath string) (*model.Ticket, error) {
+func Draft(s *store.Store, title, description, repoPath, configName string) (*model.Ticket, error) {
 	t := &model.Ticket{
 		Title:       title,
 		Type:        model.TypeTicket,
 		Status:      model.StatusDraft,
 		Description: description,
 		RepoPath:    repoPath,
+		Config:      configName,
 	}
 	if err := s.CreateTicket(t); err != nil {
 		return nil, fmt.Errorf("draft: %w", err)

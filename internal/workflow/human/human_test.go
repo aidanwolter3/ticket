@@ -75,7 +75,7 @@ func approvedTicket(t *testing.T, s *store.Store, repoPath, featureBranch, workt
 
 func TestDraft_CreatesTicket(t *testing.T) {
 	s := newTestStore(t)
-	ticket, err := Draft(s, "My Ticket", "Some description", "/path/to/repo")
+	ticket, err := Draft(s, "My Ticket", "Some description", "/path/to/repo", "")
 	require.NoError(t, err)
 	require.NotNil(t, ticket)
 	assert.NotEmpty(t, ticket.ID)
@@ -91,7 +91,7 @@ func TestDraft_CreatesTicket(t *testing.T) {
 
 func TestDelete_HappyPath(t *testing.T) {
 	s := newTestStore(t)
-	ticket, err := Draft(s, "To Delete", "", "")
+	ticket, err := Draft(s, "To Delete", "", "", "")
 	require.NoError(t, err)
 	require.NoError(t, Delete(s, ticket.ID))
 	_, err = s.GetTicket(ticket.ID)
@@ -114,7 +114,7 @@ func TestDelete_BlockedForActiveStatus(t *testing.T) {
 
 func TestUpdate_HappyPath(t *testing.T) {
 	s := newTestStore(t)
-	ticket, err := Draft(s, "Old Title", "Old Desc", "")
+	ticket, err := Draft(s, "Old Title", "Old Desc", "", "")
 	require.NoError(t, err)
 
 	newTitle := "New Title"
@@ -129,7 +129,7 @@ func TestUpdate_HappyPath(t *testing.T) {
 
 func TestUpdate_PartialUpdate(t *testing.T) {
 	s := newTestStore(t)
-	ticket, err := Draft(s, "Original Title", "Original Desc", "")
+	ticket, err := Draft(s, "Original Title", "Original Desc", "", "")
 	require.NoError(t, err)
 
 	newTitle := "Updated Title"
@@ -1011,10 +1011,10 @@ func TestWorkflow_CompleteTaskMostRecentCommit_NonGitDir_FallsBackToNoCommit(t *
 func TestBlockTicket_And_UnblockTicket(t *testing.T) {
 	s := newTestStore(t)
 
-	blocker, err := Draft(s, "Blocker", "", "")
+	blocker, err := Draft(s, "Blocker", "", "", "")
 	require.NoError(t, err)
 
-	dependent, err := Draft(s, "Dependent", "", "")
+	dependent, err := Draft(s, "Dependent", "", "", "")
 	require.NoError(t, err)
 
 	require.NoError(t, BlockTicket(s, dependent.ID, blocker.ID))
