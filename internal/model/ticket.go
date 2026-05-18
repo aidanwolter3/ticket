@@ -5,12 +5,14 @@ import "time"
 type Status string
 
 const (
-	StatusDraft      Status = "draft"
-	StatusReady      Status = "ready"
-	StatusInProgress Status = "in_progress"
-	StatusInReview   Status = "in_review"
-	StatusApproved   Status = "approved"
-	StatusMerged     Status = "merged"
+	StatusDraft       Status = "draft"
+	StatusReady       Status = "ready"
+	StatusPreparing   Status = "preparing"
+	StatusInProgress  Status = "in_progress"
+	StatusTearingDown Status = "tearing_down"
+	StatusInReview    Status = "in_review"
+	StatusApproved    Status = "approved"
+	StatusMerged      Status = "merged"
 )
 
 type TicketType string

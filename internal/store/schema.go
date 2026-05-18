@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   type           TEXT NOT NULL DEFAULT 'ticket'
                  CHECK(type IN ('ticket')),
   status         TEXT NOT NULL DEFAULT 'draft'
-                 CHECK(status IN ('draft','ready','in_progress','in_review','approved','merged')),
+                 CHECK(status IN ('draft','ready','preparing','in_progress','tearing_down','in_review','approved','merged')),
   feature_branch TEXT NOT NULL DEFAULT '',
   worktree_path  TEXT,
   repo_path      TEXT,

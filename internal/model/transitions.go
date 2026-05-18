@@ -8,12 +8,14 @@ import (
 // ValidateTicketTransition returns an error if the status transition is not allowed.
 func ValidateTicketTransition(from, to Status) error {
 	allowed := map[Status]map[Status]bool{
-		StatusDraft:      {StatusReady: true},
-		StatusReady:      {StatusDraft: true, StatusInProgress: true},
-		StatusInProgress: {StatusInReview: true},
-		StatusInReview:   {StatusReady: true, StatusApproved: true, StatusInProgress: true},
-		StatusApproved:   {StatusMerged: true, StatusReady: true},
-		StatusMerged:     {},
+		StatusDraft:       {StatusReady: true},
+		StatusReady:       {StatusDraft: true, StatusInProgress: true, StatusPreparing: true},
+		StatusPreparing:   {StatusInProgress: true, StatusReady: true},
+		StatusInProgress:  {StatusInReview: true},
+		StatusTearingDown: {StatusDraft: true, StatusMerged: true, StatusApproved: true},
+		StatusInReview:    {StatusReady: true, StatusApproved: true, StatusInProgress: true},
+		StatusApproved:    {StatusMerged: true, StatusReady: true, StatusTearingDown: true},
+		StatusMerged:      {},
 	}
 
 	targets, ok := allowed[from]

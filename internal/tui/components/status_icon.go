@@ -23,6 +23,10 @@ func TicketStatusIcon(s model.Status) string {
 		return lipgloss.NewStyle().Foreground(colorMagenta).Render("●")
 	case model.StatusInReview:
 		return lipgloss.NewStyle().Foreground(colorYellow).Render("◐")
+	case model.StatusPreparing:
+		return lipgloss.NewStyle().Foreground(colorWhite).Render("~")
+	case model.StatusTearingDown:
+		return lipgloss.NewStyle().Foreground(colorWhite).Render("~")
 	case model.StatusApproved:
 		return lipgloss.NewStyle().Foreground(colorGreen).Render("◑")
 	case model.StatusMerged:

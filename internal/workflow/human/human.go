@@ -36,7 +36,8 @@ func Delete(s *store.Store, ticketID string) error {
 		return fmt.Errorf("delete: %w", err)
 	}
 	switch ticket.Status {
-	case model.StatusInProgress, model.StatusInReview, model.StatusApproved, model.StatusMerged:
+	case model.StatusPreparing, model.StatusTearingDown,
+		model.StatusInProgress, model.StatusInReview, model.StatusApproved, model.StatusMerged:
 		return fmt.Errorf("delete: cannot delete ticket %s with status %s", ticketID, ticket.Status)
 	}
 	if err := s.DeleteTicket(ticketID); err != nil {

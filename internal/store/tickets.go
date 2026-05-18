@@ -109,7 +109,8 @@ func (s *Store) checkTransitionPreconditions(id string, from, to model.Status) e
 			return fmt.Errorf("ticket %s has %d incomplete task(s): complete all tasks before transitioning %s → %s", id, incomplete, from, to)
 		}
 
-	case from == model.StatusReady && to == model.StatusInProgress:
+	case from == model.StatusReady && to == model.StatusInProgress,
+		from == model.StatusPreparing && to == model.StatusInProgress:
 		var blocked int
 		if err := s.db.QueryRow(`
 			SELECT COUNT(*) FROM blocked_by b

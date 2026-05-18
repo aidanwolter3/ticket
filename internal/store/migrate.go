@@ -85,6 +85,14 @@ func (s *Store) runMigrations() error {
 			return fmt.Errorf("record migration 8: %w", err)
 		}
 	}
+	if current < 9 {
+		if err := s.migration9(); err != nil {
+			return fmt.Errorf("migration 9: %w", err)
+		}
+		if _, err := s.db.Exec(`INSERT INTO schema_migrations (version, applied) VALUES (9, ?)`, time.Now().UnixMilli()); err != nil {
+			return fmt.Errorf("record migration 9: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -771,6 +779,72 @@ func (s *Store) migration8() error {
 	}
 	_, err = s.db.Exec(`ALTER TABLE tickets ADD COLUMN backlog INTEGER NOT NULL DEFAULT 0`)
 	return err
+}
+
+// migration9 adds "preparing" and "tearing_down" to the tickets status CHECK
+// constraint by recreating the tickets table (SQLite does not support ALTER
+// TABLE … MODIFY CONSTRAINT).
+func (s *Store) migration9() error {
+	ticketsExists, err := s.hasTable("tickets")
+	if err != nil {
+		return err
+	}
+	if !ticketsExists {
+		return nil // fresh DB gets correct schema from schema.go
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(`
+		CREATE TABLE tickets_new (
+		  id             TEXT PRIMARY KEY,
+		  title          TEXT NOT NULL,
+		  description    TEXT NOT NULL DEFAULT '',
+		  type           TEXT NOT NULL DEFAULT 'ticket'
+		                 CHECK(type IN ('ticket')),
+		  status         TEXT NOT NULL DEFAULT 'draft'
+		                 CHECK(status IN ('draft','ready','preparing','in_progress','tearing_down','in_review','approved','merged')),
+		  feature_branch TEXT NOT NULL DEFAULT '',
+		  worktree_path  TEXT,
+		  repo_path      TEXT,
+		  backlog        INTEGER NOT NULL DEFAULT 0,
+		  created        INTEGER NOT NULL,
+		  updated        INTEGER NOT NULL
+		)`); err != nil {
+		return fmt.Errorf("create tickets_new: %w", err)
+	}
+
+	if _, err = tx.Exec(`
+		INSERT INTO tickets_new
+		  (id, title, description, type, status, feature_branch, worktree_path, repo_path, backlog, created, updated)
+		SELECT id, title, description, type, status, feature_branch, worktree_path, repo_path, backlog, created, updated
+		FROM tickets`); err != nil {
+		return fmt.Errorf("copy tickets: %w", err)
+	}
+
+	if _, err = tx.Exec(`DROP TABLE tickets`); err != nil {
+		return fmt.Errorf("drop old tickets: %w", err)
+	}
+	if _, err = tx.Exec(`ALTER TABLE tickets_new RENAME TO tickets`); err != nil {
+		return fmt.Errorf("rename tickets: %w", err)
+	}
+
+	if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)`); err != nil {
+		return fmt.Errorf("recreate idx_tickets_status: %w", err)
+	}
+	if _, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_tickets_type ON tickets(type)`); err != nil {
+		return fmt.Errorf("recreate idx_tickets_type: %w", err)
+	}
+
+	return tx.Commit()
 }
 
 func nullStrTx(s string) interface{} {

@@ -866,4 +866,19 @@ func TestCreateTicket_RejectsFeatureBranch(t *testing.T) {
 	require.Error(t, err, "CreateTicket with non-empty FeatureBranch must return an error")
 }
 
+func TestMigration9_PreparingStatusAllowed(t *testing.T) {
+	s := newTestStore(t)
+
+	// Insert a ticket with status="preparing" directly via SQL — bypasses model validation.
+	ticket := &model.Ticket{Title: "prep ticket", Type: model.TypeTicket, Status: model.StatusDraft}
+	require.NoError(t, s.CreateTicket(ticket))
+
+	_, err := s.db.Exec(`UPDATE tickets SET status='preparing' WHERE id=?`, ticket.ID)
+	require.NoError(t, err, "status=preparing should be accepted by CHECK constraint after migration9")
+
+	got, err := s.GetTicket(ticket.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.StatusPreparing, got.Status)
+}
+
 
