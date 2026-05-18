@@ -231,6 +231,26 @@ func (w *Workflow) ConfigList() (map[string]string, error) {
 	return w.s.ConfigList()
 }
 
+func (w *Workflow) NamedConfigSet(name, key, value string) error {
+	return w.s.Named().SetNamed(name, key, value)
+}
+
+func (w *Workflow) NamedConfigGet(name, key string) (string, bool, error) {
+	return w.s.Named().GetNamed(name, key)
+}
+
+func (w *Workflow) NamedConfigGetEffective(name, key, defaultVal string) (string, error) {
+	return w.s.Named().GetEffective(name, key, defaultVal)
+}
+
+func (w *Workflow) NamedConfigList(name string) (map[string]string, error) {
+	return w.s.Named().ListNamed(name)
+}
+
+func (w *Workflow) NamedConfigListAll() ([]string, error) {
+	return w.s.Named().ListAllNamedConfigs()
+}
+
 func (w *Workflow) NewWorkspace() (Workspace, error) {
 	return NewWorkspace(w.s)
 }

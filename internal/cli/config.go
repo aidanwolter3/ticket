@@ -29,10 +29,11 @@ func RunConfig(args []string, wf *human.Workflow) {
 
 func runConfigSet(args []string, wf *human.Workflow) {
 	fs := flag.NewFlagSet("config set", flag.ExitOnError)
+	configName := fs.String("config", "", "named config to scope the key under")
 	fs.Parse(args)
 
 	if fs.NArg() < 2 {
-		fmt.Fprintln(os.Stderr, "usage: ticket config set <key> <value>")
+		fmt.Fprintln(os.Stderr, "usage: ticket config set [--config NAME] <key> <value>")
 		os.Exit(1)
 	}
 	key := fs.Arg(0)
@@ -43,9 +44,16 @@ func runConfigSet(args []string, wf *human.Workflow) {
 		os.Exit(1)
 	}
 
-	if err := wf.ConfigSet(key, value); err != nil {
-		fmt.Fprintf(os.Stderr, "config set: %v\n", err)
-		os.Exit(1)
+	if *configName != "" {
+		if err := wf.NamedConfigSet(*configName, key, value); err != nil {
+			fmt.Fprintf(os.Stderr, "config set: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		if err := wf.ConfigSet(key, value); err != nil {
+			fmt.Fprintf(os.Stderr, "config set: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	fmt.Printf("%s = %s\n", key, value)
 }
@@ -71,23 +79,70 @@ func runConfigList(args []string, wf *human.Workflow) {
 		os.Exit(1)
 	}
 
+	// --- [default] section ---
+	fmt.Println("[default]")
+	maxKeyLen := 0
 	for _, kd := range knownConfigKeys {
+		if len(kd.key) > maxKeyLen {
+			maxKeyLen = len(kd.key)
+		}
+	}
+	for _, kd := range knownConfigKeys {
+		var val string
 		if v, ok := stored[kd.key]; ok {
-			fmt.Printf("%s = %s\n", kd.key, v)
+			val = v
 		} else if kd.defaultVal != "" {
-			fmt.Printf("%s = %s\n", kd.key, kd.defaultVal)
+			val = kd.defaultVal
 		} else {
-			fmt.Printf("%s = <unset>\n", kd.key)
+			val = "<unset>"
+		}
+		padding := strings.Repeat(" ", maxKeyLen-len(kd.key))
+		fmt.Printf("  %s%s = %s\n", kd.key, padding, val)
+	}
+
+	// --- per-named-config sections ---
+	names, err := wf.NamedConfigListAll()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config ls: %v\n", err)
+		os.Exit(1)
+	}
+	for _, name := range names {
+		fmt.Printf("\n[config: %s]\n", name)
+		overrides, err := wf.NamedConfigList(name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "config ls: %v\n", err)
+			os.Exit(1)
+		}
+		if len(overrides) == 0 {
+			fmt.Println("  (no overrides)")
+			continue
+		}
+		maxOLen := 0
+		for k := range overrides {
+			if len(k) > maxOLen {
+				maxOLen = len(k)
+			}
+		}
+		// Emit in sorted order for stability.
+		keys := make([]string, 0, len(overrides))
+		for k := range overrides {
+			keys = append(keys, k)
+		}
+		sortStrings(keys)
+		for _, k := range keys {
+			padding := strings.Repeat(" ", maxOLen-len(k))
+			fmt.Printf("  %s%s = %s   (override)\n", k, padding, overrides[k])
 		}
 	}
 }
 
 func runConfigGet(args []string, wf *human.Workflow) {
 	fs := flag.NewFlagSet("config get", flag.ExitOnError)
+	configName := fs.String("config", "", "named config to scope the lookup")
 	fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: ticket config get <key>")
+		fmt.Fprintln(os.Stderr, "usage: ticket config get [--config NAME] <key>")
 		os.Exit(1)
 	}
 	key := fs.Arg(0)
@@ -95,6 +150,20 @@ func runConfigGet(args []string, wf *human.Workflow) {
 	// Apply defaults for known keys.
 	defaults := map[string]string{
 		"workspace.type": "worktree",
+	}
+
+	if *configName != "" {
+		value, err := wf.NamedConfigGetEffective(*configName, key, defaults[key])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "config get: %v\n", err)
+			os.Exit(1)
+		}
+		if value == "" {
+			fmt.Fprintf(os.Stderr, "config: key %q is not set\n", key)
+			os.Exit(1)
+		}
+		fmt.Println(value)
+		return
 	}
 
 	value, ok, err := wf.ConfigGet(key)
@@ -111,4 +180,13 @@ func runConfigGet(args []string, wf *human.Workflow) {
 		os.Exit(1)
 	}
 	fmt.Println(value)
+}
+
+// sortStrings sorts a slice of strings in place (avoids import of sort in callers).
+func sortStrings(ss []string) {
+	for i := 1; i < len(ss); i++ {
+		for j := i; j > 0 && ss[j] < ss[j-1]; j-- {
+			ss[j], ss[j-1] = ss[j-1], ss[j]
+		}
+	}
 }
