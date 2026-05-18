@@ -69,7 +69,7 @@ func TestNewWorkspace_CustomType_MissingDeleteCommand(t *testing.T) {
 	s := newTestStore(t)
 	require.NoError(t, s.ConfigSet("workspace.type", "modal"))
 
-	_, err := NewWorkspace(s)
+	_, err := NewWorkspace(s, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "workspace.delete_command")
 }
@@ -79,7 +79,7 @@ func TestNewWorkspace_WorktreeType_WithCreateCommand(t *testing.T) {
 	require.NoError(t, s.ConfigSet("workspace.type", "worktree"))
 	require.NoError(t, s.ConfigSet("workspace.create_command", "echo /tmp/ws"))
 
-	_, err := NewWorkspace(s)
+	_, err := NewWorkspace(s, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "workspace.create_command")
 }
@@ -89,7 +89,7 @@ func TestNewWorkspace_WorktreeType_WithDeleteCommand(t *testing.T) {
 	require.NoError(t, s.ConfigSet("workspace.type", "worktree"))
 	require.NoError(t, s.ConfigSet("workspace.delete_command", "rm -rf /tmp/ws"))
 
-	_, err := NewWorkspace(s)
+	_, err := NewWorkspace(s, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "workspace.delete_command")
 }
@@ -97,7 +97,7 @@ func TestNewWorkspace_WorktreeType_WithDeleteCommand(t *testing.T) {
 func TestNewWorkspace_DefaultIsWorktree(t *testing.T) {
 	s := newTestStore(t)
 
-	ws, err := NewWorkspace(s)
+	ws, err := NewWorkspace(s, "")
 	require.NoError(t, err)
 	_, ok := ws.(WorktreeWorkspace)
 	assert.True(t, ok, "default workspace should be WorktreeWorkspace")
@@ -108,7 +108,7 @@ func TestNewWorkspace_CustomType_ReturnsCommandWorkspace(t *testing.T) {
 	require.NoError(t, s.ConfigSet("workspace.type", "modal"))
 	require.NoError(t, s.ConfigSet("workspace.delete_command", "true"))
 
-	ws, err := NewWorkspace(s)
+	ws, err := NewWorkspace(s, "")
 	require.NoError(t, err)
 	_, ok := ws.(CommandWorkspace)
 	assert.True(t, ok, "custom workspace type should return CommandWorkspace")

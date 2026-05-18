@@ -83,7 +83,12 @@ func Dispatch(s *store.Store, ticketID string, launcher *agent.Launcher, stdout,
 		return fmt.Errorf("dispatch: build prompt: %w", err)
 	}
 
-	ws, err := NewWorkspace(s)
+	dispatchTicket, err := s.GetTicket(ticketID)
+	if err != nil {
+		return fmt.Errorf("dispatch: get ticket: %w", err)
+	}
+
+	ws, err := NewWorkspace(s, dispatchTicket.Config)
 	if err != nil {
 		return fmt.Errorf("dispatch: workspace config: %w", err)
 	}
@@ -98,10 +103,11 @@ func Dispatch(s *store.Store, ticketID string, launcher *agent.Launcher, stdout,
 		return fmt.Errorf("dispatch: create workspace: %w", createErr)
 	}
 
+	// Re-fetch ticket to get the worktree path recorded by ws.Create.
 	ticket, err := s.GetTicket(ticketID)
 	if err != nil {
 		s.TransitionTicket(ticketID, model.StatusReady) //nolint:errcheck
-		return fmt.Errorf("dispatch: get ticket: %w", err)
+		return fmt.Errorf("dispatch: get ticket after create: %w", err)
 	}
 	if ticket.WorktreePath == "" {
 		ticket.WorktreePath = wsPath
@@ -268,7 +274,7 @@ func Redraft(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 		s.UpdateAgentSessionState(sess.ID, model.AgentTerminated) //nolint:errcheck
 	}
 
-	ws, wsErr := NewWorkspace(s)
+	ws, wsErr := NewWorkspace(s, ticket.Config)
 
 	// Crash recovery: workspace creation was interrupted; skip Delete.
 	if ticket.Status == model.StatusPreparing {
@@ -332,7 +338,11 @@ func Redraft(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 // merged. Precondition: ticket must be in tearing_down status. On Delete
 // failure the ticket reverts to approved.
 func MarkMerged(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
-	ws, err := NewWorkspace(s)
+	mmTicket, err := s.GetTicket(ticketID)
+	if err != nil {
+		return fmt.Errorf("mark-merged: get ticket: %w", err)
+	}
+	ws, err := NewWorkspace(s, mmTicket.Config)
 	if err != nil {
 		return fmt.Errorf("mark-merged: workspace config: %w", err)
 	}

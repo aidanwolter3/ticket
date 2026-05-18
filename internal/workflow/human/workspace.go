@@ -78,7 +78,8 @@ func (w WorktreeWorkspace) Create(ticketID string, stdout, stderr io.Writer) (st
 
 // CommandWorkspace implements Workspace using user-configured shell commands.
 type CommandWorkspace struct {
-	s *store.Store
+	s            *store.Store
+	ticketConfig string
 }
 
 // Create runs workspace.create_command with TICKET_ID set and persists the last
@@ -93,7 +94,7 @@ func (w CommandWorkspace) Create(ticketID string, stdout, stderr io.Writer) (str
 		return ticket.WorktreePath, nil
 	}
 
-	createCmd, _, err := w.s.ConfigGet("workspace.create_command")
+	createCmd, err := w.s.Named().GetEffective(w.ticketConfig, "workspace.create_command", "")
 	if err != nil {
 		return "", fmt.Errorf("read workspace.create_command: %w", err)
 	}
@@ -128,7 +129,7 @@ func (w CommandWorkspace) Create(ticketID string, stdout, stderr io.Writer) (str
 
 // Delete runs workspace.delete_command with TICKET_ID set.
 func (w CommandWorkspace) Delete(ticketID string, stdout, stderr io.Writer) error {
-	deleteCmd, _, err := w.s.ConfigGet("workspace.delete_command")
+	deleteCmd, err := w.s.Named().GetEffective(w.ticketConfig, "workspace.delete_command", "")
 	if err != nil {
 		return fmt.Errorf("read workspace.delete_command: %w", err)
 	}
@@ -164,34 +165,41 @@ func lastNonEmptyLine(s string) string {
 }
 
 // NewWorkspace returns the appropriate Workspace implementation based on the
-// workspace.type config key. Validates config before returning.
-func NewWorkspace(s *store.Store) (Workspace, error) {
-	wsType, _, err := s.ConfigGet("workspace.type")
+// effective workspace.type for the given ticketConfig. Named config overrides
+// are applied on top of global defaults. ticketConfig may be empty.
+func NewWorkspace(s *store.Store, ticketConfig string) (Workspace, error) {
+	nc := s.Named()
+
+	wsType, err := nc.GetEffective(ticketConfig, "workspace.type", "worktree")
 	if err != nil {
 		return nil, fmt.Errorf("read workspace.type: %w", err)
 	}
-	if wsType == "" {
-		wsType = "worktree"
+
+	createCmd, err := nc.GetEffective(ticketConfig, "workspace.create_command", "")
+	if err != nil {
+		return nil, fmt.Errorf("read workspace.create_command: %w", err)
 	}
 
-	createCmd, hasCreate, _ := s.ConfigGet("workspace.create_command")
-	deleteCmd, hasDelete, _ := s.ConfigGet("workspace.delete_command")
+	deleteCmd, err := nc.GetEffective(ticketConfig, "workspace.delete_command", "")
+	if err != nil {
+		return nil, fmt.Errorf("read workspace.delete_command: %w", err)
+	}
 
 	if wsType == "worktree" {
-		if hasCreate && createCmd != "" {
+		if createCmd != "" {
 			return nil, fmt.Errorf("workspace.type=worktree but workspace.create_command is set")
 		}
-		if hasDelete && deleteCmd != "" {
+		if deleteCmd != "" {
 			return nil, fmt.Errorf("workspace.type=worktree but workspace.delete_command is set")
 		}
 		return WorktreeWorkspace{s: s}, nil
 	}
 
-	if !hasDelete || deleteCmd == "" {
+	if deleteCmd == "" {
 		return nil, fmt.Errorf("workspace.type=%q requires workspace.delete_command to be set", wsType)
 	}
 
-	return CommandWorkspace{s: s}, nil
+	return CommandWorkspace{s: s, ticketConfig: ticketConfig}, nil
 }
 
 // Delete removes the git worktree and clears the workspace path from the DB.

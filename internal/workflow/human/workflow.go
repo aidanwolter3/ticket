@@ -251,8 +251,8 @@ func (w *Workflow) NamedConfigListAll() ([]string, error) {
 	return w.s.Named().ListAllNamedConfigs()
 }
 
-func (w *Workflow) NewWorkspace() (Workspace, error) {
-	return NewWorkspace(w.s)
+func (w *Workflow) NewWorkspace(ticketConfig string) (Workspace, error) {
+	return NewWorkspace(w.s, ticketConfig)
 }
 
 func (w *Workflow) GetAgentSessionByTicket(ticketID string) (*model.AgentSession, error) {
