@@ -44,6 +44,7 @@ const (
 	screenConfirmDispatch
 	screenPreparing
 	screenTearingDown
+	screenConfirmMarkMerged
 )
 
 type dbTickMsg struct{}
@@ -98,6 +99,10 @@ type App struct {
 	workspaceRunning  bool
 	workspacePurpose  string   // "dispatch", "redraft", or "mark-merged"
 	workspaceScanNext tea.Cmd  // set once by spawn helpers; must not be overwritten by handler
+
+	// custom workspace flag (read once per DB tick)
+	isCustomWorkspace   bool
+	pendingMarkMergedID string
 }
 
 // workspaceChunkMsg carries one line of output from the running workspace command.
@@ -187,6 +192,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_ = a.threadsView.Reload()
 		}
 		a.terminateSilentReviewedSessions()
+		wsType, _ := a.wf.ConfigGetDefault("workspace.type", "worktree")
+		a.isCustomWorkspace = wsType != "worktree"
+		a.ticketsView.SetIsCustomWorkspace(a.isCustomWorkspace)
 		return a, tickDB()
 
 	case tea.WindowSizeMsg:
@@ -287,6 +295,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateScreenPreparing(msg)
 	case screenTearingDown:
 		return a.updateScreenTearingDown(msg)
+	case screenConfirmMarkMerged:
+		return a.updateConfirmMarkMerged(msg)
 	}
 	return a, nil
 }
@@ -309,6 +319,8 @@ func (a *App) waitAgentChunk() tea.Cmd {
 // --- List screen (split-pane) ---
 
 func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
+	a.ticketsView.SetIsCustomWorkspace(a.isCustomWorkspace)
+
 	switch msg := msg.(type) {
 	case agentChunkMsg:
 		if a.agentTermView != nil {
@@ -436,6 +448,13 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.ticketsView.Refresh()
 					a.loadCurrentDetail()
 				}
+			}
+			return a, nil
+		case "M":
+			if a.isCustomWorkspace && a.ticketDetail != nil && a.ticketDetail.Ticket() != nil &&
+				a.ticketDetail.Ticket().Status == model.StatusApproved {
+				a.pendingMarkMergedID = a.ticketDetail.Ticket().ID
+				a.screen = screenConfirmMarkMerged
 			}
 			return a, nil
 		case "C":
@@ -1093,6 +1112,9 @@ func (a *App) View() string {
 		sb.WriteString(a.renderWorkspaceScreen("preparing"))
 	case screenTearingDown:
 		sb.WriteString(a.renderWorkspaceScreen("tearing down"))
+	case screenConfirmMarkMerged:
+		prompt := fmt.Sprintf("Mark %s as merged? (y/N) ", a.pendingMarkMergedID)
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3")).Render(prompt))
 	}
 
 	// Status bar — always rendered to keep View() height constant.
@@ -1167,6 +1189,33 @@ func (a *App) updateScreenTearingDown(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+// --- Confirm mark merged ---
+
+func (a *App) updateConfirmMarkMerged(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch km.String() {
+		case "y", "Y":
+			id := a.pendingMarkMergedID
+			a.pendingMarkMergedID = ""
+			if transErr := a.wf.TransitionTicket(id, model.StatusTearingDown); transErr != nil {
+				a.setErr(transErr)
+				a.screen = screenList
+				return a, nil
+			}
+			a.workspaceTicketID = id
+			a.workspaceLines = nil
+			a.workspaceRunning = true
+			a.workspacePurpose = "mark-merged"
+			a.screen = screenTearingDown
+			return a, a.spawnWorkspaceMarkMerged(id)
+		default:
+			a.pendingMarkMergedID = ""
+			a.screen = screenList
+		}
+	}
+	return a, nil
+}
+
 func (a *App) renderWorkspaceScreen(phase string) string {
 	var sb strings.Builder
 	headerColor := lipgloss.Color("8")
@@ -1216,6 +1265,24 @@ func (a *App) spawnWorkspaceRedraft(ticketID string) tea.Cmd {
 			return workspaceChunkMsg{line: sc.Text()}
 		}
 		return workspaceDoneMsg{err: redraftErr}
+	}
+	a.workspaceScanNext = scanFn
+	return scanFn
+}
+
+func (a *App) spawnWorkspaceMarkMerged(ticketID string) tea.Cmd {
+	pr, pw := io.Pipe()
+	var mergeErr error
+	go func() {
+		mergeErr = a.wf.MarkMerged(ticketID, pw, pw)
+		pw.Close()
+	}()
+	sc := bufio.NewScanner(pr)
+	scanFn := func() tea.Msg {
+		if sc.Scan() {
+			return workspaceChunkMsg{line: sc.Text()}
+		}
+		return workspaceDoneMsg{err: mergeErr}
 	}
 	a.workspaceScanNext = scanFn
 	return scanFn

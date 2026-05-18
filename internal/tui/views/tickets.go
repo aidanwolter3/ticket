@@ -19,17 +19,21 @@ type ticketsStore interface {
 }
 
 type TicketsView struct {
-	store         ticketsStore
-	tickets       []*model.Ticket
-	agentSessions map[string]*model.AgentSession // ticketID → active session
-	hideMerged    bool
-	showBacklog   bool
-	agentFocused  bool
-	cursor        int
-	width         int
-	height        int
-	err           error
+	store            ticketsStore
+	tickets          []*model.Ticket
+	agentSessions    map[string]*model.AgentSession // ticketID → active session
+	hideMerged       bool
+	showBacklog      bool
+	agentFocused     bool
+	isCustomWorkspace bool
+	cursor           int
+	width            int
+	height           int
+	err              error
 }
+
+// SetIsCustomWorkspace updates the cached custom-workspace flag.
+func (v *TicketsView) SetIsCustomWorkspace(custom bool) { v.isCustomWorkspace = custom }
 
 func NewTicketsView(s ticketsStore) *TicketsView {
 	v := &TicketsView{store: s, hideMerged: true}
@@ -307,8 +311,14 @@ func (v *TicketsView) View() string {
 				backlogToggleHint = " · [b] backlog"
 			}
 		}
+		markMergedHint := ""
+		if v.isCustomWorkspace {
+			if sel := v.SelectedTicket(); sel != nil && sel.Status == model.StatusApproved {
+				markMergedHint = " · [M] mark merged"
+			}
+		}
 		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-			"[↑↓/jk] · [D] delete · " + mergedHint + " · " + backlogHint + backlogToggleHint))
+			"[↑↓/jk] · [D] delete · " + mergedHint + " · " + backlogHint + backlogToggleHint + markMergedHint))
 	}
 
 	return sb.String()
