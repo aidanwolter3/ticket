@@ -1,11 +1,10 @@
 package tui
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -43,6 +42,8 @@ const (
 	screenConfirmRedraft
 	screenEditDraftMessage
 	screenConfirmDispatch
+	screenPreparing
+	screenTearingDown
 )
 
 type dbTickMsg struct{}
@@ -90,7 +91,20 @@ type App struct {
 	attachSessionID string
 	rightPaneMode   string // "detail" or "agent"
 	agentTermView   *views.AgentTermView
+
+	// workspace operation state (preparing / tearing_down screens)
+	workspaceLines    []string
+	workspaceTicketID string
+	workspaceRunning  bool
+	workspacePurpose  string   // "dispatch", "redraft", or "mark-merged"
+	workspaceScanNext tea.Cmd  // set once by spawn helpers; must not be overwritten by handler
 }
+
+// workspaceChunkMsg carries one line of output from the running workspace command.
+type workspaceChunkMsg struct{ line string }
+
+// workspaceDoneMsg is sent when the workspace command finishes.
+type workspaceDoneMsg struct{ err error }
 
 func New(wf *human.Workflow) *App {
 	a := &App{
@@ -209,10 +223,36 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case workspaceChunkMsg:
+		a.workspaceLines = append(a.workspaceLines, msg.line)
+		return a, a.workspaceScanNext
+
+	case workspaceDoneMsg:
+		a.workspaceRunning = false
+		if msg.err != nil {
+			a.statusMsg = msg.err.Error()
+			a.statusErr = true
+		} else {
+			switch a.workspacePurpose {
+			case "dispatch":
+				a.statusMsg = a.workspaceTicketID + " dispatched"
+			case "redraft":
+				a.statusMsg = a.workspaceTicketID + " → draft"
+			case "mark-merged":
+				a.statusMsg = a.workspaceTicketID + " → merged"
+			}
+			a.statusErr = false
+		}
+		a.screen = screenList
+		a.ticketsView.Refresh()
+		a.loadCurrentDetail()
+		return a, nil
+
 	case tea.KeyMsg:
 		// Global shortcuts (only when not in a modal/form, and not when the agent
 		// pane is focused — all keys except ctrl+] are forwarded to the agent PTY).
-		if (a.screen == screenList || a.screen == screenThreads || a.screen == screenReviewPanel) && a.rightPaneMode != "agent" {
+		if (a.screen == screenList || a.screen == screenThreads || a.screen == screenReviewPanel ||
+			a.screen == screenPreparing || a.screen == screenTearingDown) && a.rightPaneMode != "agent" {
 			switch msg.String() {
 			case "ctrl+c":
 				return a, tea.Quit
@@ -243,6 +283,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateNewThreadModal(msg)
 	case screenEditDraftMessage:
 		return a.updateEditDraftMessage(msg)
+	case screenPreparing:
+		return a.updateScreenPreparing(msg)
+	case screenTearingDown:
+		return a.updateScreenTearingDown(msg)
 	}
 	return a, nil
 }
@@ -309,7 +353,8 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.ticketDetail != nil {
 				if t := a.ticketDetail.Ticket(); t != nil {
 					st := t.Status
-					if st == model.StatusReady || st == model.StatusInProgress || st == model.StatusInReview {
+					if st == model.StatusReady || st == model.StatusInProgress || st == model.StatusInReview ||
+						st == model.StatusPreparing || st == model.StatusTearingDown {
 						a.pendingRedraftID = t.ID
 						a.screen = screenConfirmRedraft
 					}
@@ -509,6 +554,22 @@ func (a *App) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case "enter":
 			if t := a.ticketsView.SelectedTicket(); t != nil {
+				if t.Status == model.StatusPreparing || t.Status == model.StatusTearingDown {
+					logPath := filepath.Join(os.TempDir(), "ticket-workspace-"+t.ID+".log")
+					logData, _ := os.ReadFile(logPath)
+					lines := strings.Split(strings.TrimRight(string(logData), "\n"), "\n")
+					if len(lines) == 1 && lines[0] == "" {
+						lines = nil
+					}
+					a.workspaceLines = lines
+					a.workspaceTicketID = t.ID
+					if t.Status == model.StatusPreparing {
+						a.screen = screenPreparing
+					} else {
+						a.screen = screenTearingDown
+					}
+					return a, nil
+				}
 				sess, _ := a.wf.GetAgentSessionByTicket(t.ID)
 				if sess == nil {
 					sess, _ = a.wf.GetLatestAgentSessionByTicket(t.ID)
@@ -759,73 +820,12 @@ func (a *App) updateConfirmDispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "y", "Y":
 			id := a.pendingDispatchID
 			a.pendingDispatchID = ""
-			a.screen = screenList
-
-			cmdTemplate, _, err := a.wf.ConfigGet("agent.command")
-			if err != nil || cmdTemplate == "" {
-				a.statusMsg = `agent.command not configured`
-				a.statusErr = true
-				return a, nil
-			}
-
-			t, err := a.wf.GetTicket(id)
-			if err != nil {
-				a.setErr(err)
-				return a, nil
-			}
-
-			prompt, err := agent.BuildPrompt(cmdTemplate)
-			if err != nil {
-				a.setErr(fmt.Errorf("agent: build prompt: %w", err))
-				return a, nil
-			}
-
-			if t.WorktreePath == "" && t.RepoPath != "" {
-				featureBranch := t.FeatureBranch
-				if featureBranch == "" {
-					featureBranch = "feat/" + strings.ToLower(id)
-				}
-				worktreeAbs := filepath.Join(t.RepoPath, ".worktrees", id)
-				checkBranch := exec.Command("git", "-C", t.RepoPath, "rev-parse", "--verify", featureBranch)
-				checkBranch.Stdout = io.Discard
-				checkBranch.Stderr = io.Discard
-				branchExists := checkBranch.Run() == nil
-				var wtCmd *exec.Cmd
-				if branchExists {
-					wtCmd = exec.Command("git", "-C", t.RepoPath, "worktree", "add", worktreeAbs, featureBranch)
-				} else {
-					wtCmd = exec.Command("git", "-C", t.RepoPath, "worktree", "add", "-b", featureBranch, worktreeAbs)
-				}
-				var wtStderr bytes.Buffer
-				wtCmd.Stderr = &wtStderr
-				if wtErr := wtCmd.Run(); wtErr != nil {
-					msg := strings.TrimSpace(wtStderr.String())
-					if msg == "" {
-						msg = wtErr.Error()
-					}
-					a.setErr(fmt.Errorf("create worktree: %s", msg))
-					return a, nil
-				}
-				if saveErr := a.wf.SetWorktreePath(id, worktreeAbs, t.RepoPath, featureBranch); saveErr != nil {
-					exec.Command("git", "-C", t.RepoPath, "worktree", "remove", "--force", worktreeAbs).Run() //nolint:errcheck
-					a.setErr(fmt.Errorf("save worktree_path: %w", saveErr))
-					return a, nil
-				}
-				t.WorktreePath = worktreeAbs
-			}
-
-			_, err = a.launcher.Launch(id, t.WorktreePath, prompt)
-			if err != nil {
-				a.setErr(fmt.Errorf("agent launch: %w", err))
-				return a, nil
-			}
-			if transErr := a.wf.TransitionTicket(id, model.StatusInProgress); transErr != nil {
-				a.setErr(fmt.Errorf("transition in_progress: %w", transErr))
-				return a, nil
-			}
-
-			a.statusMsg = fmt.Sprintf("agent dispatched to %s", id)
-			a.statusErr = false
+			a.workspaceTicketID = id
+			a.workspaceLines = nil
+			a.workspaceRunning = true
+			a.workspacePurpose = "dispatch"
+			a.screen = screenPreparing
+			return a, a.spawnWorkspaceDispatch(id)
 		default:
 			a.pendingDispatchID = ""
 			a.screen = screenList
@@ -866,15 +866,12 @@ func (a *App) updateConfirmRedraft(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "y", "Y":
 			id := a.pendingRedraftID
 			a.pendingRedraftID = ""
-			a.screen = screenList
-			if err := a.wf.Redraft(id, io.Discard, io.Discard); err != nil {
-				a.setErr(err)
-			} else {
-				a.statusMsg = fmt.Sprintf("%s → draft", id)
-				a.statusErr = false
-				a.ticketsView.Refresh()
-				a.loadCurrentDetail()
-			}
+			a.workspaceTicketID = id
+			a.workspaceLines = nil
+			a.workspaceRunning = true
+			a.workspacePurpose = "redraft"
+			a.screen = screenTearingDown
+			return a, a.spawnWorkspaceRedraft(id)
 		default:
 			a.pendingRedraftID = ""
 			a.screen = screenList
@@ -1092,6 +1089,10 @@ func (a *App) View() string {
 	case screenConfirmDispatch:
 		prompt := fmt.Sprintf("Dispatch agent to %s? (y/N) ", a.pendingDispatchID)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4")).Render(prompt))
+	case screenPreparing:
+		sb.WriteString(a.renderWorkspaceScreen("preparing"))
+	case screenTearingDown:
+		sb.WriteString(a.renderWorkspaceScreen("tearing down"))
 	}
 
 	// Status bar — always rendered to keep View() height constant.
@@ -1144,6 +1145,80 @@ func (a *App) enterAttachView(sess *model.AgentSession) tea.Cmd {
 		a.agentTermView.SetLines(initialLines)
 	}
 	return a.waitAgentChunk()
+}
+
+// --- Workspace screens (preparing / tearing_down) ---
+
+func (a *App) updateScreenPreparing(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok {
+		if km.String() == "esc" {
+			a.screen = screenList
+		}
+	}
+	return a, nil
+}
+
+func (a *App) updateScreenTearingDown(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok {
+		if km.String() == "esc" {
+			a.screen = screenList
+		}
+	}
+	return a, nil
+}
+
+func (a *App) renderWorkspaceScreen(phase string) string {
+	var sb strings.Builder
+	headerColor := lipgloss.Color("8")
+	if a.workspaceRunning {
+		headerColor = lipgloss.Color("2")
+	}
+	header := lipgloss.NewStyle().Foreground(headerColor).Render(
+		fmt.Sprintf("workspace: %s %s", phase, a.workspaceTicketID),
+	)
+	sb.WriteString(header + "\n\n")
+	for _, line := range a.workspaceLines {
+		sb.WriteString(line + "\n")
+	}
+	sb.WriteString("\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("esc: back"))
+	return sb.String()
+}
+
+func (a *App) spawnWorkspaceDispatch(ticketID string) tea.Cmd {
+	pr, pw := io.Pipe()
+	var dispatchErr error
+	go func() {
+		dispatchErr = a.wf.Dispatch(ticketID, pw, pw)
+		pw.Close()
+	}()
+	sc := bufio.NewScanner(pr)
+	scanFn := func() tea.Msg {
+		if sc.Scan() {
+			return workspaceChunkMsg{line: sc.Text()}
+		}
+		return workspaceDoneMsg{err: dispatchErr}
+	}
+	a.workspaceScanNext = scanFn
+	return scanFn
+}
+
+func (a *App) spawnWorkspaceRedraft(ticketID string) tea.Cmd {
+	pr, pw := io.Pipe()
+	var redraftErr error
+	go func() {
+		redraftErr = a.wf.Redraft(ticketID, pw, pw)
+		pw.Close()
+	}()
+	sc := bufio.NewScanner(pr)
+	scanFn := func() tea.Msg {
+		if sc.Scan() {
+			return workspaceChunkMsg{line: sc.Text()}
+		}
+		return workspaceDoneMsg{err: redraftErr}
+	}
+	a.workspaceScanNext = scanFn
+	return scanFn
 }
 
 // keyMsgBytes converts a Bubble Tea key event into the byte sequence a PTY expects.
