@@ -187,6 +187,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ticketsView.Refresh()
 		if a.ticketDetail != nil {
 			_ = a.ticketDetail.Reload()
+		} else if a.selectedTicketID() != "" {
+			a.loadCurrentDetail()
 		}
 		if a.threadsView != nil {
 			_ = a.threadsView.Reload()
