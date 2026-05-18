@@ -191,6 +191,11 @@ func (v *TicketDetailView) renderContent() string {
 	if v.workspaceType != "" && v.workspaceType != "worktree" {
 		sb.WriteString(fmt.Sprintf("  Workspace: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(v.workspaceType)))
 	}
+	configLabel := "(default)"
+	if t.Config != "" {
+		configLabel = t.Config
+	}
+	sb.WriteString(fmt.Sprintf("  Config: %s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(configLabel)))
 	sb.WriteString("\n")
 
 	wrapWidth := v.width - 2

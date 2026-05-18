@@ -651,3 +651,52 @@ func TestCLI_Redraft(t *testing.T) {
 	assert.NotEqual(t, 0, code, "redraft of already-draft ticket should fail")
 	assert.NotEmpty(t, stderr, "error message should appear on stderr")
 }
+
+func TestCLI_NamedConfig(t *testing.T) {
+	if globalBuildFailed || globalTicketBin == "" {
+		t.Skip("ticket binary could not be built")
+	}
+
+	db, _ := newTestDB(t)
+	repoPath := t.TempDir()
+
+	// 1. ticket config set --config myconf workspace.type command (scoped set)
+	stdout, stderr, code := run(t, db, "config", "set", "--db", db, "--config", "myconf", "workspace.type", "command")
+	require.Equal(t, 0, code, "config set --config should exit 0; stdout=%q stderr=%q", stdout, stderr)
+
+	// 2. ticket config get --config myconf workspace.type returns command
+	stdout, _, code = run(t, db, "config", "get", "--db", db, "--config", "myconf", "workspace.type")
+	require.Equal(t, 0, code)
+	assert.Equal(t, "command\n", stdout)
+
+	// 3. ticket config ls output includes [config: myconf] section with (override)
+	stdout, _, code = run(t, db, "config", "ls", "--db", db)
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "[config: myconf]")
+	assert.Contains(t, stdout, "(override)")
+	assert.Contains(t, stdout, "workspace.type")
+
+	// 4. ticket draft --config nonexistent fails with clear error
+	_, stderr, code = run(t, db, "draft", "--db", db, "--title", "T", "--repo", repoPath, "--config", "nonexistent")
+	assert.NotEqual(t, 0, code, "draft with nonexistent config should fail")
+	assert.Contains(t, stderr, "nonexistent")
+
+	// 5a. Set workspace.type for myconf so the named config has the key.
+	_, _, code = run(t, db, "config", "set", "--db", db, "--config", "myconf", "workspace.delete_command", "true")
+	require.Equal(t, 0, code)
+
+	// 5b. ticket draft --config myconf succeeds
+	stdout, stderr, code = run(t, db, "draft", "--db", db, "--title", "Named Config Ticket", "--repo", repoPath, "--config", "myconf")
+	require.Equal(t, 0, code, "draft with valid config should succeed; stdout=%q stderr=%q", stdout, stderr)
+	ticketID := strings.TrimSpace(stdout)
+	require.NotEmpty(t, ticketID)
+
+	// ticket get --json shows config field
+	stdout, _, code = run(t, db, "get", "--db", db, "--json", ticketID)
+	require.Equal(t, 0, code)
+	tj := decodeJSON(t, stdout)
+	assert.Equal(t, "myconf", tj["config"])
+
+	// 6. global config ls shows [default] section with workspace.type
+	assert.Contains(t, stdout, "\"config\"")
+}
