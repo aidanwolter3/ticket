@@ -209,12 +209,20 @@ func (w *Workflow) ConfigGet(key string) (string, bool, error) {
 	return w.s.ConfigGet(key)
 }
 
+func (w *Workflow) ConfigGetDefault(key, defaultVal string) (string, error) {
+	return w.s.ConfigGetDefault(key, defaultVal)
+}
+
 func (w *Workflow) ConfigSet(key, value string) error {
 	return w.s.ConfigSet(key, value)
 }
 
 func (w *Workflow) ConfigList() (map[string]string, error) {
 	return w.s.ConfigList()
+}
+
+func (w *Workflow) NewWorkspace() (Workspace, error) {
+	return NewWorkspace(w.s)
 }
 
 func (w *Workflow) GetAgentSessionByTicket(ticketID string) (*model.AgentSession, error) {
