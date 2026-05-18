@@ -64,6 +64,65 @@ func Update(s *store.Store, ticketID string, title, description *string) error {
 	return nil
 }
 
+// Dispatch creates a workspace and launches an agent for the ticket. The ticket
+// must already be in "ready" status. On workspace creation failure the ticket
+// reverts to ready and an error is returned. Dispatch is called by both Ready()
+// (auto-dispatch) and the TUI manual dispatch flow.
+func Dispatch(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, stderr io.Writer) error {
+	cmdTemplate, _, err := s.ConfigGet("agent.command")
+	if err != nil {
+		return fmt.Errorf("dispatch: read agent.command: %w", err)
+	}
+	if cmdTemplate == "" {
+		return fmt.Errorf("dispatch: agent.command not configured")
+	}
+
+	args, err := agent.BuildPrompt(cmdTemplate)
+	if err != nil {
+		return fmt.Errorf("dispatch: build prompt: %w", err)
+	}
+
+	ws, err := NewWorkspace(s)
+	if err != nil {
+		return fmt.Errorf("dispatch: workspace config: %w", err)
+	}
+
+	if transErr := s.TransitionTicket(ticketID, model.StatusPreparing); transErr != nil {
+		return fmt.Errorf("dispatch: transition preparing: %w", transErr)
+	}
+
+	wsPath, createErr := ws.Create(ticketID, stdout, stderr)
+	if createErr != nil {
+		s.TransitionTicket(ticketID, model.StatusReady) //nolint:errcheck
+		return fmt.Errorf("dispatch: create workspace: %w", createErr)
+	}
+
+	ticket, err := s.GetTicket(ticketID)
+	if err != nil {
+		s.TransitionTicket(ticketID, model.StatusReady) //nolint:errcheck
+		return fmt.Errorf("dispatch: get ticket: %w", err)
+	}
+	if ticket.WorktreePath == "" {
+		ticket.WorktreePath = wsPath
+	}
+
+	if launcher == nil {
+		launcher = agent.NewLauncher(s)
+	}
+	if _, launchErr := launcher.Launch(ticketID, ticket.WorktreePath, args); launchErr != nil {
+		s.TransitionTicket(ticketID, model.StatusReady) //nolint:errcheck
+		return fmt.Errorf("dispatch: launch agent: %w", launchErr)
+	}
+
+	if transErr := s.TransitionTicket(ticketID, model.StatusInProgress); transErr != nil {
+		fmt.Fprintf(stderr, "dispatch: transition in_progress: %v\n", transErr)
+	}
+	if _, noteErr := s.AddNote(ticketID, "agent:claude", "Agent auto-dispatched"); noteErr != nil {
+		fmt.Fprintf(stderr, "dispatch: add note: %v\n", noteErr)
+	}
+	return nil
+}
+
 // Ready transitions a draft ticket to ready. If agent.auto_dispatch is true
 // and agent.command is set, an agent is launched automatically using launcher.
 // If launcher is nil, a new one is created (suitable for CLI use where no TUI
@@ -90,30 +149,11 @@ func Ready(s *store.Store, ticketID string, launcher *agent.Launcher, stdout, st
 		}
 		existing, _ := s.GetAgentSessionByTicket(ticketID)
 		if existing == nil {
-			ws := WorktreeWorkspace{s: s}
-			wsPath, createErr := ws.Create(ticketID, stdout, stderr)
-			if createErr != nil {
-				fmt.Fprintf(stderr, "auto-dispatch: workspace: %v\n", createErr)
-				return nil
+			if launcher == nil {
+				launcher = agent.NewLauncher(s)
 			}
-			ticket.WorktreePath = wsPath
-			prompt, err := agent.BuildPrompt(cmdTemplate)
-			if err != nil {
-				fmt.Fprintf(stderr, "auto-dispatch: build prompt: %v\n", err)
-			} else {
-				if launcher == nil {
-					launcher = agent.NewLauncher(s)
-				}
-				if _, launchErr := launcher.Launch(ticketID, ticket.WorktreePath, prompt); launchErr != nil {
-					fmt.Fprintf(stderr, "auto-dispatch: launch failed: %v\n", launchErr)
-				} else {
-					if transErr := s.TransitionTicket(ticketID, model.StatusInProgress); transErr != nil {
-						fmt.Fprintf(stderr, "auto-dispatch: transition in_progress: %v\n", transErr)
-					}
-					if _, noteErr := s.AddNote(ticketID, "agent:claude", "Agent auto-dispatched"); noteErr != nil {
-						fmt.Fprintf(stderr, "auto-dispatch: add note: %v\n", noteErr)
-					}
-				}
+			if dispErr := Dispatch(s, ticketID, launcher, stdout, stderr); dispErr != nil {
+				fmt.Fprintf(stderr, "auto-dispatch: workspace: %v\n", dispErr)
 			}
 		}
 	}
@@ -152,17 +192,8 @@ func SubmitReview(s *store.Store, ticketID string, author string, launcher *agen
 		if autoDispatch == "true" && cmdTemplate != "" {
 			existing, _ := s.GetAgentSessionByTicket(ticketID)
 			if existing == nil {
-				if ticket, tErr := s.GetTicket(ticketID); tErr == nil {
-					if prompt, pErr := agent.BuildPrompt(cmdTemplate); pErr == nil {
-						if _, launchErr := launcher.Launch(ticketID, ticket.WorktreePath, prompt); launchErr != nil {
-							fmt.Fprintf(stderr, "auto-dispatch: launch failed: %v\n", launchErr)
-						} else {
-							if transErr := s.TransitionTicket(ticketID, model.StatusInProgress); transErr != nil {
-								fmt.Fprintf(stderr, "auto-dispatch: transition in_progress: %v\n", transErr)
-							}
-							s.AddNote(ticketID, "agent:claude", "Agent auto-dispatched") //nolint:errcheck
-						}
-					}
+				if dispErr := Dispatch(s, ticketID, launcher, stdout, stderr); dispErr != nil {
+					fmt.Fprintf(stderr, "auto-dispatch: %v\n", dispErr)
 				}
 			}
 		}
@@ -215,9 +246,9 @@ func createAmendmentTasks(s *store.Store, ticketID string, naThreadIDs []string)
 	return nil
 }
 
-// Redraft destroys the worktree and feature branch, clears the DB fields, and
-// transitions the ticket back to draft. stdout and stderr control where git
-// output goes; pass io.Discard to suppress.
+// Redraft tears down the workspace, deletes the feature branch, resets tasks,
+// and transitions the ticket back to draft. Handles crash recovery for
+// StatusPreparing (skips Delete) and sticky-failure retry for StatusTearingDown.
 func Redraft(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 	ticket, err := s.GetTicket(ticketID)
 	if err != nil {
@@ -228,16 +259,48 @@ func Redraft(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("ticket %s is already draft", ticketID)
 	}
 
-	if sess, err := s.GetAgentSessionByTicket(ticketID); err == nil && sess != nil {
-		if proc, err := os.FindProcess(sess.PID); err == nil {
+	// Terminate any running agent session.
+	if sess, sErr := s.GetAgentSessionByTicket(ticketID); sErr == nil && sess != nil {
+		if proc, pErr := os.FindProcess(sess.PID); pErr == nil {
 			proc.Signal(syscall.SIGTERM) //nolint:errcheck
 		}
 		s.UpdateAgentSessionState(sess.ID, model.AgentTerminated) //nolint:errcheck
 	}
 
-	ws := WorktreeWorkspace{s: s}
-	if err := ws.Delete(ticketID, stdout, stderr); err != nil {
-		return fmt.Errorf("redraft: %w", err)
+	ws, wsErr := NewWorkspace(s)
+
+	// Crash recovery: workspace creation was interrupted; skip Delete.
+	if ticket.Status == model.StatusPreparing {
+		if clearErr := s.ClearWorktree(ticketID); clearErr != nil {
+			fmt.Fprintf(stderr, "redraft: crash recovery: clear worktree: %v\n", clearErr)
+			return clearErr
+		}
+		if resetErr := s.ResetTasksForTicket(ticketID); resetErr != nil {
+			fmt.Fprintf(stderr, "redraft: crash recovery: reset tasks: %v\n", resetErr)
+			return resetErr
+		}
+		if transErr := s.TransitionTicket(ticketID, model.StatusDraft); transErr != nil {
+			fmt.Fprintf(stderr, "redraft: crash recovery: transition draft: %v\n", transErr)
+			return transErr
+		}
+		fmt.Fprintf(stderr, "crash recovery: force-transitioning to draft\n")
+		return nil
+	}
+
+	// Transition to tearing_down (skip if already there).
+	if ticket.Status != model.StatusTearingDown {
+		if transErr := s.TransitionTicket(ticketID, model.StatusTearingDown); transErr != nil {
+			return fmt.Errorf("redraft: transition tearing_down: %w", transErr)
+		}
+	}
+
+	if wsErr != nil {
+		return fmt.Errorf("redraft: workspace config: %w", wsErr)
+	}
+
+	if delErr := ws.Delete(ticketID, stdout, stderr); delErr != nil {
+		fmt.Fprintf(stderr, "redraft: workspace delete failed: %v\n", delErr)
+		return delErr
 	}
 
 	if ticket.FeatureBranch != "" {
@@ -250,12 +313,36 @@ func Redraft(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
 		}
 	}
 
+	if err := s.ClearWorktree(ticketID); err != nil {
+		return fmt.Errorf("redraft: clear worktree_path: %w", err)
+	}
+
 	if err := s.ResetTasksForTicket(ticketID); err != nil {
 		return fmt.Errorf("redraft: reset tasks: %w", err)
 	}
 
 	if err := s.TransitionTicket(ticketID, model.StatusDraft); err != nil {
 		return fmt.Errorf("redraft: transition: %w", err)
+	}
+	return nil
+}
+
+// MarkMerged runs the workspace delete command and transitions the ticket to
+// merged. Precondition: ticket must be in tearing_down status. On Delete
+// failure the ticket reverts to approved.
+func MarkMerged(s *store.Store, ticketID string, stdout, stderr io.Writer) error {
+	ws, err := NewWorkspace(s)
+	if err != nil {
+		return fmt.Errorf("mark-merged: workspace config: %w", err)
+	}
+
+	if delErr := ws.Delete(ticketID, stdout, stderr); delErr != nil {
+		s.TransitionTicket(ticketID, model.StatusApproved) //nolint:errcheck
+		return delErr
+	}
+
+	if transErr := s.TransitionTicket(ticketID, model.StatusMerged); transErr != nil {
+		return fmt.Errorf("mark-merged: transition merged: %w", transErr)
 	}
 	return nil
 }

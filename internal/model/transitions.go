@@ -9,11 +9,11 @@ import (
 func ValidateTicketTransition(from, to Status) error {
 	allowed := map[Status]map[Status]bool{
 		StatusDraft:       {StatusReady: true},
-		StatusReady:       {StatusDraft: true, StatusInProgress: true, StatusPreparing: true},
+		StatusReady:       {StatusDraft: true, StatusInProgress: true, StatusPreparing: true, StatusTearingDown: true},
 		StatusPreparing:   {StatusInProgress: true, StatusReady: true},
-		StatusInProgress:  {StatusInReview: true},
+		StatusInProgress:  {StatusInReview: true, StatusTearingDown: true},
 		StatusTearingDown: {StatusDraft: true, StatusMerged: true, StatusApproved: true},
-		StatusInReview:    {StatusReady: true, StatusApproved: true, StatusInProgress: true},
+		StatusInReview:    {StatusReady: true, StatusApproved: true, StatusInProgress: true, StatusTearingDown: true},
 		StatusApproved:    {StatusMerged: true, StatusReady: true, StatusTearingDown: true},
 		StatusMerged:      {},
 	}

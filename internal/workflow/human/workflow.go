@@ -43,8 +43,16 @@ func (w *Workflow) Update(ticketID string, title, description *string) error {
 	return Update(w.s, ticketID, title, description)
 }
 
+func (w *Workflow) Dispatch(ticketID string, stdout, stderr io.Writer) error {
+	return Dispatch(w.s, ticketID, w.launcher, stdout, stderr)
+}
+
 func (w *Workflow) Ready(ticketID string, stdout, stderr io.Writer) error {
 	return Ready(w.s, ticketID, w.launcher, stdout, stderr)
+}
+
+func (w *Workflow) MarkMerged(ticketID string, stdout, stderr io.Writer) error {
+	return MarkMerged(w.s, ticketID, stdout, stderr)
 }
 
 func (w *Workflow) SubmitReview(ticketID, author string, stdout, stderr io.Writer) error {
